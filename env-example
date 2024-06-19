@@ -1,0 +1,7 @@
+PORT = 5000
+apiG2aUrl = http://191.101.70.89:4000
+apiGamivoUrl = http://191.101.70.89:3000
+timeOut = 3000
+isBestBuy86 = true
+kinguinClient_id =
+kinguinClient_secret =

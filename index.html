@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <link rel="icon" type="image/x-icon" href="/search.svg">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title> Price Researcher</title>
+</head>
+
+<body>
+    <div class="all">
+
+        <!-- <div id="header"> -->
+            <h1>Price Researcher</h1>
+            <h3>Envie um arquivo .txt (bloco de notas) SOMENTE com o nome do jogo em cada linha, evite também colocar
+                espaços em
+                branco no início e no final.</h3>
+            <p><strong class="red">Atenção: </strong>Tente enviar o jogo escrito da melhor forma possível, cada
+                caractere pode afetar o
+                resultado final. </p>
+            <p><strong>OBS: </strong>O price não é perfeito, pode haver jogos que valham a pena conferir o resultado,
+                como
+                os
+                seguintes casos: </p>
+            <ul>
+                <li>Se tiver uma boa popularidade e não achar o preço do jogo. </li>
+                <li>Se achar em uma plataforma e não achar em outra. </li>
+                <li>Se tiver um caractere diferente. </li>
+            </ul>
+
+            <h3>Exemplo de arquivo a ser enviado</h3>
+            <div class="row">
+                <img src="ArquivoExemplo.PNG" alt="Exemplo de arquivo a ser enviado">
+                <div class="column">
+
+                    <p><strong>Primeira linha: </strong> Popularidade mínima em 24h para considerar. Caso o jogo tenha menos <br> do que esse valor de popularidade, só vai anotar o preço se o valor dele for menor do que €2.00</p>
+                    <p><strong>Linhas seguintes: </strong> Nome dos jogos, um por linha.</p>
+                </div>
+            </div>
+        <!-- </div> -->
+        <div id="body">
+            <h3>Envio de arquivo</h3>
+            <!-- <h4>O price só busca por jogos "GLOBAL"</h4> -->
+            <p><strong class="red">Atenção: </strong> O price pode demorar a responder, mas é importante que você NÃO fique enviando arquivos toda hora,<br>isso pode comprometer o servidor e deixá-lo fora do ar. Se for enviar mais de 10 jogos, é aconselhável que <br> deixe ele em segundo plano e espere o navegador enviar a resposta(a janela irá piscar em laranja). </p>
+            <form id="uploadForm">
+                <input type="file" name="fileToUpload" id="fileToUpload">
+                <br>
+                <br>
+                <input type="button" value="Enviar Arquivo" onclick="uploadFile()" id="uploadButton">
+            </form>
+            <div id="loadingIndicator" style="display: none;">
+                Carregando... <!-- Você pode personalizar a mensagem de carregamento conforme necessário -->
+                <div class="loader"></div> <!-- Adicione uma animação de carregamento (a mesma usada anteriormente) -->
+            </div>
+        </div>
+        <div id="bottom">
+
+            <h3>Exemplo de arquivo de resposta</h3>
+            <p><strong>Ordem das respostas: </strong> G2A / GAMIVO / KINGUIN / POPULARIDADE.</p>
+            <img src="RespostaExemplo.PNG" alt="Exemplo de resposta a ser recebida.">
+            <p><strong>Linhas: </strong> Cada linha é de um jogo, na mesma ordem que foi enviado e pronto para ser
+                colado na
+                planilha.</p>
+            <h2>Legenda:</h2>
+            <p><strong>F: </strong> Jogo que não foi possível achar na plataforma, provavelmente por ter algum caractere
+                diferenciado.</p>
+            <p><strong>N: </strong> Jogo que possui pico de jogadores menor do que o pedido nas últimas 24h na steam e
+                custa
+                mais de 2 euros.</p>
+            <p><strong>O: </strong> Jogo que está fora de estoque.</p>
+            <p><strong>NaN: </strong> Jogo foi encontrado mas não conseguiu calcular o preço, vale a pena conferir.</p>
+            <p><strong>999 de popularidade: </strong> 999 de popularidade acontece quando envia 0 de popularidade mínima e o price irá desconsiderar a pesquisa de popularidade.</p>
+        </div>
+    </div>
+
+</body>
+<script>
+    async function uploadFile() {
+        const fileInput = document.getElementById('fileToUpload');
+        const file = fileInput.files[0];
+
+        if (!file) {
+            alert("Por favor, envie o arquivo com o nome dos jogos(1 por linha).");
+            return;
+        }
+
+        document.getElementById('uploadButton').disabled = true; // Desabilita o botão para evitar spam de request e obrigar a esperar
+        document.getElementById('loadingIndicator').style.display = 'block'; // Mostra o indicador de carregamento
+
+
+        const formData = new FormData();
+        formData.append('fileToUpload', file);
+
+        try {
+            const response = await fetch('/upload', {
+                method: 'POST',
+                body: formData
+            });
+
+            document.getElementById('loadingIndicator').style.display = 'none';
+
+            if (response.error) {
+                console.error('Erro:', error);
+                alert('O arquivo possui algum erro de digitação, confira se enviou 1 jogo por linha e sem espaço em branco no início ou no final.');
+            }
+
+            // const responseData = await response.text(); // DEBUG
+            // console.log(responseData);
+            // return;
+
+            const blob = await response.blob(); // Recebe o arquivo modificado como Blob
+
+            // Cria um URL temporário para o Blob
+            const url = window.URL.createObjectURL(blob);
+
+            // Cria um link <a> para download
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'resultado-price-researcher.txt'; // Define o nome do arquivo
+            document.body.appendChild(a);
+
+            // Aciona o clique no link para iniciar o download
+            a.click();
+
+            // Remove o link do corpo do documento
+            document.body.removeChild(a);
+
+            // Revoga o URL temporário
+            window.URL.revokeObjectURL(url);
+
+
+        } catch (error) {
+            console.error('Erro:', error);
+            alert('Ocorreu um erro, tente novamente.');
+            document.getElementById('loadingIndicator').style.display = 'none'; // Ocultar o indicador de carregamento em caso de erro
+        } finally {
+            // Garantir que o botão seja habilitado novamente mesmo em caso de erro
+            document.getElementById('uploadButton').disabled = false;
+        }
+    }
+
+    document.getElementById('uploadForm').addEventListener('submit', function (event) {
+        event.preventDefault(); // Isso impede o envio do formulário padrão
+    });
+</script>
+
+<style>
+    * {
+        font-family: sans-serif;
+    }
+
+    body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background-color: #e2d926;
+    }
+
+    .all {
+        padding: 10px;
+        background-color: whitesmoke;
+        min-width: 1285px;
+        border-radius: 10px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    #header h1 {
+        text-align: center;
+    }
+    .red {
+        color: red;
+    }
+
+    .all h3, h4 {
+        text-align: center;
+    }
+
+    .row {
+        display: flex;
+        flex-direction: row;
+    }
+
+    .column{
+        display: flex;
+        flex-direction: column;
+    }
+
+</style>
+
+</html>
