@@ -14,8 +14,6 @@ import searchKinguin from './functions/searchKinguin.js';
 import { isNumber } from 'puppeteer';
 
 
-let isBestBuy86 = process.env.isBestBuy86;
-
 const app = express();
 
 const pasta = path.join(process.cwd());
@@ -40,7 +38,7 @@ app.post('/upload', upload.single('fileToUpload'), async (req, res) => {
 
       // const hora1 = new Date().toLocaleTimeString();
 
-      let gamesToSearch = [], lineToWrite, responseFile = '', priceGamivo, priceG2A, priceKinguin;
+      let gamesToSearch = [], responseFile = '', priceGamivo, priceG2A, priceKinguin;
       const filePath = req.file.path;
       const fileContent = fs.readFileSync(filePath, 'utf8');
 
@@ -60,7 +58,7 @@ app.post('/upload', upload.single('fileToUpload'), async (req, res) => {
             }
       }
 
-
+      console.log(gamesToSearch);
       // O for vai começar aqui passando em todos os gamesToSearch
       for (let game of gamesToSearch) {
             let search = true, fullLine, popularity;
@@ -68,82 +66,28 @@ app.post('/upload', upload.single('fileToUpload'), async (req, res) => {
             minPopularity !== 0 ? popularity = await searchSteamDb(game) : popularity = 999;
             // let popularity = 2442; // Debug
 
-            if (popularity !== 'F') { // Jogo possui mais de 0 de popularidade
+            if (popularity == 'F') continue;
 
-                  if (isBestBuy86 == "false" && (popularity < minPopularity)) search = false;
+            if (popularity < minPopularity) search = false;
 
-                  //Converte para o formato brasileiro com .
-                  // CHECAR SE É Number
-                  if (!isNumber(popularity)) {
-                        if (popularity.includes(',')) { popularity = popularity.replace(',', '.'); }
-                        let popularityNumber = parseFloat(popularity);
-                        let decimalPlaces = (popularity.split('.')[1] || '').length;
-                        popularity = popularityNumber.toFixed(decimalPlaces);
-                  }
-
-
-                  if (popularity > 0 && search) {
-
-                        if (isBestBuy86 == "false") {
-                              // priceKinguin = await searcheKing(game, minPopularity, popularity);
-                              // priceGamivo = await searcheGam(game, minPopularity, popularity);
-                              
-                              // fullLine = `G2A\t$sdasd\t\t\t\tdasdt$asd\n`; responseFile += fullLine;
-
-
-
-                              priceGamivo = await searchGamivo(game, minPopularity, popularity);
-                              if (priceGamivo !== 'F' && priceGamivo !== 'N') {
-                                    fullLine = `G2A\t${priceGamivo}\tKinguin\t\t\t\t${popularity}\t${game}\n`; 
-                                    responseFile += fullLine;
-                              }
-                        } else {
-                              // priceGamivo = await searchGamivo(game, minPopularity, popularity);
-
-                              // priceG2A = await searchG2A(game, minPopularity, popularity);
-
-                              // priceKinguin = await searchKinguin(game, minPopularity, popularity);
-
-                              // Executar as três funções simultaneamente
-                              const promise1 = searchGamivo(game, minPopularity, popularity);
-                              const promise2 = searchG2A(game, minPopularity, popularity);
-                              const promise3 = searchKinguin(game, minPopularity, popularity);
-                              [priceGamivo, priceG2A, priceKinguin] = await Promise.all([promise1, promise2, promise3]);
-                              
-                              // priceG2A = 1; // Debug
-                              // priceGamivo = 1;
-                              // priceKinguin = 1;
-
-                              // [priceGamivo, priceG2A] = await Promise.all([promise1, promise2]); // Sem KINGUIN
-                        }
-
-                  } else {
-                        priceGamivo = 'N';
-                        priceG2A = 'N';
-                        priceKinguin = 'N';
-                  }
-            } else { // Jogo tem 0 jogadores nas últimos 24h ou não achou os dados de popularidade
-                  priceGamivo = 'N';
-                  priceG2A = 'N';
-                  priceKinguin = 'N';
+            //Converte para o formato brasileiro com .
+            // CHECAR SE É Number
+            if (!isNumber(popularity)) {
+                  if (popularity.includes(',')) { popularity = popularity.replace(',', '.'); }
+                  let popularityNumber = parseFloat(popularity);
+                  let decimalPlaces = (popularity.split('.')[1] || '').length;
+                  popularity = popularityNumber.toFixed(decimalPlaces);
             }
-            // Escreve a linha daquele jogo(g2a gamivo kinguin 3 tabs popularidade nessa ordem)
-            if (isBestBuy86 == 'true') {
-                  fullLine = `${priceG2A}\t${priceGamivo}\t${priceKinguin}\t\t\t\t${popularity}\n`; // Escreve a linha para o txt
-                  // fullLine = `G2A\t${priceGamivo}\tKinguin\t\t\t\t${popularity}\n`; // Debug só Gamivo
-                  // fullLine = `${priceG2A}\tGamivo\tKinguin\t\t\t\t${popularity}\n`; // Debug só G2A
-                  // fullLine = `G2A\tGamivo\t${priceKinguin}\t\t\t\t${popularity}\n`; // Debug só Kinguin
-                  // fullLine = `${priceG2A}\t${priceGamivo}\tF\t\t\t\t${popularity}\n`; // Debug SEM Kinguin
+
+            if (popularity <= 0 || !search) continue;
+
+            priceGamivo = await searchGamivo(game, minPopularity, popularity);
+            if (priceGamivo !== 'F' && priceGamivo !== 'N') {
+                  fullLine = `G2A\t${priceGamivo}\tKinguin\t\t\t\t${popularity}\t${game}\n`;
+                  responseFile += fullLine;
             }
 
             console.log(fullLine);
-
-            // Termina o for de cada jogo, deve finalizar de montar o arquivo txt que será enviado
-            if (isBestBuy86 == 'true') responseFile += fullLine;
-
-            // setTimeout(() => {
-            //       console.log('This message is displayed after 10 seconds');
-            //     }, 10000);
       }
 
       console.log("responseFile:\n" + responseFile);

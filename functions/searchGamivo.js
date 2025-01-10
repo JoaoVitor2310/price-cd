@@ -1,6 +1,4 @@
 import puppeteer from 'puppeteer-extra';
-import { DEFAULT_INTERCEPT_RESOLUTION_PRIORITY } from 'puppeteer';
-import AdblockerPlugin from 'puppeteer-extra-plugin-adblocker';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 
 import axios from 'axios';
@@ -23,7 +21,7 @@ puppeteer.use(
 );
 
 const searchGamivo = async (gameString, minPopularity, popularity) => {
-    let precoGamivo, lineToWrite, productString, browser;
+    let lineToWrite, productString, browser;
     try {
         browser = await puppeteer.launch({
             headless: true,
@@ -94,13 +92,13 @@ const searchGamivo = async (gameString, minPopularity, popularity) => {
         if (productString) {
             try {
                 const response = await axios.get(`${apiGamivoUrl}/api/products/priceResearcher/${productString}`);
-
+                // console.log(response.data);
                 const precoGamivo = response.data.menorPreco ;
 
                 lineToWrite = worthyByPopularity(precoGamivo, minPopularity, popularity);
 
             } catch (error) {
-                console.log(error);
+                // console.log(error);
                 console.log('API Gamivo desligada ou arquivo env faltando');
                 return "F";
             }

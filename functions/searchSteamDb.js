@@ -101,7 +101,7 @@ const searchSteamDb = async (gameString) => {
 
         return popularity;
     } catch (error) {
-        // console.log(error);
+        console.log(error);
         return "F";
     } finally {
         const pages = await browser.pages();
