@@ -1,48 +1,51 @@
 import { Response } from "express";
 import { MulterRequest } from "../interfaces/MulterRequest";
 import fs from 'fs';
-import searchSteamDb from "../functions/searchSteamDb";
+import searchSteamDb from "../service/searchSteamDb";
+import searchGamivo from "../service/searchGamivo";
 
 export const uploadFile = async (req: MulterRequest, res: Response) => {
     if (!req.file) {
         return res.status(400).send('Nenhum arquivo enviado.');
     }
-    
+
     // return res.status(400).json(req.file);
-    
+
     const horaAtual = new Date();
     const options = { timeZone: 'America/Sao_Paulo', hour12: false };
     const hora1 = horaAtual.toLocaleTimeString('pt-BR', options);
-    
+
     // const hora1 = new Date().toLocaleTimeString();
-    
+
     let gamesToSearch = [], responseFile = '', priceGamivo, priceG2A, priceKinguin;
     const filePath = req.file.path;
     const fileContent = fs.readFileSync(filePath, 'utf8');
-    
+
     const lines = fileContent.split('\n');
-    
+
     const minPopularity = Number(lines[0]); // Primeira posição será a popularidade mínima
-    lines.shift(); // Iremos retirar a popularidade do array
-    
+    lines.shift(); // Retira a popularidade do array
+
     // Iterar sobre as linhas e armazenar o conteúdo no array gamesToSearch
     for (const line of lines) {
         // Remover espaços em branco no início e no final de cada linha
         const trimmedLine: string = line.trim();
-        
+
         // Verificar se a linha não está vazia
         if (trimmedLine !== '') {
-            //@ts-ignore
+            // @ts-ignore
             gamesToSearch.push(trimmedLine);
         }
     }
-    
+
     // O for vai passar em todos os gamesToSearch
     for (let game of gamesToSearch) {
         let search = true, fullLine, popularity;
         console.log("Game: " + game);
+        const gamivo = await searchGamivo(minPopularity, 100, gamesToSearch);
+        console.log(gamivo);
+        return res.status(200).json(gamivo);
         popularity = await searchSteamDb(game);
-        return res.status(200).json(popularity);
         // return res.status(200).json(popularity);
 
         minPopularity !== 0 ? popularity = await searchSteamDb(game) : popularity = 999;

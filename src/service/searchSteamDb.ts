@@ -2,14 +2,14 @@ import dotenv from 'dotenv'; // Usar require para dotenv
 dotenv.config(); // Carregar variáveis de ambiente
 
 // Importações locais usando import
-import clearString from './helpers/clearString.js'; // Assumindo que estes são módulos JS no mesmo diretório
-import clearRomamNumber from './helpers/clearRomamNumber.js';
-import clearDLC from './helpers/clearDLC.js';
-import clearEdition from './helpers/clearEdition.js';
+import clearString from '../helpers/clearString.js'; // Assumindo que estes são módulos JS no mesmo diretório
+import clearRomamNumber from '../helpers/clearRomamNumber.js';
+import clearDLC from '../helpers/clearDLC.js';
+import clearEdition from '../helpers/clearEdition.js';
 import axios, { AxiosResponse } from 'axios';
 import * as cheerio from 'cheerio';
 
-const searchSteamDb = async (gameString): Promise<number> => {
+const searchSteamDb = async (gameString: string): Promise<number> => {
     let gameStringClean: string = clearRomamNumber(gameString);
     gameStringClean = clearDLC(gameStringClean);
     gameStringClean = clearEdition(gameStringClean);
