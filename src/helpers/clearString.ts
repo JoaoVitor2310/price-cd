@@ -1,10 +1,10 @@
-const clearString = (stringToSearch) => {
+export const clearString = (stringToSearch): string => {
 
     const romanRegex = /\b(?!dlc\b)[IVXLCDM]+\b/gi;
 
     // Substituir números romanos pelo equivalente decimal
     stringToSearch = stringToSearch.replace(romanRegex, (match) => {
-        const decimalValue = RomantoInt(match);
+        const decimalValue = RomantoInt(match.toUpperCase()); 
         return decimalValue.toString(); // Converter para string para colocar de volta
     });
 
@@ -33,7 +33,7 @@ const clearString = (stringToSearch) => {
     return stringToSearch;
 }
 
-function RomantoInt(romanStr) {
+export function RomantoInt(romanStr): number {
 
     let num = 0;
     let objRoman = { M: 1000, D: 500, C: 100, L: 50, X: 10, V: 5, I: 1 };
@@ -57,8 +57,3 @@ function RomantoInt(romanStr) {
 // const testString = "Sid Meier's Civilization IV: Beyond the Sword";
 // const result = clearString(testString);
 // console.log(result); // Deve retornar: "street fighter 6"
-
-
-
-
-export default clearString;

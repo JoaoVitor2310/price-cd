@@ -11,7 +11,7 @@ const apiGamivoUrl = process.env.apiGamivoUrl;
 const timeOut = process.env.timeOut;
 
 // Importações locais usando import
-import clearString from '../helpers/clearString.js';
+import { clearString } from '../helpers/clearString.js';
 import clearDLC from '../helpers/clearDLC.js';
 import clearEdition from '../helpers/clearEdition.js';
 import { worthyByPopularity } from '../helpers/worthyByPopularity.js';
@@ -21,9 +21,9 @@ puppeteer.use(
     StealthPlugin()
 );
 
-const searchGamivo = async (minPopularity: number, popularity: number, gamesToSearch: string[]): Promise<foundGames[]> => {
+const searchGamivo = async (gamesToSearch: foundGames[]): Promise<foundGames[]> => {
     let lineToWrite: number, productSlug: string = '', browser;
-    const foundGames: { id: number; lineToWrite: number }[] = [];
+    const foundGames: foundGames[] = [];
 
     let response: AxiosResponse;
     browser = await puppeteer.launch({
@@ -40,10 +40,11 @@ const searchGamivo = async (minPopularity: number, popularity: number, gamesToSe
 
 
     for (const [index, game] of gamesToSearch.entries()) {
-        console.log(`Índice: ${index}, Jogo:`, game);
+        console.log(`Índice: ${index}, Jogo:`, game.name);
 
-        let gameString: string = clearEdition(game);
-        let searchString = game.replace(/ /g, "%20").replace(/\//g, "%2F").replace(/\?/g, "%3F").replace(/™/g, '').replace(/'/g, "%27"); // Substitui: " " -> "%20", "/" -> "%2F" e "?" -> "%3F" e "™" -> ""
+        let gameString: string = clearEdition(game.name);
+        // let searchString = game.name.replace(/ /g, "%20").replace(/\//g, "%2F").replace(/\?/g, "%3F").replace(/™/g, '').replace(/'/g, "%27"); // Substitui: " " -> "%20", "/" -> "%2F" e "?" -> "%3F" e "™" -> ""
+        let searchString = encodeURIComponent(game.name).replace(/%E2%84%A2/g, ''); // Remove "™"
 
         try {
             await page.goto(`https://www.gamivo.com/pt/search/${searchString}`);
@@ -100,7 +101,7 @@ const searchGamivo = async (minPopularity: number, popularity: number, gamesToSe
                 const worthy = worthyByPopularity(precoGamivo, minPopularity, popularity);
                 if (worthy) {
                     lineToWrite = precoGamivo;
-                    foundGames.push({ id: index, lineToWrite });
+                    foundGames.push({ id: index, name: game, lineToWrite });
                 }
             } catch (error) {
                 console.log(error);
@@ -113,17 +114,20 @@ const searchGamivo = async (minPopularity: number, popularity: number, gamesToSe
             console.log('Não achou')
         }
     }
-    
+
     const pages = await browser.pages();
     if (pages) await Promise.all(pages.map((page) => page.close()));
+    
     const childProcess = browser.process()
     if (childProcess) {
         childProcess.kill()
     }
+    
     await browser.close();
+    
     if (browser && browser.process() != null) browser.process().kill('SIGINT');
+
     return foundGames;
-    // }
 };
 
 export default searchGamivo;

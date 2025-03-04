@@ -13,53 +13,59 @@ const apiG2aUrl = process.env.apiG2aUrl;
 const timeOut = process.env.timeOut;
 
 // Converter importações locais para require
-import clearString from './helpers/clearString.js';
-import clearDLC from './helpers/clearDLC.js';
-import worthyByPopularity from './helpers/worthyByPopularity.js';
-import clearEdition from './helpers/clearEdition.js';
+import { clearString } from '../helpers/clearString.js';
+import clearDLC from '../helpers/clearDLC.js';
+import { worthyByPopularity } from '../helpers/worthyByPopularity.js';
+import clearEdition from '../helpers/clearEdition.js';
 
 puppeteer.use(
     StealthPlugin()
 );
 
 
-const searchG2A = async (gameString, minPopularity, popularity, gameType = "Steam Key", region = "GLOBAL") => {
-    let precoG2A, lineToWrite, browser;
+export const searchG2A = async (minPopularity, popularity, gamesToSearch: string[], gameType = "Steam Key", region = "GLOBAL") => {
+    let precoG2A, lineToWrite, browser, gameString: string = '';
 
     try {
 
         browser = await puppeteer.launch({
-            userDataDir: null, // Define o diretório de dados do usuário como null para abrir uma janela anônima
-            headless: true,
+            // userDataDir: null, // Define o diretório de dados do usuário como null para abrir uma janela anônima
+            headless: false,
             args: ['--no-sandbox', '--disable-setuid-sandbox']
         });
         const page = await browser.newPage();
 
         await page.setViewport({
-            width: 426 ,
-            height: 240
+            width: 1920,
+            height: 1080
         });
 
 
-        let gameUrl;
-        gameString = clearEdition(gameString);
+        let gameUrl: string = '';
 
-        let searchString = gameString.replace(/ /g, "%20").replace(/\//g, "%2F").replace(/\?/g, "%3F").replace(/™/g, '').replace(/'/g, "%27"); // Substitui: " " -> "%20", "/" -> "%2F" e "?" -> "%3F" e "™" -> ""
+        for (const [index, game] of gamesToSearch.entries()) {
+            console.log(`Índice: ${index}, Jogo:`, game);
 
-        // console.log("searchString: " + searchString);
-        await page.goto(`https://www.g2a.com/pt/search?query=${searchString}`);
+            gameString = clearEdition(game);
+
+            let searchString = gameString.replace(/ /g, "%20").replace(/\//g, "%2F").replace(/\?/g, "%3F").replace(/™/g, '').replace(/'/g, "%27"); // Substitui: " " -> "%20", "/" -> "%2F" e "?" -> "%3F" e "™" -> ""
+
+            // console.log("searchString: " + searchString);
+            await page.goto(`https://www.g2a.com/pt/search?query=${searchString}`);
+            await new Promise(resolve => setTimeout(resolve, 5000));
+        }
 
         // Obtém todos os resultados da pesquisa do nome do jogo
         const resultados = await page.$$('a');
-        
+
         gameString = clearString(gameString);
-        
+
         // console.log(gameString); //
-        
+
         for (const link of resultados) {
             let gameName = await page.evaluate(element => element.textContent, link);
-            
-            gameName = clearString(gameName); 
+
+            gameName = clearString(gameName);
             // console.log(gameName); // 
 
             // const gameStringPattern = new RegExp(`^${gameString} \\(PC\\)`, 'i');

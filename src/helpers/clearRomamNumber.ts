@@ -1,4 +1,4 @@
-const clearRomamNumber = (stringToSearch) => {
+export const clearRomamNumber = (stringToSearch): string => {
     const romanNumeralsRegex = /\b[IVXLCDM]+\b/g;
 
     // Substituir os números romanos por uma string vazia (removê-los)
@@ -9,5 +9,3 @@ const clearRomamNumber = (stringToSearch) => {
 
     return normalizedString;
 }
-
-export default clearRomamNumber;

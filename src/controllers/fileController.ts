@@ -1,8 +1,10 @@
 import { Response } from "express";
 import { MulterRequest } from "../interfaces/MulterRequest";
 import fs from 'fs';
-import searchSteamDb from "../service/searchSteamDb";
 import searchGamivo from "../service/searchGamivo";
+import searchG2A from "../service/searchG2A";
+import { searchSteamDb } from "../service/searchSteamDb";
+import { worthyByPopularity } from "../helpers/worthyByPopularity";
 
 export const uploadFile = async (req: MulterRequest, res: Response) => {
     if (!req.file) {
@@ -38,14 +40,74 @@ export const uploadFile = async (req: MulterRequest, res: Response) => {
         }
     }
 
+    // let foundGames = await searchSteamDb(gamesToSearch);
+    let foundGames = [
+        {
+            "id": 0,
+            "name": "Terraformers",
+            "popularity": 141
+        },
+        {
+            "id": 2,
+            "name": "The Elder Scrolls V: Skyrim Special Edition",
+            "popularity": 29965
+        },
+        {
+            "id": 3,
+            "name": "patrician iii",
+            "popularity": 66
+        },
+        {
+            "id": 4,
+            "name": "Sid Meier's Civilization IV: Beyond the Sword",
+            "popularity": 2000
+        },
+        {
+            "id": 5,
+            "name": "the walking dead",
+            "popularity": 219
+        },
+        {
+            "id": 6,
+            "name": "nuclear throne",
+            "popularity": 137
+        },
+        {
+            "id": 7,
+            "name": "the long dark",
+            "popularity": 3146
+        },
+        {
+            "id": 8,
+            "name": "Symphony of War: The Nephilim Saga",
+            "popularity": 701
+        },
+        {
+            "id": 9,
+            "name": "Coromon",
+            "popularity": 322
+        },
+        {
+            "id": 10,
+            "name": "The Excavation of Hob's Barrow",
+            "popularity": 18
+        }
+    ];
+
+    foundGames = worthyByPopularity(foundGames, minPopularity);
+    const gamivo = await searchGamivo(foundGames);
+    return res.status(200).json(foundGames);
+
+
     // O for vai passar em todos os gamesToSearch
     for (let game of gamesToSearch) {
         let search = true, fullLine, popularity;
         console.log("Game: " + game);
-        const gamivo = await searchGamivo(minPopularity, 100, gamesToSearch);
+        const G2A = await searchG2A(minPopularity, 100, gamesToSearch);
+        // return res.status(200).json(G2A);
+
+
         console.log(gamivo);
-        return res.status(200).json(gamivo);
-        popularity = await searchSteamDb(game);
         // return res.status(200).json(popularity);
 
         minPopularity !== 0 ? popularity = await searchSteamDb(game) : popularity = 999;

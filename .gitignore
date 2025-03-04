@@ -3,3 +3,4 @@ package-lock.json
 ~$*.xlsx
 *.csv
 *.env
+*.xlsx
