@@ -8,7 +8,7 @@
     "dev": "tsx src/server.ts",
     "prod": "xvfb-run node index.js",
     "build": "tsc",
-    "start": "npm run build && node dist/src/server.js"
+    "start": "npm run build && node dist/server.js"
   },
   "keywords": [],
   "author": "",
@@ -36,7 +36,6 @@
     ]
   },
   "devDependencies": {
-    "@playwright/test": "^1.44.1",
     "@types/axios": "^0.14.4",
     "@types/cheerio": "^0.22.35",
     "@types/express": "^5.0.0",

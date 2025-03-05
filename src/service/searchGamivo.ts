@@ -21,7 +21,7 @@ puppeteer.use(
     StealthPlugin()
 );
 
-const searchGamivo = async (gamesToSearch: foundGames[]): Promise<foundGames[]> => {
+export const searchGamivo = async (gamesToSearch: foundGames[]): Promise<foundGames[]> => {
     let productSlug: string = '', browser;
     const foundGames: foundGames[] = [];
 
@@ -142,5 +142,3 @@ const searchGamivo = async (gamesToSearch: foundGames[]): Promise<foundGames[]> 
 
     return foundGames;
 };
-
-export default searchGamivo;
