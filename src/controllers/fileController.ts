@@ -1,11 +1,10 @@
 import { Response } from "express";
 import { MulterRequest } from "../interfaces/MulterRequest";
 import fs from 'fs';
-import searchGamivo from "../service/searchGamivo";
-import searchG2A from "../service/searchG2A";
-import { searchSteamDb } from "../service/searchSteamDb";
-import { worthyByPopularity } from "../helpers/worthyByPopularity";
-import { foundGames } from "../interfaces/foundGames";
+import searchGamivo from "../service/searchGamivo.js";
+// import searchG2A from "../service/searchG2A";
+import { searchSteamDb } from "../service/searchSteamDb.js";
+import { worthyByPopularity } from "../helpers/worthyByPopularity.js";
 
 export const uploadFile = async (req: MulterRequest, res: Response) => {
     if (!req.file) {

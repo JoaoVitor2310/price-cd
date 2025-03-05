@@ -2,12 +2,13 @@
   "name": "price-researcher",
   "version": "1.0.0",
   "description": "",
-  "main": "index.ts",
+  "main": "src/server.ts",
   "type": "module",
   "scripts": {
     "dev": "tsx src/server.ts",
-    "start": "node index.js",
-    "prod": "xvfb-run node index.js"
+    "prod": "xvfb-run node index.js",
+    "build": "tsc",
+    "start": "npm run build && node dist/src/server.js"
   },
   "keywords": [],
   "author": "",

@@ -14,7 +14,7 @@ const timeOut = process.env.timeOut;
 
 // Converter importações locais para require
 import { clearString } from '../helpers/clearString.js';
-import clearDLC from '../helpers/clearDLC.js';
+import { clearDLC } from '../helpers/clearDLC.js';
 import { worthyByPopularity } from '../helpers/worthyByPopularity.js';
 import { clearEdition } from '../helpers/clearEdition.js';
 
@@ -23,7 +23,7 @@ puppeteer.use(
 );
 
 
-export const searchG2A = async (minPopularity, popularity, gamesToSearch: string[], gameType = "Steam Key", region = "GLOBAL") => {
+export const searchG2A = async (gamesToSearch: string[], gameType = "Steam Key", region = "GLOBAL") => {
     let precoG2A, lineToWrite, browser, gameString: string = '';
 
     try {
@@ -93,7 +93,7 @@ export const searchG2A = async (minPopularity, popularity, gamesToSearch: string
 
             precoG2A = response.data.menorPreco;
 
-            // lineToWrite = worthyByPopularity(precoG2A, minPopularity, popularity);
+            lineToWrite = '1.0';
             return lineToWrite.replace('.', ',');
         } catch (error) {
             // console.log(error);
@@ -105,14 +105,14 @@ export const searchG2A = async (minPopularity, popularity, gamesToSearch: string
         // console.log('Ou o timeout tá mt rápido e não dá tempo de carregar a página');
         return 'F';
     } finally {
-        const pages = await browser.pages();
-        if (pages) await Promise.all(pages.map((page) => page.close()));
-        const childProcess = browser.process()
-        if (childProcess) {
-            childProcess.kill()
-        }
-        await browser.close();
-        if (browser && browser.process() != null) browser.process().kill('SIGINT');
+        // const pages = await browser.pages();
+        // if (pages) await Promise.all(pages.map((page) => page.close()));
+        // const childProcess = browser.process()
+        // if (childProcess) {
+        //     childProcess.kill()
+        // }
+        // await browser.close();
+        // if (browser && browser.process() != null) browser.process().kill('SIGINT');
     }
 };
 

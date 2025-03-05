@@ -4,3 +4,4 @@ package-lock.json
 *.csv
 *.env
 *.xlsx
+/dist

@@ -8,11 +8,11 @@ dotenv.config(); // Carregar variáveis de ambiente
 
 // Capturar variáveis de ambiente após o dotenv.config
 const apiGamivoUrl = process.env.apiGamivoUrl;
-const timeOut = process.env.timeOut;
+const timeOut = Number(process.env.timeOut) || undefined;
 
 // Importações locais usando import
 import { clearString } from '../helpers/clearString.js';
-import clearDLC from '../helpers/clearDLC.js';
+import { clearDLC } from '../helpers/clearDLC.js';
 import { clearEdition } from '../helpers/clearEdition.js';
 import { foundGames } from '../interfaces/foundGames.js';
 import { hasEdition } from '../helpers/hasEdition.js';
@@ -61,7 +61,7 @@ const searchGamivo = async (gamesToSearch: foundGames[]): Promise<foundGames[]> 
             // Itera sobre cada resultado
             for (const resultado of resultados) {
                 // Obtém o texto do elemento "span" com a classe "ng-star-inserted" dentro do resultado
-                let gameName = await resultado.$eval('span.ng-star-inserted', element => element.textContent);
+                let gameName = await resultado.$eval('span.ng-star-inserted', element => element.textContent || '');
 
                 let gameNameClean = clearEdition(gameName);
                 gameNameClean = clearString(gameNameClean);
@@ -95,6 +95,8 @@ const searchGamivo = async (gamesToSearch: foundGames[]): Promise<foundGames[]> 
 
 
                         const elementoLink = await resultado.$('a');
+                        if(!elementoLink) continue;
+                        
                         const href = await (await elementoLink.getProperty('href')).jsonValue();
 
                         const startIndex = href.indexOf('/product/') + '/product/'.length;
@@ -136,7 +138,7 @@ const searchGamivo = async (gamesToSearch: foundGames[]): Promise<foundGames[]> 
 
     await browser.close();
 
-    if (browser && browser.process() != null) browser.process().kill('SIGINT');
+    // if (browser && browser.process() != null) browser.process().kill('SIGINT');
 
     return foundGames;
 };

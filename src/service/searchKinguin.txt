@@ -143,136 +143,19 @@ const searchKinguin = async (gameString, minPopularity, popularity) => {
         return lineToWrite.replace('.', ',');;
 
 
-        // A PARTIR DAQUI É O CÓDIGO DE COMO ERA FEITO FAZENDO 100% PELO SCRAPPING NO SITE DA KINGUIN
-
-        // if (!elementoClicado) {
-        //     return "F";
-        //     // throw new Error('Jogo não encontrado.');
-        // }
-
-        // await rejectCookies(page); // Rejeita os cookies
-
-        // await page.waitForSelector('div.sc-h0oox2-4', { timeout: timeOut }); // Aguarda o seletor da div do menu de moedas
-        // await page.waitForSelector('button.sc-o4ugwn-5', { timeout: timeOut }); // Aguarda o seletor da div do menu de moedas
-
-        // await page.evaluate(() => { // Função para abrir o menu de seleção de moeda
-        //     const div = document.querySelector('div.sc-h0oox2-4');
-        //     if (div) {
-        //         div.click();
-
-        //         // Adicionando ação para clicar no primeiro botão
-        //         const button = document.querySelector('button.sc-o4ugwn-5');
-        //         if (button) {
-        //             button.click();
-        //         } else {
-        //             console.log('Botão não encontrado.');
-        //         }
-        //     } else {
-        //         console.log('Elemento div não encontrado.');
-        //     }
-        // });
-
-        // await page.waitForSelector('em.sc-o4ugwn-12', { timeout: timeOut });
-        // await page.$eval('em.sc-o4ugwn-12', emElement => emElement.click()); // Clica em EUR
-
-        // await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: timeOut });
-
-        // let values;
-
-        // await page.waitForSelector('div.offer-item-wrapper span[content]', { timeout: timeOut }).catch(() => { });
-        // const elementoPresente = await page.$('div.offer-item-wrapper span[content]');
-        // if (elementoPresente) {
-        //     // Se o elemento estiver presente, espera até que o seletor esteja presente com o timeout especificado
-        //     await page.waitForSelector('div.offer-item-wrapper span[content]', { timeout: timeOut });
-        //     values = await page.$$eval('div.offer-item-wrapper span[content]', spans => spans.map(span => span.getAttribute('content')));
-        //     console.log('ia fazer o splice: ' + values);
-        //     values = values.replace('€', '');
-        //     // values.splice(0, 2);
-        // } else { // Só tem um vendedor, o preço vai aparecer só lá em cima na página
-        //     console.log('Só tem um vendedor na kinguin');
-        //     console.log('NÃO ia fazer o splice')
-        //     await page.waitForSelector('span.sc-1kj1cv9-5.iDdryn.main-offer__price', { timeout: timeOut });
-
-        //     const textoSegundoSpan = await page.evaluate(() => {
-        //         const secondSpan = document.querySelector('span.sc-1kj1cv9-5.iDdryn.main-offer__price > span:nth-child(2)');
-        //         if (secondSpan) {
-        //             return secondSpan.textContent.trim();
-        //         } else {
-        //             return null;
-        //         }
-        //     });
-
-        // const textoSegundoSpan = await Promise.race([
-        //     page.evaluate(() => {
-        //         const secondSpan = document.querySelector('span.sc-1kj1cv9-5.iDdryn.main-offer__price > span:nth-child(2)');
-        //         if (secondSpan) {
-        //             return secondSpan.textContent.trim();
-        //         } else {
-        //             return null;
-        //         }
-        //     }),
-        //     new Promise((resolve) => setTimeout(resolve, 3000))
-        // ]);
-
-
-
-
-        //     values = textoSegundoSpan.replace('€', ''); // Remove o símbolo de euro
-        //     values = values - 0.01;
-        //     console.log('values: ' + values)
-        // }
-
-        // return 'A'; // Debug
-
-
-        // let prices, lineToWrite;
-        // if (Array.isArray(values)) { // Mais de um vendedor
-        //     prices = values.filter(value => value !== "EUR");
-        //     const menorPreco = prices[0];
-        //     const segundoMenorPreco = prices[1];
-        //     let finalPrice = 0;
-
-        //     if (segundoMenorPreco > 1.0) { // Lógica para os samfiteiros
-        //         const diferenca = segundoMenorPreco - menorPreco;
-        //         const dezPorCentoSegundoMenorPreco = 0.1 * segundoMenorPreco;
-
-        //         if (diferenca >= dezPorCentoSegundoMenorPreco) {
-        //             console.log('SAMFITEIRO!');
-        //             console.log('1');
-        //             finalPrice = segundoMenorPreco - 0.01;
-        //         } else {
-        //             console.log('2');
-        //             console.log(menorPreco);
-        //             finalPrice = menorPreco - 0.01;
-        //         }
-
-        //         lineToWrite = worthyByPopularity(finalPrice, minPopularity, popularity);
-
-        //         return lineToWrite.replace('.', ',');
-        //     } else {
-        //         console.log('3');
-        //         finalPrice = menorPreco - 0.01;
-        //         lineToWrite = worthyByPopularity(finalPrice, minPopularity, popularity);
-        //         return lineToWrite.replace('.', ',');
-        //     }
-        // } else { // Um vendedor
-        //     lineToWrite = worthyByPopularity(values, minPopularity, popularity);
-        //     return lineToWrite.replace('.', ',');
-        // }
-
     } catch (error) {
         // Jogo não encontrado ou o timeout tá mt rápido e não dá tempo de carregar a página;
         // console.log(error);
         return 'F';
     } finally {
-        const pages = await browser.pages();
-        if (pages) await Promise.all(pages.map((page) => page.close()));
-        const childProcess = browser.process()
-        if (childProcess) {
-            childProcess.kill()
-        }
-        await browser.close();
-        if (browser && browser.process() != null) browser.process().kill('SIGINT');
+        // const pages = await browser.pages();
+        // if (pages) await Promise.all(pages.map((page) => page.close()));
+        // const childProcess = browser.process()
+        // if (childProcess) {
+        //     childProcess.kill()
+        // }
+        // await browser.close();
+        // if (browser && browser.process() != null) browser.process().kill('SIGINT');
     }
 
 }

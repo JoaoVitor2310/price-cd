@@ -2,7 +2,7 @@ import dotenv from 'dotenv'; // Usar require para dotenv
 dotenv.config(); // Carregar variáveis de ambiente
 
 // Importações locais usando import
-import clearDLC from '../helpers/clearDLC.js';
+import { clearDLC } from '../helpers/clearDLC.js';
 import { clearEdition } from '../helpers/clearEdition.js';
 import axios, { AxiosResponse } from 'axios';
 import * as cheerio from 'cheerio';

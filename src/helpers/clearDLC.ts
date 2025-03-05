@@ -1,4 +1,4 @@
-const clearDLC = (stringToSearch) => {
+export const clearDLC = (stringToSearch: string): string => {
     const dlcRegex = /\bdlc\b/gi; // Expressão regular para detectar "dlc" como palavra separada
     const expansionRegex = /\bexpansion\b/gi; // Expressão regular para detectar "Expansion" como palavra separada
     const season = /\bseason\b/gi; // Expressão regular para detectar "Expansion" como palavra separada
@@ -16,5 +16,3 @@ const clearDLC = (stringToSearch) => {
 
     return normalizedString;
 };
-
-export default clearDLC;

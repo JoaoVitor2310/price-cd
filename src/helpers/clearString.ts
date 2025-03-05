@@ -1,4 +1,4 @@
-export const clearString = (stringToSearch): string => {
+export const clearString = (stringToSearch: string): string => {
 
     const romanRegex = /\b(?!dlc\b)[IVXLCDM]+\b/gi;
 
@@ -33,24 +33,24 @@ export const clearString = (stringToSearch): string => {
     return stringToSearch;
 }
 
-export function RomantoInt(romanStr): number {
-
+export function RomantoInt(romanStr: string): number {
     let num = 0;
-    let objRoman = { M: 1000, D: 500, C: 100, L: 50, X: 10, V: 5, I: 1 };
+    const objRoman: Record<string, number> = { M: 1000, D: 500, C: 100, L: 50, X: 10, V: 5, I: 1 };
 
     for (let i = 0; i < romanStr.length; i++) {
+        const current = objRoman[romanStr[i]] || 0; // Garante que não seja undefined
+        const next = objRoman[romanStr[i + 1]] || 0;
 
-        if (objRoman[romanStr[i]] < objRoman[romanStr[i + 1]]) {
-            num -= objRoman[romanStr[i]];
-        }
-        else {
-            num += objRoman[romanStr[i]];
+        if (current < next) {
+            num -= current;
+        } else {
+            num += current;
         }
     }
 
     return num;
-
 }
+
 
 
 // Testar a função
