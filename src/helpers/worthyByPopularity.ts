@@ -1,12 +1,6 @@
 import { foundGames } from "../interfaces/foundGames";
 
 export const worthyByPopularity = (foundGames: foundGames[], minPopularity: number): foundGames[] => {
-    
+    if(minPopularity === 0) return foundGames;
     return foundGames.filter(game => game.popularity >= minPopularity);
-    // for (const [index, game] of foundGames.entries()) {
-    //     if (game.popularity < minPopularity) {
-            
-    //     }
-    // }
-    // return foundGames;
 }

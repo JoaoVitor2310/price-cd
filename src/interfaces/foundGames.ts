@@ -2,7 +2,7 @@ export type foundGames = {
     id: number;
     name: string;
     popularity: number;
-    GamivoPrice?: number
-    G2APrice?: number
-    KinguinPrice?: number
+    GamivoPrice?: number | string;
+    G2APrice?: number | string;
+    KinguinPrice?: number | string;
 }

@@ -1,4 +1,4 @@
-const clearEdition = (stringToSearch) => {
+export const clearEdition = (stringToSearch: string): string => {
     const edition = /\bedition\b/gi; // Detectar "edition" como palavra separada
     const definitiveEditionRegex = /\bdefinitive\b/gi;
     const standardEditionRegex = /\bstandard\b/gi;
@@ -9,6 +9,7 @@ const clearEdition = (stringToSearch) => {
     const premium = /\bpremium\b/gi;
     const bundle = /\bbundle\b/gi;
     const special = /\bspecial\b/gi;
+    const complete = /\bcomplete\b/gi;
     
     const rowRegex = /\brow\b/gi; // Detectar "ROW" como palavra separada
     const euRegex = /\beu\b/gi; // Detectar "EU" como palavra separada
@@ -25,6 +26,7 @@ const clearEdition = (stringToSearch) => {
         .replace(premium, '')
         .replace(bundle, '')
         .replace(special, '')
+        .replace(complete, '')
         .replace(rowRegex, '') // Remove "ROW"
         .replace(euRegex, ''); // Remove "EU"
 
@@ -33,5 +35,3 @@ const clearEdition = (stringToSearch) => {
 
     return normalizedString;
 };
-
-export default clearEdition;

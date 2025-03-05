@@ -13,16 +13,16 @@ const timeOut = process.env.timeOut;
 // Importações locais usando import
 import { clearString } from '../helpers/clearString.js';
 import clearDLC from '../helpers/clearDLC.js';
-import clearEdition from '../helpers/clearEdition.js';
-import { worthyByPopularity } from '../helpers/worthyByPopularity.js';
+import { clearEdition } from '../helpers/clearEdition.js';
 import { foundGames } from '../interfaces/foundGames.js';
+import { hasEdition } from '../helpers/hasEdition.js';
 
 puppeteer.use(
     StealthPlugin()
 );
 
 const searchGamivo = async (gamesToSearch: foundGames[]): Promise<foundGames[]> => {
-    let lineToWrite: number, productSlug: string = '', browser;
+    let productSlug: string = '', browser;
     const foundGames: foundGames[] = [];
 
     let response: AxiosResponse;
@@ -34,16 +34,15 @@ const searchGamivo = async (gamesToSearch: foundGames[]): Promise<foundGames[]> 
     const page = await browser.newPage();
 
     await page.setViewport({
-        width: 1920,
-        height: 1080
+        width: 426,
+        height: 240
     });
+
 
 
     for (const [index, game] of gamesToSearch.entries()) {
         console.log(`Índice: ${index}, Jogo:`, game.name);
 
-        let gameString: string = clearEdition(game.name);
-        // let searchString = game.name.replace(/ /g, "%20").replace(/\//g, "%2F").replace(/\?/g, "%3F").replace(/™/g, '').replace(/'/g, "%27"); // Substitui: " " -> "%20", "/" -> "%2F" e "?" -> "%3F" e "™" -> ""
         let searchString = encodeURIComponent(game.name).replace(/%E2%84%A2/g, ''); // Remove "™"
 
         try {
@@ -52,31 +51,48 @@ const searchGamivo = async (gamesToSearch: foundGames[]): Promise<foundGames[]> 
 
             const resultados = await page.$$('.product-tile__name');
 
-            gameString = clearString(gameString);
-            gameString = clearDLC(gameString);
-            console.log('gameString: ' + gameString);
+            let gameString = game.name;
+            let gameStringClean: string = clearEdition(gameString);
+            gameStringClean = clearString(gameStringClean);
+            gameStringClean = clearDLC(gameStringClean);
+            gameStringClean = gameStringClean.toLowerCase().trim();
+            // console.log('gameStringClean: ' + gameStringClean);
 
             // Itera sobre cada resultado
             for (const resultado of resultados) {
                 // Obtém o texto do elemento "span" com a classe "ng-star-inserted" dentro do resultado
                 let gameName = await resultado.$eval('span.ng-star-inserted', element => element.textContent);
 
-                gameName = clearString(gameName);
-                gameName = clearDLC(gameName);
+                let gameNameClean = clearEdition(gameName);
+                gameNameClean = clearString(gameNameClean);
+                gameNameClean = clearDLC(gameNameClean);
+                gameNameClean = gameNameClean.toLowerCase().trim();
 
                 // Verifica se o texto do jogo contém a palavra "Steam"
-                if (gameName.includes(gameString)) {
-                    const regex = new RegExp(`^${gameString}\\s*(?!2\\s)([a-z]{2}(?:/[a-z]{2})*)?\\sGlobal(?:\\ssteam)?$`, 'i');
+                if (gameNameClean.includes(gameStringClean)) {
+                    const regex = new RegExp(`^${gameStringClean}\\s*(?!2\\s)([a-z]{2}(?:/[a-z]{2})*)?\\sGlobal(?:\\ssteam)?$`, 'i');
 
-                    // const regex2 = new RegExp(`${gameString}\\sGlobal Steam$`, 'i');
-                    const regex2 = new RegExp(`^${gameString}\\s*Global Steam$`, 'i');
+                    // const regex2 = new RegExp(`${gameStringClean}\\sGlobal Steam$`, 'i');
+                    const regex2 = new RegExp(`^${gameStringClean}\\s*Global Steam$`, 'i');
 
-                    const regex3 = new RegExp(`^${gameString}\\sROW\\sSteam$`, 'i');
+                    const regex3 = new RegExp(`^${gameStringClean}\\sROW\\sSteam$`, 'i');
 
-                    if (regex.test(gameName) || regex2.test(gameName) || regex3.test(gameName)) {
-                        // if (regex.test(gameName)) {
+                    if (regex.test(gameNameClean) || regex2.test(gameNameClean) || regex3.test(gameNameClean)) {
                         // Clica no resultado
-                        console.log("gameName certo: " + gameName);
+
+                        // if (regex.test(gameNameClean)) {
+                        // console.log("gameNameClean certo: " + gameNameClean);
+
+
+                        const gameStringKeywords = hasEdition(gameString);
+                        const gameNameKeywords = hasEdition(gameName);
+
+                        // Se um dos conjuntos tiver palavras-'edition' que o outro não tem, faz "continue"
+                        if (![...gameStringKeywords].every(keyword => gameNameKeywords.has(keyword)) ||
+                            ![...gameNameKeywords].every(keyword => gameStringKeywords.has(keyword))) {
+                            continue;
+                        }
+
 
                         const elementoLink = await resultado.$('a');
                         const href = await (await elementoLink.getProperty('href')).jsonValue();
@@ -84,47 +100,42 @@ const searchGamivo = async (gamesToSearch: foundGames[]): Promise<foundGames[]> 
                         const startIndex = href.indexOf('/product/') + '/product/'.length;
                         productSlug = href.substring(startIndex);
                         // console.log(productSlug);
-
+                        
                         // break; // Encerra o loop depois de clicar em um resultado
                     }
                 }
             }
-
+            
             if (productSlug == '') continue;
-
-            console.log('productSlug: ' + productSlug);
+            
             try {
                 response = await axios.get(`${apiGamivoUrl}/api/products/priceResearcher/${productSlug}`);
                 const precoGamivo: number = response.data.menorPreco;
-                console.log(precoGamivo);
+                const precoFormatado: string = precoGamivo.toString().replace('.', ',');
+                console.log('precoGamivo: ' + precoFormatado);
 
-                const worthy = worthyByPopularity(precoGamivo, minPopularity, popularity);
-                if (worthy) {
-                    lineToWrite = precoGamivo;
-                    foundGames.push({ id: index, name: game, lineToWrite });
-                }
+
+                foundGames.push({ id: index, name: game.name, popularity: game.popularity, GamivoPrice: precoFormatado });
             } catch (error) {
                 console.log(error);
                 console.log('API Gamivo desligada ou arquivo env faltando');
                 continue;
             }
-
-
         } catch (error) {
-            console.log('Não achou')
+            // console.log('Não achou')
         }
     }
 
     const pages = await browser.pages();
     if (pages) await Promise.all(pages.map((page) => page.close()));
-    
+
     const childProcess = browser.process()
     if (childProcess) {
         childProcess.kill()
     }
-    
+
     await browser.close();
-    
+
     if (browser && browser.process() != null) browser.process().kill('SIGINT');
 
     return foundGames;

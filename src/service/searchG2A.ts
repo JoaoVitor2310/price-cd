@@ -16,7 +16,7 @@ const timeOut = process.env.timeOut;
 import { clearString } from '../helpers/clearString.js';
 import clearDLC from '../helpers/clearDLC.js';
 import { worthyByPopularity } from '../helpers/worthyByPopularity.js';
-import clearEdition from '../helpers/clearEdition.js';
+import { clearEdition } from '../helpers/clearEdition.js';
 
 puppeteer.use(
     StealthPlugin()
@@ -93,7 +93,7 @@ export const searchG2A = async (minPopularity, popularity, gamesToSearch: string
 
             precoG2A = response.data.menorPreco;
 
-            lineToWrite = worthyByPopularity(precoG2A, minPopularity, popularity);
+            // lineToWrite = worthyByPopularity(precoG2A, minPopularity, popularity);
             return lineToWrite.replace('.', ',');
         } catch (error) {
             // console.log(error);

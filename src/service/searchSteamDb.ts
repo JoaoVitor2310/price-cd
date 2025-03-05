@@ -2,9 +2,8 @@ import dotenv from 'dotenv'; // Usar require para dotenv
 dotenv.config(); // Carregar variáveis de ambiente
 
 // Importações locais usando import
-import { clearRomamNumber } from '../helpers/clearRomamNumber.js';
 import clearDLC from '../helpers/clearDLC.js';
-import clearEdition from '../helpers/clearEdition.js';
+import { clearEdition } from '../helpers/clearEdition.js';
 import axios, { AxiosResponse } from 'axios';
 import * as cheerio from 'cheerio';
 import { foundGames } from '../interfaces/foundGames.js';
@@ -18,7 +17,9 @@ export const searchSteamDb = async (gamesToSearch: string[]): Promise<foundGames
         let response: AxiosResponse | undefined;
         console.log('gameString: ' + gameString);
 
-        const params = new URLSearchParams({ q: gameString });
+        let gameStringClean: string = gameString;
+        gameStringClean = clearEdition(gameStringClean);
+        const params = new URLSearchParams({ q: gameStringClean });
         // console.log(`https://steamcharts.com/search/?${params.toString()}`);
 
         try {
@@ -31,12 +32,10 @@ export const searchSteamDb = async (gamesToSearch: string[]): Promise<foundGames
         if (!response || !response.data) continue;
 
         // let gameStringClean: string = clearRomamNumber(gameString);
-        let gameStringClean: string = gameString;
         gameStringClean = clearDLC(gameStringClean);
-        gameStringClean = clearEdition(gameStringClean);
         gameStringClean = clearString(gameStringClean);
         gameStringClean = gameStringClean.toLowerCase().trim();
-        console.log('gameStringClean: ' + gameStringClean);
+        // console.log('gameStringClean: ' + gameStringClean);
 
         const $search = cheerio.load(response.data);
         const links: { href: string; text: string }[] = [];
@@ -57,7 +56,7 @@ export const searchSteamDb = async (gamesToSearch: string[]): Promise<foundGames
             gameName = clearEdition(gameName).trim().toLowerCase();
             gameName = gameName.trim().toLowerCase();
 
-            console.log('gameName: ' + gameName);
+            // console.log('gameName: ' + gameName);
             if (gameName === gameStringClean) {
                 id = link.href;
                 break; // Finaliza o loop pois encontrou o elemento
@@ -88,7 +87,7 @@ export const searchSteamDb = async (gamesToSearch: string[]): Promise<foundGames
         });
 
         if (spans.length < 1) continue;
-
+        console.log('popularity: ' + Number.parseInt(spans[1]));
         foundGames.push({ id: index, name: gameString, popularity: Number.parseInt(spans[1]) });
     }
 
