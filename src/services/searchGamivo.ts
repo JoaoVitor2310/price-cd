@@ -181,7 +181,8 @@ export const searchGamivo = async (gamesToSearch: foundGames[]): Promise<foundGa
                 continue;
             }
         } catch (error) {
-            console.log(error)
+            console.log('não achou');
+            // console.log(error)
         } finally {
             // if (browser) {
             //     const pages = await browser.pages();
@@ -201,21 +202,19 @@ export const searchGamivo = async (gamesToSearch: foundGames[]): Promise<foundGa
         }
     }
 
-    if (browser) {
-        const pages = await browser.pages();
-        // @ts-ignore
-        if (pages) await Promise.all(pages.map((page) => page.close()));
+    const pages = await browser.pages();
+    // @ts-ignore
+    if (pages) await Promise.all(pages.map((page) => page.close()));
 
-        const childProcess = browser.process()
-        if (childProcess) {
-            childProcess.kill()
-        }
-
-        await browser.close();
-
-        // @ts-ignore
-        if (browser && browser.process()) browser.process().kill('SIGINT');
+    const childProcess = browser.process()
+    if (childProcess) {
+        childProcess.kill()
     }
+
+    await browser.close();
+
+    // @ts-ignore
+    if (browser && browser.process()) browser.process().kill('SIGINT');
 
     return foundGames;
 };
