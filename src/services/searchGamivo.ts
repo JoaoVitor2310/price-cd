@@ -3,18 +3,19 @@ import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 
 import axios, { AxiosResponse } from 'axios';
 import dotenv from 'dotenv';
+import { connect } from "puppeteer-real-browser";
 
 dotenv.config(); // Carregar variáveis de ambiente
 
 // Capturar variáveis de ambiente após o dotenv.config
 const apiGamivoUrl = process.env.apiGamivoUrl;
-const timeOut = Number(process.env.timeOut) || undefined;
+const timeOut = Number(process.env.timeOut) || 3000;
 
-// Importações locais usando import
+// Importações locais
 import { clearString } from '../helpers/clearString.js';
 import { clearDLC } from '../helpers/clearDLC.js';
 import { clearEdition } from '../helpers/clearEdition.js';
-import { foundGames } from '../interfaces/foundGames.js';
+import { foundGames } from '../types/foundGames.js';
 import { hasEdition } from '../helpers/hasEdition.js';
 
 puppeteer.use(
@@ -22,32 +23,86 @@ puppeteer.use(
 );
 
 export const searchGamivo = async (gamesToSearch: foundGames[]): Promise<foundGames[]> => {
-    let productSlug: string = '', browser;
+    let productSlug: string = '';
+    // let browser: any;
     const foundGames: foundGames[] = [];
 
     let response: AxiosResponse;
-    browser = await puppeteer.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+
+    const { browser, page } = await connect({
+        headless: false,
+
+        args: [],
+
+        customConfig: {},
+
+        turnstile: true,
+
+        connectOption: {},
+
+        disableXvfb: false,
+        ignoreAllFlags: false,
     });
-
-    const page = await browser.newPage();
-
-    await page.setViewport({
-        width: 426,
-        height: 240
-    });
-
-
 
     for (const [index, game] of gamesToSearch.entries()) {
         console.log(`Índice: ${index}, Jogo:`, game.name);
-
         let searchString = encodeURIComponent(game.name).replace(/%E2%84%A2/g, ''); // Remove "™"
 
+        // browser = await puppeteer.launch({
+        //     headless: false,
+        //     args: [
+        //         '--no-sandbox',
+        //         '--disable-setuid-sandbox',
+        //         '--disable-client-side-phishing-detection',
+        //         '--disable-blink-features=AutomationControlled',
+        //         '--disable-features=IsolateOrigins,site-per-process',
+        //         '--disable-cache',
+        //         '--user-data-dir=/path/to/user/data',
+        //         '--use-fake-ui-for-media-stream',
+        //         '--use-fake-device-for-media-stream',
+        //         '--ignore-certificate-errors',
+        //         '--allow-running-insecure-content',
+        //     ]
+        // });
+
+        // const { browser, page } = await connect({
+        //     headless: false,
+
+        //     args: [],
+
+        //     customConfig: {},
+
+        //     turnstile: true,
+
+        //     connectOption: {},
+
+        //     disableXvfb: false,
+        //     ignoreAllFlags: false,
+        //   });
+
+
+        // const page = await browser.newPage();
         try {
+            await page.setViewport({
+                width: 1920,
+                height: 1080
+            });
+
             await page.goto(`https://www.gamivo.com/pt/search/${searchString}`);
-            await page.waitForSelector('.search-results__tiles', { timeout: timeOut });
+
+            // @ts-ignore
+            await page.waitForSelector('.search-results__tiles', { timeout: timeOut }).catch(async (error) => {
+                console.log('A página foi redirecionada após o CAPTCHA. Tentando navegar novamente.');
+
+                // Verifique a URL após o erro de seletor
+                const currentUrl = page.url();
+
+                // await new Promise(resolve => setTimeout(resolve, 20000));
+
+                // const newPage = await context.newPage();
+                await page.goto(`https://www.gamivo.com/pt/search/${searchString}`);
+                await page.waitForSelector('.search-results__tiles', { timeout: timeOut });
+            });
 
             const resultados = await page.$$('.product-tile__name');
 
@@ -61,12 +116,14 @@ export const searchGamivo = async (gamesToSearch: foundGames[]): Promise<foundGa
             // Itera sobre cada resultado
             for (const resultado of resultados) {
                 // Obtém o texto do elemento "span" com a classe "ng-star-inserted" dentro do resultado
+                // @ts-ignore
                 let gameName = await resultado.$eval('span.ng-star-inserted', element => element.textContent || '');
 
                 let gameNameClean = clearEdition(gameName);
                 gameNameClean = clearString(gameNameClean);
                 gameNameClean = clearDLC(gameNameClean);
                 gameNameClean = gameNameClean.toLowerCase().trim();
+                // console.log(gameNameClean);
 
                 // Verifica se o texto do jogo contém a palavra "Steam"
                 if (gameNameClean.includes(gameStringClean)) {
@@ -95,21 +152,21 @@ export const searchGamivo = async (gamesToSearch: foundGames[]): Promise<foundGa
 
 
                         const elementoLink = await resultado.$('a');
-                        if(!elementoLink) continue;
-                        
+                        if (!elementoLink) continue;
+
                         const href = await (await elementoLink.getProperty('href')).jsonValue();
 
                         const startIndex = href.indexOf('/product/') + '/product/'.length;
                         productSlug = href.substring(startIndex);
-                        // console.log(productSlug);
-                        
+                        console.log(productSlug);
+
                         // break; // Encerra o loop depois de clicar em um resultado
                     }
                 }
             }
-            
+
             if (productSlug == '') continue;
-            
+
             try {
                 response = await axios.get(`${apiGamivoUrl}/api/products/priceResearcher/${productSlug}`);
                 const precoGamivo: number = response.data.menorPreco;
@@ -124,21 +181,41 @@ export const searchGamivo = async (gamesToSearch: foundGames[]): Promise<foundGa
                 continue;
             }
         } catch (error) {
-            // console.log('Não achou')
+            console.log(error)
+        } finally {
+            // if (browser) {
+            //     const pages = await browser.pages();
+            //     // @ts-ignore
+            //     if (pages) await Promise.all(pages.map((page) => page.close()));
+
+            //     const childProcess = browser.process()
+            //     if (childProcess) {
+            //         childProcess.kill()
+            //     }
+
+            //     await browser.close();
+
+            //     // @ts-ignore
+            //     if (browser && browser.process()) browser.process().kill('SIGINT');
+            // }
         }
     }
 
-    const pages = await browser.pages();
-    if (pages) await Promise.all(pages.map((page) => page.close()));
+    if (browser) {
+        const pages = await browser.pages();
+        // @ts-ignore
+        if (pages) await Promise.all(pages.map((page) => page.close()));
 
-    const childProcess = browser.process()
-    if (childProcess) {
-        childProcess.kill()
+        const childProcess = browser.process()
+        if (childProcess) {
+            childProcess.kill()
+        }
+
+        await browser.close();
+
+        // @ts-ignore
+        if (browser && browser.process()) browser.process().kill('SIGINT');
     }
-
-    await browser.close();
-
-    // if (browser && browser.process() != null) browser.process().kill('SIGINT');
 
     return foundGames;
 };

@@ -6,7 +6,7 @@ import { clearDLC } from '../helpers/clearDLC.js';
 import { clearEdition } from '../helpers/clearEdition.js';
 import axios, { AxiosResponse } from 'axios';
 import * as cheerio from 'cheerio';
-import { foundGames } from '../interfaces/foundGames.js';
+import { foundGames } from '../types/foundGames.js';
 import { clearString } from '../helpers/clearString.js';
 
 export const searchSteamDb = async (gamesToSearch: string[]): Promise<foundGames[]> => {

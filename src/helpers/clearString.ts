@@ -8,20 +8,20 @@ export const clearString = (stringToSearch: string): string => {
         return decimalValue.toString(); // Converter para string para colocar de volta
     });
 
-    // Remove ":", "-", "™" e, quando "-", remove também o espaço subsequente, colocando tudo em minúsculas para melhor reconhecimento dos jogos
+    // Remove "-", e, quando "-", remove também o espaço subsequente, colocando tudo em minúsculas para melhor reconhecimento dos jogos
     stringToSearch = stringToSearch.replace(/-\s?/g, '').toLowerCase();
 
-    // Remove somente o  ™, : e ®. Precisa ser feito separado
-    stringToSearch = stringToSearch.replace(/[™:®]/g, '');
+    // Remove "™", ":", "®", "!", "?", ".", "(", ")", "[", "]", "{", "}", "&", "*", "+" e "^"
+    stringToSearch = stringToSearch.replace(/[™:®!?().[\]{}&*+^]/g, '');
 
     // Remove "|" e qualquer espaço após ele
     stringToSearch = stringToSearch.replace(/\|\s*/g, ''); // Substitui "|" e qualquer espaço subsequente
     
     // Remove "'" e qualquer espaço após ele
-    stringToSearch = stringToSearch.replace(/\'\s*/g, ''); // Substitui "|" e qualquer espaço subsequente
+    stringToSearch = stringToSearch.replace(/\'\s*/g, '');
     
     // Remove "’" e qualquer espaço após ele
-    stringToSearch = stringToSearch.replace(/\’\s*/g, ''); // Substitui "|" e qualquer espaço subsequente
+    stringToSearch = stringToSearch.replace(/\’\s*/g, '');
     
     // Remove "the" (case-insensitive) e qualquer espaço subsequente
     stringToSearch = stringToSearch.replace(/the\s*/gi, '');

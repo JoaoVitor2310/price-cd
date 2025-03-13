@@ -1,9 +1,9 @@
 import { Response } from "express";
-import { MulterRequest } from "../interfaces/MulterRequest";
+import { MulterRequest } from "../types/MulterRequest";
 import fs from 'fs';
-import { searchGamivo } from "../service/searchGamivo.js";
+import { searchGamivo } from "../services/searchGamivo.js";
 // import searchG2A from "../service/searchG2A";
-import { searchSteamDb } from "../service/searchSteamDb.js";
+import { searchSteamDb } from "../services/searchSteamDb.js";
 import { worthyByPopularity } from "../helpers/worthyByPopularity.js";
 
 export const uploadFile = async (req: MulterRequest, res: Response) => {
@@ -42,7 +42,13 @@ export const uploadFile = async (req: MulterRequest, res: Response) => {
 
     let foundGames = await searchSteamDb(gamesToSearch);
     // return res.status(200).json(foundGames);
+    // @ts-ignore
     // let foundGames: foundGames[] = [
+    //     {
+    //         "id": 0,
+    //         "name": "cook serve delicious! 3?!",
+    //         "popularity": 164
+    //     },
     //     {
     //         "id": 0,
     //         "name": "Devil May Cry 4 Special Edition",
