@@ -84,8 +84,8 @@ export const searchGamivo = async (gamesToSearch: foundGames[]): Promise<foundGa
         // const page = await browser.newPage();
         try {
             await page.setViewport({
-                width: 1920,
-                height: 1080
+                width: 426,
+                height: 240
             });
 
             await page.goto(`https://www.gamivo.com/pt/search/${searchString}`);
