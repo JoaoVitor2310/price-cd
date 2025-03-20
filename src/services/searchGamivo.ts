@@ -23,7 +23,7 @@ puppeteer.use(
 );
 
 export const searchGamivo = async (gamesToSearch: foundGames[]): Promise<foundGames[]> => {
-    let productSlug: string = '';
+    let productSlug = '';
     // let browser: any;
     const foundGames: foundGames[] = [];
 
@@ -44,50 +44,16 @@ export const searchGamivo = async (gamesToSearch: foundGames[]): Promise<foundGa
         ignoreAllFlags: false,
     });
 
+    await page.setViewport({
+        width: 426,
+        height: 240
+    });
+
     for (const [index, game] of gamesToSearch.entries()) {
         console.log(`Índice: ${index}, Jogo:`, game.name);
         let searchString = encodeURIComponent(game.name).replace(/%E2%84%A2/g, ''); // Remove "™"
 
-        // browser = await puppeteer.launch({
-        //     headless: false,
-        //     args: [
-        //         '--no-sandbox',
-        //         '--disable-setuid-sandbox',
-        //         '--disable-client-side-phishing-detection',
-        //         '--disable-blink-features=AutomationControlled',
-        //         '--disable-features=IsolateOrigins,site-per-process',
-        //         '--disable-cache',
-        //         '--user-data-dir=/path/to/user/data',
-        //         '--use-fake-ui-for-media-stream',
-        //         '--use-fake-device-for-media-stream',
-        //         '--ignore-certificate-errors',
-        //         '--allow-running-insecure-content',
-        //     ]
-        // });
-
-        // const { browser, page } = await connect({
-        //     headless: false,
-
-        //     args: [],
-
-        //     customConfig: {},
-
-        //     turnstile: true,
-
-        //     connectOption: {},
-
-        //     disableXvfb: false,
-        //     ignoreAllFlags: false,
-        //   });
-
-
-        // const page = await browser.newPage();
         try {
-            await page.setViewport({
-                width: 426,
-                height: 240
-            });
-
             await page.goto(`https://www.gamivo.com/pt/search/${searchString}`);
 
             // @ts-ignore
@@ -107,7 +73,7 @@ export const searchGamivo = async (gamesToSearch: foundGames[]): Promise<foundGa
             const resultados = await page.$$('.product-tile__name');
 
             let gameString = game.name;
-            let gameStringClean: string = clearEdition(gameString);
+            let gameStringClean = clearEdition(gameString);
             gameStringClean = clearString(gameStringClean);
             gameStringClean = clearDLC(gameStringClean);
             gameStringClean = gameStringClean.toLowerCase().trim();
@@ -118,18 +84,16 @@ export const searchGamivo = async (gamesToSearch: foundGames[]): Promise<foundGa
                 // Obtém o texto do elemento "span" com a classe "ng-star-inserted" dentro do resultado
                 // @ts-ignore
                 let gameName = await resultado.$eval('span.ng-star-inserted', element => element.textContent || '');
-
+                
                 let gameNameClean = clearEdition(gameName);
                 gameNameClean = clearString(gameNameClean);
                 gameNameClean = clearDLC(gameNameClean);
                 gameNameClean = gameNameClean.toLowerCase().trim();
-                // console.log(gameNameClean);
-
                 // Verifica se o texto do jogo contém a palavra "Steam"
                 if (gameNameClean.includes(gameStringClean)) {
+                    // console.log(gameNameClean);
                     const regex = new RegExp(`^${gameStringClean}\\s*(?!2\\s)([a-z]{2}(?:/[a-z]{2})*)?\\sGlobal(?:\\ssteam)?$`, 'i');
 
-                    // const regex2 = new RegExp(`${gameStringClean}\\sGlobal Steam$`, 'i');
                     const regex2 = new RegExp(`^${gameStringClean}\\s*Global Steam$`, 'i');
 
                     const regex3 = new RegExp(`^${gameStringClean}\\sROW\\sSteam$`, 'i');

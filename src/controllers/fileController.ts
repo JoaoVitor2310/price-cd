@@ -46,69 +46,19 @@ export const uploadFile = async (req: MulterRequest, res: Response) => {
     // let foundGames: foundGames[] = [
     //     {
     //         "id": 0,
-    //         "name": "cook serve delicious! 3?!",
+    //         "name": "HERETIC'S FORK",
     //         "popularity": 164
     //     },
-    //     {
-    //         "id": 0,
-    //         "name": "Devil May Cry 4 Special Edition",
-    //         "popularity": 164
-    //     },
-    //     {
-    //         "id": 1,
-    //         "name": "Kingdom Come: Deliverance Special Edition",
-    //         "popularity": 20169
-    //     },
-    //     {
-    //         "id": 2,
-    //         "name": "Terraformers",
-    //         "popularity": 141
-    //     },
-    //     {
-    //         "id": 4,
-    //         "name": "The Elder Scrolls V: Skyrim Special Edition",
-    //         "popularity": 29965
-    //     },
-    //     {
-    //         "id": 5,
-    //         "name": "patrician iii",
-    //         "popularity": 66
-    //     },
-    //     {
-    //         "id": 6,
-    //         "name": "Sid Meier's Civilization IV: Beyond the Sword",
-    //         "popularity": 2000
-    //     },
-    //     {
-    //         "id": 7,
-    //         "name": "the walking dead",
-    //         "popularity": 219
-    //     },
-    //     {
-    //         "id": 8,
-    //         "name": "nuclear throne",
-    //         "popularity": 137
-    //     },
-    //     {
-    //         "id": 9,
-    //         "name": "the long dark",
-    //         "popularity": 3164
-    //     },
-    //     {
-    //         "id": 10,
-    //         "name": "Symphony of War: The Nephilim Saga",
-    //         "popularity": 645
-    //     },
-    //     {
-    //         "id": 11,
-    //         "name": "Coromon",
-    //         "popularity": 322
-    //     },
-    //     {
-    //         "id": 12,
-    //         "name": "The Excavation of Hob's Barrow",
-    //         "popularity": 18
-    //     }
+        //     {
+        //         "id": 0,
+        //         "name": "Devil May Cry 4 Special Edition",
+        //         "popularity": 164
+        //     },
+        //     {
+        //         "id": 1,
+        //         "name": "Kingdom Come: Deliverance Special Edition",
+        //         "popularity": 20169
+        //     },
     // ];
 
     foundGames = worthyByPopularity(foundGames, minPopularity);

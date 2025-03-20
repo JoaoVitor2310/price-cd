@@ -1,10 +1,13 @@
 export const clearString = (stringToSearch: string): string => {
 
+    // Remove todas as ocorrências de "MX" (case-insensitive) // MX é chinês simplificado, mas pode ser confundido com 1010 em romano
+    stringToSearch = stringToSearch.replace(/\/mx\b/gi, '');    
+
     const romanRegex = /\b(?!dlc\b)[IVXLCDM]+\b/gi;
 
     // Substituir números romanos pelo equivalente decimal
     stringToSearch = stringToSearch.replace(romanRegex, (match) => {
-        const decimalValue = RomantoInt(match.toUpperCase()); 
+        const decimalValue = RomantoInt(match.toUpperCase());
         return decimalValue.toString(); // Converter para string para colocar de volta
     });
 
@@ -16,16 +19,16 @@ export const clearString = (stringToSearch: string): string => {
 
     // Remove "|" e qualquer espaço após ele
     stringToSearch = stringToSearch.replace(/\|\s*/g, ''); // Substitui "|" e qualquer espaço subsequente
-    
+
     // Remove "'" e qualquer espaço após ele
     stringToSearch = stringToSearch.replace(/\'\s*/g, '');
-    
+
     // Remove "’" e qualquer espaço após ele
     stringToSearch = stringToSearch.replace(/\’\s*/g, '');
-    
+
     // Remove "the" (case-insensitive) e qualquer espaço subsequente
     stringToSearch = stringToSearch.replace(/the\s*/gi, '');
-    
+
     // Remove todas as vírgulas
     stringToSearch = stringToSearch.replace(/,/g, '');
 
