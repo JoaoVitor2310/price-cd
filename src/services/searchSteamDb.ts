@@ -1,95 +1,100 @@
-import dotenv from 'dotenv'; // Usar require para dotenv
+import dotenv from "dotenv"; // Usar require para dotenv
+
 dotenv.config(); // Carregar variáveis de ambiente
 
+import axios, { type AxiosResponse } from "axios";
+import * as cheerio from "cheerio";
 // Importações locais usando import
-import { clearDLC } from '../helpers/clearDLC.js';
-import { clearEdition } from '../helpers/clearEdition.js';
-import axios, { AxiosResponse } from 'axios';
-import * as cheerio from 'cheerio';
-import { foundGames } from '../types/foundGames.js';
-import { clearString } from '../helpers/clearString.js';
+import { clearDLC } from "../helpers/clearDLC.js";
+import { clearEdition } from "../helpers/clearEdition.js";
+import { clearString } from "../helpers/clearString.js";
+import type { foundGames } from "../types/foundGames.js";
 
-export const searchSteamDb = async (gamesToSearch: string[]): Promise<foundGames[]> => {
-    const foundGames: foundGames[] = [];
-    for (const [index, gameString] of gamesToSearch.entries()) {
+export const searchSteamDb = async (
+	gamesToSearch: string[],
+): Promise<foundGames[]> => {
+	const foundGames: foundGames[] = [];
+	for (const [index, gameString] of gamesToSearch.entries()) {
+		let response: AxiosResponse | undefined;
+		console.log(`gameString: ${gameString}`);
 
+		let gameStringClean: string = gameString;
+		gameStringClean = clearEdition(gameStringClean);
+		const params = new URLSearchParams({ q: gameStringClean });
+		// console.log(`https://steamcharts.com/search/?${params.toString()}`);
 
-        let response: AxiosResponse | undefined;
-        console.log('gameString: ' + gameString);
+		try {
+			response = await axios.get(
+				`https://steamcharts.com/search?${params.toString()}`,
+			);
+		} catch (_error) {
+			// console.error('Erro ao buscar no SteamDb:', error);
+			continue;
+		}
 
-        let gameStringClean: string = gameString;
-        gameStringClean = clearEdition(gameStringClean);
-        const params = new URLSearchParams({ q: gameStringClean });
-        // console.log(`https://steamcharts.com/search/?${params.toString()}`);
+		if (!response || !response.data) continue;
 
-        try {
-            response = await axios.get(`https://steamcharts.com/search?${params.toString()}`);
-        } catch (error) {
-            // console.error('Erro ao buscar no SteamDb:', error);
-            continue;
-        }
+		// let gameStringClean: string = clearRomamNumber(gameString);
+		gameStringClean = clearDLC(gameStringClean);
+		gameStringClean = clearString(gameStringClean);
+		gameStringClean = gameStringClean.toLowerCase().trim();
+		// console.log('gameStringClean: ' + gameStringClean);
 
-        if (!response || !response.data) continue;
+		const $search = cheerio.load(response.data);
+		const links: { href: string; text: string }[] = [];
 
-        // let gameStringClean: string = clearRomamNumber(gameString);
-        gameStringClean = clearDLC(gameStringClean);
-        gameStringClean = clearString(gameStringClean);
-        gameStringClean = gameStringClean.toLowerCase().trim();
-        // console.log('gameStringClean: ' + gameStringClean);
+		$search("a").each((_, element) => {
+			const href = $search(element).attr("href"); // Obtém o atributo href de cada <a>
+			const text = $search(element).text().trim(); // Obtém o texto dentro da tag <a> e remove espaços em branco
+			if (href && text) {
+				links.push({ href, text });
+			}
+		});
 
-        const $search = cheerio.load(response.data);
-        const links: { href: string; text: string }[] = [];
+		let id: string = "";
 
-        $search('a').each((_, element) => {
-            const href = $search(element).attr('href'); // Obtém o atributo href de cada <a>
-            const text = $search(element).text().trim(); // Obtém o texto dentro da tag <a> e remove espaços em branco
-            if (href && text) {
-                links.push({ href, text });
-            }
-        });
+		for (const link of links) {
+			let gameName = clearString(link.text);
+			gameName = clearDLC(gameName);
+			gameName = clearEdition(gameName).trim().toLowerCase();
+			gameName = gameName.trim().toLowerCase();
 
-        let id: string = '';
+			// console.log('gameName: ' + gameName);
+			if (gameName === gameStringClean) {
+				id = link.href;
+				break; // Finaliza o loop pois encontrou o elemento
+			}
+		}
 
-        for (const link of links) {
-            let gameName = clearString(link.text);
-            gameName = clearDLC(gameName);
-            gameName = clearEdition(gameName).trim().toLowerCase();
-            gameName = gameName.trim().toLowerCase();
+		if (id === "") continue;
 
-            // console.log('gameName: ' + gameName);
-            if (gameName === gameStringClean) {
-                id = link.href;
-                break; // Finaliza o loop pois encontrou o elemento
-            }
-        }
+		try {
+			response = await axios.get(`https://steamcharts.com${id}`);
+		} catch (_error) {
+			// console.error('Erro ao buscar no SteamDb (segunda requisição):', error);
+			continue;
+		}
 
-        if (id == '') continue;
+		if (!response || !response.data) continue;
 
+		const $details = cheerio.load(response.data);
+		const spans: string[] = [];
 
-        try {
-            response = await axios.get(`https://steamcharts.com${id}`);
-        } catch (error) {
-            // console.error('Erro ao buscar no SteamDb (segunda requisição):', error);
-            continue;
-        }
+		$details("span.num").each((_, element) => {
+			const numText = $details(element).text().trim(); // Pega o texto do span e remove espaços extras
+			if (numText) {
+				spans.push(numText); // Adiciona o texto ao array
+			}
+		});
 
-        if (!response || !response.data) continue;
+		if (spans.length < 1) continue;
+		console.log(`popularity: ${Number.parseInt(spans[1], 10)}`);
+		foundGames.push({
+			id: index,
+			name: gameString,
+			popularity: Number.parseInt(spans[1], 10),
+		});
+	}
 
-
-        const $details = cheerio.load(response.data);
-        const spans: string[] = [];
-
-        $details('span.num').each((_, element) => {
-            const numText = $details(element).text().trim(); // Pega o texto do span e remove espaços extras
-            if (numText) {
-                spans.push(numText); // Adiciona o texto ao array
-            }
-        });
-
-        if (spans.length < 1) continue;
-        console.log('popularity: ' + Number.parseInt(spans[1]));
-        foundGames.push({ id: index, name: gameString, popularity: Number.parseInt(spans[1]) });
-    }
-
-    return foundGames;
+	return foundGames;
 };
