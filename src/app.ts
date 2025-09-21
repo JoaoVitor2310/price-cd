@@ -4,8 +4,9 @@ import router from "./routes/router.js";
 
 const app = express();
 
-const pasta = path.join(process.cwd());
-app.use(express.static(pasta));
+const publicDir = path.join(process.cwd(), "public");
+console.log("🚀 ~ publicDir:", publicDir);
+app.use(express.static(publicDir));
 app.use(express.json());
 
 app.use("/api", router);
