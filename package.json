@@ -40,7 +40,6 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.2.4",
-    "@types/axios": "^0.14.4",
     "@types/cheerio": "^0.22.35",
     "@types/express": "^5.0.0",
     "@types/multer": "^1.4.12",
