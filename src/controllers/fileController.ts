@@ -40,14 +40,12 @@ export const uploadFile = async (req: MulterRequest, res: Response) => {
 
 		// Verificar se a linha não está vazia
 		if (trimmedLine !== "") {
-			// @ts-expect-error
 			gamesToSearch.push(trimmedLine);
 		}
 	}
 
 	let foundGames = await searchSteamDb(gamesToSearch);
 	// return res.status(200).json(foundGames);
-	// @ts-expect-error
 	// let foundGames: foundGames[] = [
 	//     {
 	//         "id": 0,
