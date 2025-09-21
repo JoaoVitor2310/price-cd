@@ -10,7 +10,8 @@
     "build": "tsc",
     "start": "npm run build && node dist/server.js",
     "lint": "biome check .",
-    "lint:fix": "biome check . --write --unsafe"
+    "lint:fix": "biome check . --write --unsafe",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",
