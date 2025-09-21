@@ -5,7 +5,6 @@ import router from "./routes/router.js";
 const app = express();
 
 const publicDir = path.join(process.cwd(), "public");
-console.log("🚀 ~ publicDir:", publicDir);
 app.use(express.static(publicDir));
 app.use(express.json());
 
