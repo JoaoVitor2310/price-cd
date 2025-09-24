@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import type { Response } from "express";
-import type { MulterRequest } from "@/types/MulterRequest";
-import { searchSteamDb } from "@/services/search-steam-db";
 import { worthyByPopularity } from "@/helpers/worthy-by-popularity";
 import { searchGamivo } from "@/services/search-gamivo";
+import { searchSteamDb } from "@/services/search-steam-db";
+import type { MulterRequest } from "@/types/MulterRequest";
 
 // import searchG2A from "../service/searchG2A";
 

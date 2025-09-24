@@ -1,6 +1,6 @@
-import { connect } from "puppeteer-real-browser";
 import AdblockerPlugin from "puppeteer-extra-plugin-adblocker";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
+import { connect } from "puppeteer-real-browser";
 
 export const initializeBrowser = async () => {
 	const { browser, page } = await connect({

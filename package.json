@@ -1,54 +1,54 @@
 {
-  "name": "price-researcher",
-  "version": "1.0.0",
-  "description": "",
-  "main": "src/server.ts",
-  "type": "module",
-  "scripts": {
-    "dev": "tsx src/server.ts",
-    "prod": "xvfb-run node index.js",
-    "build": "tsc",
-    "start": "npm run build && node dist/server.js",
-    "lint": "biome check .",
-    "lint:fix": "biome check . --write --unsafe",
-    "typecheck": "tsc --noEmit"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "dependencies": {
-    "axios": "^1.12.2",
-    "cheerio": "^1.0.0",
-    "dotenv": "^17.2.2",
-    "express": "^5.1.0",
-    "multer": "^2.0.2",
-    "puppeteer": "^24.22.2",
-    "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-adblocker": "^2.13.6",
-    "puppeteer-extra-plugin-anonymize-ua": "^2.4.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2",
-    "puppeteer-real-browser": "^1.4.4"
-  },
-  "pkg": {
-    "assets": [
-      "node_modules/puppeteer/**/*",
-      "node_modules/vm2/**/*"
-    ],
-    "targets": [
-      "node18-macos-arm64",
-      "node18-win-arm64"
-    ]
-  },
-  "devDependencies": {
-    "@biomejs/biome": "2.2.4",
-    "@types/cheerio": "^0.22.35",
-    "@types/express": "^5.0.0",
-    "@types/multer": "^2.0.0",
-    "@types/node": "^20.13.0",
-    "nodemon": "^3.1.9",
-    "ts-node": "^10.9.2",
-    "ts-node-dev": "^2.0.0",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.3"
-  }
+	"name": "price-researcher",
+	"version": "1.0.0",
+	"description": "",
+	"main": "src/server.ts",
+	"type": "module",
+	"scripts": {
+		"dev": "tsx src/server.ts",
+		"prod": "xvfb-run node index.js",
+		"build": "tsc",
+		"start": "npm run build && node dist/server.js",
+		"lint": "biome check .",
+		"lint:fix": "biome check . --write --unsafe",
+		"typecheck": "tsc --noEmit"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"dependencies": {
+		"axios": "^1.12.2",
+		"cheerio": "^1.0.0",
+		"dotenv": "^17.2.2",
+		"express": "^5.1.0",
+		"multer": "^2.0.2",
+		"puppeteer": "^24.22.2",
+		"puppeteer-extra": "^3.3.6",
+		"puppeteer-extra-plugin-adblocker": "^2.13.6",
+		"puppeteer-extra-plugin-anonymize-ua": "^2.4.6",
+		"puppeteer-extra-plugin-stealth": "^2.11.2",
+		"puppeteer-real-browser": "^1.4.4"
+	},
+	"pkg": {
+		"assets": [
+			"node_modules/puppeteer/**/*",
+			"node_modules/vm2/**/*"
+		],
+		"targets": [
+			"node18-macos-arm64",
+			"node18-win-arm64"
+		]
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.2.4",
+		"@types/cheerio": "^0.22.35",
+		"@types/express": "^5.0.0",
+		"@types/multer": "^2.0.0",
+		"@types/node": "^20.13.0",
+		"nodemon": "^3.1.9",
+		"ts-node": "^10.9.2",
+		"ts-node-dev": "^2.0.0",
+		"tsx": "^4.19.2",
+		"typescript": "^5.7.3"
+	}
 }
