@@ -2,7 +2,7 @@ import fs from "node:fs";
 import type { Response } from "express";
 import { worthyByPopularity } from "@/helpers/worthy-by-popularity";
 import { searchGamivo } from "@/services/search-gamivo";
-import { searchSteamDb } from "@/services/search-steam-db";
+import { searchSteamCharts } from "@/services/search-steam-charts";
 import type { MulterRequest } from "@/types/MulterRequest";
 
 // import searchG2A from "../service/searchG2A";
@@ -43,7 +43,7 @@ export const uploadFile = async (req: MulterRequest, res: Response) => {
 		}
 	}
 
-	let foundGames = await searchSteamDb(gamesToSearch);
+	let foundGames = await searchSteamCharts(gamesToSearch);
 
 	foundGames = worthyByPopularity(foundGames, minPopularity);
 

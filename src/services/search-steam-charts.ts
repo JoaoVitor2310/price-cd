@@ -13,7 +13,7 @@ import {
 } from "@/helpers/constants";
 import type { foundGames } from "@/types/foundGames";
 
-export const searchSteamDb = async (
+export const searchSteamCharts = async (
 	gamesToSearch: string[],
 ): Promise<foundGames[]> => {
 	const foundGames: foundGames[] = [];
