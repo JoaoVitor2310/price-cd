@@ -1,4 +1,4 @@
-import type { foundGames } from "../types/foundGames";
+import type { foundGames } from "@/types/foundGames";
 
 export const worthyByPopularity = (
 	foundGames: foundGames[],

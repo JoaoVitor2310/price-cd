@@ -4,14 +4,14 @@ dotenv.config();
 
 import axios, { type AxiosResponse } from "axios";
 import * as cheerio from "cheerio";
-import { clearDLC } from "../helpers/clear-dlc.js";
-import { clearEdition } from "../helpers/clear-edition.js";
-import { clearString } from "../helpers/clear-string.js";
-import type { foundGames } from "../types/foundGames.js";
+import type { foundGames } from "@/types/foundGames";
+import { clearEdition } from "@/helpers/clear-edition";
 import {
 	STEAM_CHARTS_BASE_URL,
 	STEAM_CHARTS_SEARCH_URL,
-} from "../helpers/constants.js";
+} from "@/helpers/constants";
+import { clearDLC } from "@/helpers/clear-dlc";
+import { clearString } from "@/helpers/clear-string";
 
 export const searchSteamDb = async (
 	gamesToSearch: string[],
