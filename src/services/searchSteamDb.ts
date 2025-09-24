@@ -9,6 +9,10 @@ import { clearDLC } from "../helpers/clearDLC.js";
 import { clearEdition } from "../helpers/clearEdition.js";
 import { clearString } from "../helpers/clearString.js";
 import type { foundGames } from "../types/foundGames.js";
+import {
+	STEAM_CHARTS_BASE_URL,
+	STEAM_CHARTS_SEARCH_URL,
+} from "../helpers/constants.js";
 
 export const searchSteamDb = async (
 	gamesToSearch: string[],
@@ -25,7 +29,7 @@ export const searchSteamDb = async (
 
 		try {
 			response = await axios.get(
-				`https://steamcharts.com/search?${params.toString()}`,
+				`${STEAM_CHARTS_SEARCH_URL}?${params.toString()}`,
 			);
 		} catch (_error) {
 			// console.error('Erro ao buscar no SteamDb:', error);
@@ -69,7 +73,7 @@ export const searchSteamDb = async (
 		if (id === "") continue;
 
 		try {
-			response = await axios.get(`https://steamcharts.com${id}`);
+			response = await axios.get(`${STEAM_CHARTS_BASE_URL}${id}`);
 		} catch (_error) {
 			// console.error('Erro ao buscar no SteamDb (segunda requisição):', error);
 			continue;

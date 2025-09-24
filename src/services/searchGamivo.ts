@@ -16,6 +16,7 @@ import { clearEdition } from "../helpers/clearEdition.js";
 import { clearString } from "../helpers/clearString.js";
 import { hasEdition } from "../helpers/hasEdition.js";
 import type { foundGames } from "../types/foundGames.js";
+import { GAMIVO_SEARCH_URL } from "../helpers/constants.js";
 
 puppeteer.use(StealthPlugin());
 
@@ -56,9 +57,8 @@ export const searchGamivo = async (
 		); // Remove "™"
 
 		try {
-			await page.goto(`https://www.gamivo.com/pt/search/${searchString}`);
+			await page.goto(`${GAMIVO_SEARCH_URL}/${searchString}`);
 
-			// @ts-expect-error
 			await page
 				.waitForSelector(".search-results__tiles", { timeout: timeOut })
 				.catch(async (_error) => {
@@ -72,7 +72,7 @@ export const searchGamivo = async (
 					// await new Promise(resolve => setTimeout(resolve, 20000));
 
 					// const newPage = await context.newPage();
-					await page.goto(`https://www.gamivo.com/pt/search/${searchString}`);
+					await page.goto(`${GAMIVO_SEARCH_URL}/${searchString}`);
 					await page.waitForSelector(".search-results__tiles", {
 						timeout: timeOut,
 					});
@@ -90,7 +90,6 @@ export const searchGamivo = async (
 			// Itera sobre cada resultado
 			for (const resultado of resultados) {
 				// Obtém o texto do elemento "span" com a classe "ng-star-inserted" dentro do resultado
-				// @ts-expect-error
 				const gameName = await resultado.$eval(
 					"span.ng-star-inserted",
 					(element) => element.textContent || "",
@@ -196,7 +195,6 @@ export const searchGamivo = async (
 	}
 
 	const pages = await browser.pages();
-	// @ts-expect-error
 	if (pages) await Promise.all(pages.map((page) => page.close()));
 
 	const childProcess = browser.process();
