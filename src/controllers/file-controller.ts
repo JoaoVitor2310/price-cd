@@ -1,10 +1,11 @@
 import fs from "node:fs";
 import type { Response } from "express";
-import { worthyByPopularity } from "../helpers/worthyByPopularity.js";
-import { searchGamivo } from "../services/searchGamivo.js";
+
 // import searchG2A from "../service/searchG2A";
-import { searchSteamDb } from "../services/searchSteamDb.js";
-import type { MulterRequest } from "../types/MulterRequest";
+import { searchSteamDb } from "../services/search-steam-db.js";
+import type { MulterRequest } from "../types/MulterRequest.js";
+import { worthyByPopularity } from "../helpers/worthy-by-popularity.js";
+import { searchGamivo } from "../services/search-gamivo.js";
 
 const timeOpts: Intl.DateTimeFormatOptions = {
 	timeZone: "America/Sao_Paulo",

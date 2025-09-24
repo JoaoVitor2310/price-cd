@@ -1,6 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
-import { uploadFile } from "../controllers/fileController.js";
+import { uploadFile } from "../controllers/file.js";
 
 const upload = multer({ dest: "../uploads/" }); // Configura o middleware do multer
 const router = Router();

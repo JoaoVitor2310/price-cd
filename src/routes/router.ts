@@ -1,6 +1,6 @@
 // src/routes/index.ts
 import { Router } from "express";
-import uploadFile from "./uploadFile.js";
+import uploadFile from "./upload-file.js";
 
 const router = Router();
 

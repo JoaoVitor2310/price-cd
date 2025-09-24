@@ -4,9 +4,9 @@ dotenv.config();
 
 import axios, { type AxiosResponse } from "axios";
 import * as cheerio from "cheerio";
-import { clearDLC } from "../helpers/clearDLC.js";
-import { clearEdition } from "../helpers/clearEdition.js";
-import { clearString } from "../helpers/clearString.js";
+import { clearDLC } from "../helpers/clear-dlc.js";
+import { clearEdition } from "../helpers/clear-edition.js";
+import { clearString } from "../helpers/clear-string.js";
 import type { foundGames } from "../types/foundGames.js";
 import {
 	STEAM_CHARTS_BASE_URL,

@@ -9,10 +9,10 @@ dotenv.config();
 const apiGamivoUrl = process.env.apiGamivoUrl;
 const timeOut = Number(process.env.timeOut) || 3000;
 
-import { clearDLC } from "../helpers/clearDLC.js";
-import { clearEdition } from "../helpers/clearEdition.js";
-import { clearString } from "../helpers/clearString.js";
-import { hasEdition } from "../helpers/hasEdition.js";
+import { clearDLC } from "../helpers/clear-dlc.js";
+import { clearEdition } from "../helpers/clear-edition.js";
+import { clearString } from "../helpers/clear-string.js";
+import { hasEdition } from "../helpers/has-edition.js";
 import type { foundGames } from "../types/foundGames.js";
 import { GAMIVO_SEARCH_URL } from "../helpers/constants.js";
 
