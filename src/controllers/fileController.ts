@@ -6,6 +6,11 @@ import { searchGamivo } from "../services/searchGamivo.js";
 import { searchSteamDb } from "../services/searchSteamDb.js";
 import type { MulterRequest } from "../types/MulterRequest";
 
+const timeOpts: Intl.DateTimeFormatOptions = {
+	timeZone: "America/Sao_Paulo",
+	hour12: false,
+};
+
 export const uploadFile = async (req: MulterRequest, res: Response) => {
 	if (!req.file) {
 		return res.status(400).send("Nenhum arquivo enviado.");
@@ -13,18 +18,13 @@ export const uploadFile = async (req: MulterRequest, res: Response) => {
 
 	// return res.status(400).json(req.file);
 
-	const horaAtual = new Date();
-	const options = { timeZone: "America/Sao_Paulo", hour12: false };
-	const hora1 = horaAtual.toLocaleTimeString("pt-BR", options);
+	const startDate = new Date();
+	const startTime = startDate.toLocaleTimeString("pt-BR", timeOpts);
 
-	// const hora1 = new Date().toLocaleTimeString();
+	const gamesToSearch = [];
+	let responseFile: string = "";
+	let fullLine: string = "";
 
-	let gamesToSearch = [],
-		responseFile: string = "",
-		fullLine: string = "",
-		_priceGamivo,
-		_priceG2A,
-		_priceKinguin;
 	const filePath = req.file.path;
 	const fileContent = fs.readFileSync(filePath, "utf8");
 
@@ -35,42 +35,22 @@ export const uploadFile = async (req: MulterRequest, res: Response) => {
 
 	// Iterar sobre as linhas e armazenar o conteúdo no array gamesToSearch
 	for (const line of lines) {
-		// Remover espaços em branco no início e no final de cada linha
 		const trimmedLine: string = line.trim();
 
-		// Verificar se a linha não está vazia
 		if (trimmedLine !== "") {
 			gamesToSearch.push(trimmedLine);
 		}
 	}
 
 	let foundGames = await searchSteamDb(gamesToSearch);
-	// return res.status(200).json(foundGames);
-	// let foundGames: foundGames[] = [
-	//     {
-	//         "id": 0,
-	//         "name": "HERETIC'S FORK",
-	//         "popularity": 164
-	//     },
-	//     {
-	//         "id": 0,
-	//         "name": "Devil May Cry 4 Special Edition",
-	//         "popularity": 164
-	//     },
-	//     {
-	//         "id": 1,
-	//         "name": "Kingdom Come: Deliverance Special Edition",
-	//         "popularity": 20169
-	//     },
-	// ];
 
 	foundGames = worthyByPopularity(foundGames, minPopularity);
+
 	foundGames = await searchGamivo(foundGames);
 
 	for (const game of foundGames) {
 		fullLine = `G2A\t${game.GamivoPrice}\tKinguin\t\t\t\t${game.popularity}\t${game.name}\n`;
 		responseFile += fullLine;
-		console.log(fullLine);
 	}
 
 	fs.writeFileSync(filePath, responseFile);
@@ -78,13 +58,19 @@ export const uploadFile = async (req: MulterRequest, res: Response) => {
 	res.download(filePath, "resultado-price-researcher.txt", (err) => {
 		// Verifica se houve algum erro durante o download
 
-		const newHoraAtual = new Date();
-		const options = { timeZone: "America/Sao_Paulo", hour12: false };
-		const hora2 = newHoraAtual.toLocaleTimeString("pt-BR", options);
+		const endDate = new Date();
+		const endTime = endDate.toLocaleTimeString("pt-BR", timeOpts);
+		const duration = endDate.getTime() - startDate.getTime();
 
-		console.log(`Horário de início: ${hora1}, horário de término: ${hora2}`);
+		console.log("⏰ [TIMING] Process completed:", {
+			startTime,
+			endTime,
+			duration: `${duration}ms`,
+			durationSeconds: `${(duration / 1000).toFixed(2)}s`,
+		});
+
 		if (err) {
-			console.error("Erro ao fazer o download do arquivo:", err);
+			console.error("❌ [DOWNLOAD_ERROR] Error during file download:", err);
 			fs.unlinkSync(filePath);
 		} else {
 			// Se o download for bem-sucedido, exclui o arquivo
