@@ -4,15 +4,13 @@ import puppeteer from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import { connect } from "puppeteer-real-browser";
 
-dotenv.config(); // Carregar variáveis de ambiente
+dotenv.config();
 
-// Capturar variáveis de ambiente após o dotenv.config
 const apiGamivoUrl = process.env.apiGamivoUrl;
 const timeOut = Number(process.env.timeOut) || 3000;
 
 import { clearDLC } from "../helpers/clearDLC.js";
 import { clearEdition } from "../helpers/clearEdition.js";
-// Importações locais
 import { clearString } from "../helpers/clearString.js";
 import { hasEdition } from "../helpers/hasEdition.js";
 import type { foundGames } from "../types/foundGames.js";
@@ -24,7 +22,6 @@ export const searchGamivo = async (
 	gamesToSearch: foundGames[],
 ): Promise<foundGames[]> => {
 	let productSlug = "";
-	// let browser: any;
 	const foundGames: foundGames[] = [];
 
 	let response: AxiosResponse;
@@ -85,11 +82,8 @@ export const searchGamivo = async (
 			gameStringClean = clearString(gameStringClean);
 			gameStringClean = clearDLC(gameStringClean);
 			gameStringClean = gameStringClean.toLowerCase().trim();
-			// console.log('gameStringClean: ' + gameStringClean);
 
-			// Itera sobre cada resultado
 			for (const resultado of resultados) {
-				// Obtém o texto do elemento "span" com a classe "ng-star-inserted" dentro do resultado
 				const gameName = await resultado.$eval(
 					"span.ng-star-inserted",
 					(element) => element.textContent || "",
@@ -177,7 +171,6 @@ export const searchGamivo = async (
 			}
 		} catch (_error) {
 			console.log("não achou");
-			// console.log(error)
 		} finally {
 			// if (browser) {
 			//     const pages = await browser.pages();
@@ -204,8 +197,7 @@ export const searchGamivo = async (
 
 	await browser.close();
 
-	// @ts-expect-error
-	if (browser?.process()) browser.process().kill("SIGINT");
+	if (browser?.process()) browser.process()?.kill("SIGINT");
 
 	return foundGames;
 };
