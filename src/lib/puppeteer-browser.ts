@@ -19,6 +19,8 @@ export const initializeBrowser = async () => {
 		height: 240,
 	});
 
+	page.setDefaultTimeout(Number(process.env.timeOut) || 3000);
+
 	return { browser, page };
 };
 
