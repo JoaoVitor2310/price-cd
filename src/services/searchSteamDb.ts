@@ -1,10 +1,9 @@
-import dotenv from "dotenv"; // Usar require para dotenv
+import dotenv from "dotenv";
 
-dotenv.config(); // Carregar variáveis de ambiente
+dotenv.config();
 
 import axios, { type AxiosResponse } from "axios";
 import * as cheerio from "cheerio";
-// Importações locais usando import
 import { clearDLC } from "../helpers/clearDLC.js";
 import { clearEdition } from "../helpers/clearEdition.js";
 import { clearString } from "../helpers/clearString.js";
@@ -25,31 +24,27 @@ export const searchSteamDb = async (
 		let gameStringClean: string = gameString;
 		gameStringClean = clearEdition(gameStringClean);
 		const params = new URLSearchParams({ q: gameStringClean });
-		// console.log(`https://steamcharts.com/search/?${params.toString()}`);
 
 		try {
 			response = await axios.get(
 				`${STEAM_CHARTS_SEARCH_URL}?${params.toString()}`,
 			);
 		} catch (_error) {
-			// console.error('Erro ao buscar no SteamDb:', error);
 			continue;
 		}
 
 		if (!response || !response.data) continue;
 
-		// let gameStringClean: string = clearRomamNumber(gameString);
 		gameStringClean = clearDLC(gameStringClean);
 		gameStringClean = clearString(gameStringClean);
 		gameStringClean = gameStringClean.toLowerCase().trim();
-		// console.log('gameStringClean: ' + gameStringClean);
 
 		const $search = cheerio.load(response.data);
 		const links: { href: string; text: string }[] = [];
 
 		$search("a").each((_, element) => {
-			const href = $search(element).attr("href"); // Obtém o atributo href de cada <a>
-			const text = $search(element).text().trim(); // Obtém o texto dentro da tag <a> e remove espaços em branco
+			const href = $search(element).attr("href");
+			const text = $search(element).text().trim();
 			if (href && text) {
 				links.push({ href, text });
 			}
@@ -63,7 +58,6 @@ export const searchSteamDb = async (
 			gameName = clearEdition(gameName).trim().toLowerCase();
 			gameName = gameName.trim().toLowerCase();
 
-			// console.log('gameName: ' + gameName);
 			if (gameName === gameStringClean) {
 				id = link.href;
 				break; // Finaliza o loop pois encontrou o elemento
@@ -75,7 +69,6 @@ export const searchSteamDb = async (
 		try {
 			response = await axios.get(`${STEAM_CHARTS_BASE_URL}${id}`);
 		} catch (_error) {
-			// console.error('Erro ao buscar no SteamDb (segunda requisição):', error);
 			continue;
 		}
 
@@ -85,9 +78,9 @@ export const searchSteamDb = async (
 		const spans: string[] = [];
 
 		$details("span.num").each((_, element) => {
-			const numText = $details(element).text().trim(); // Pega o texto do span e remove espaços extras
+			const numText = $details(element).text().trim();
 			if (numText) {
-				spans.push(numText); // Adiciona o texto ao array
+				spans.push(numText);
 			}
 		});
 
