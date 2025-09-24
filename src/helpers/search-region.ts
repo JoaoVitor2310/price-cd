@@ -1,4 +1,7 @@
-const searchRegion = (stringToSearch) => {
+const dlcRegex = /\bdlc\b/gi;
+const expansionRegex = /\bexpansion\b/gi;
+
+const searchRegion = (stringToSearch: string) => {
 	// Pesquisar por região
 
 	// Remover todas as ocorrências de "dlc" ou "DLC"
