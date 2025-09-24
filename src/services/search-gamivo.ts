@@ -6,16 +6,12 @@ import { hasEdition } from "@/helpers/has-edition";
 import type { foundGames } from "@/types/foundGames";
 import axios, { type AxiosResponse } from "axios";
 import dotenv from "dotenv";
-import puppeteer from "puppeteer-extra";
-import StealthPlugin from "puppeteer-extra-plugin-stealth";
-import { connect } from "puppeteer-real-browser";
+import { initializeBrowser, cleanupBrowser } from "@/lib/puppeteer-browser";
 
 dotenv.config();
 
 const apiGamivoUrl = process.env.apiGamivoUrl;
 const timeOut = Number(process.env.timeOut) || 3000;
-
-puppeteer.use(StealthPlugin());
 
 export const searchGamivo = async (
 	gamesToSearch: foundGames[],
@@ -25,25 +21,7 @@ export const searchGamivo = async (
 
 	let response: AxiosResponse;
 
-	const { browser, page } = await connect({
-		headless: false,
-
-		args: [],
-
-		customConfig: {},
-
-		turnstile: true,
-
-		connectOption: {},
-
-		disableXvfb: false,
-		ignoreAllFlags: false,
-	});
-
-	await page.setViewport({
-		width: 426,
-		height: 240,
-	});
+	const { browser, page } = await initializeBrowser();
 
 	for (const [index, game] of gamesToSearch.entries()) {
 		console.log(`Índice: ${index}, Jogo:`, game.name);
@@ -186,17 +164,7 @@ export const searchGamivo = async (
 		}
 	}
 
-	const pages = await browser.pages();
-	if (pages) await Promise.all(pages.map((page) => page.close()));
-
-	const childProcess = browser.process();
-	if (childProcess) {
-		childProcess.kill();
-	}
-
-	await browser.close();
-
-	if (browser?.process()) browser.process()?.kill("SIGINT");
+	await cleanupBrowser(browser);
 
 	return foundGames;
 };
