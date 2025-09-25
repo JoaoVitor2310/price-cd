@@ -1,7 +1,3 @@
-import dotenv from "dotenv";
-
-dotenv.config();
-
 import axios, { type AxiosResponse } from "axios";
 import * as cheerio from "cheerio";
 import { clearDLC } from "@/helpers/clear-dlc";

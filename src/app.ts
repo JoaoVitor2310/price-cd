@@ -2,6 +2,9 @@ import path from "node:path";
 import express from "express";
 import router from "@/routes/router";
 
+import dotenv from "dotenv";
+dotenv.config();
+
 const app = express();
 
 const publicDir = path.join(process.cwd(), "public");

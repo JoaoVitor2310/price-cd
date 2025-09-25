@@ -1,5 +1,4 @@
 import axios, { type AxiosResponse } from "axios";
-import dotenv from "dotenv";
 import { clearDLC } from "@/helpers/clear-dlc";
 import { clearEdition } from "@/helpers/clear-edition";
 import { clearString } from "@/helpers/clear-string";
@@ -7,8 +6,6 @@ import { GAMIVO_SEARCH_URL } from "@/helpers/constants";
 import { hasEdition } from "@/helpers/has-edition";
 import { cleanupBrowser, initializeBrowser } from "@/lib/puppeteer-browser";
 import type { FoundGames } from "@/types/foundGames";
-
-dotenv.config();
 
 const apiGamivoUrl = process.env.apiGamivoUrl;
 const timeOut = Number(process.env.timeOut) || 3000;
