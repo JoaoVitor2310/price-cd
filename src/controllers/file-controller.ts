@@ -4,6 +4,12 @@ import { worthyByPopularity } from "@/helpers/worthy-by-popularity";
 import { searchGamivo } from "@/services/search-gamivo";
 import { searchSteamCharts } from "@/services/search-steam-charts";
 import type { MulterRequest } from "@/types/MulterRequest";
+import {
+	validateFileContent,
+	validateFoundGames,
+	type FileContent,
+} from "@/schemas/game.schema";
+import { ZodError } from "zod";
 
 // import searchG2A from "../service/searchG2A";
 
@@ -22,31 +28,66 @@ export const uploadFile = async (req: MulterRequest, res: Response) => {
 	const startDate = new Date();
 	const startTime = startDate.toLocaleTimeString("pt-BR", timeOpts);
 
-	const gamesToSearch = [];
 	let responseFile: string = "";
 	let fullLine: string = "";
 
 	const filePath = req.file.path;
-	const fileContent = fs.readFileSync(filePath, "utf8");
+	let fileContent: string;
 
-	const lines = fileContent.split("\n");
-
-	const minPopularity = Number(lines[0]); // Primeira posição será a popularidade mínima
-	lines.shift(); // Retira a popularidade do array
-
-	// Iterar sobre as linhas e armazenar o conteúdo no array gamesToSearch
-	for (const line of lines) {
-		const trimmedLine: string = line.trim();
-
-		if (trimmedLine !== "") {
-			gamesToSearch.push(trimmedLine);
-		}
+	try {
+		fileContent = fs.readFileSync(filePath, "utf8");
+	} catch (error) {
+		console.error("❌ [ERROR] Failed to read input file:", error);
+		return res.status(500).send("Erro ao ler o arquivo.");
 	}
 
-	let foundGames = await searchSteamCharts(gamesToSearch);
+	let validatedContent: FileContent;
+	try {
+		validatedContent = validateFileContent(fileContent);
+	} catch (error) {
+		if (error instanceof ZodError) {
+			const errorMessage = error.issues
+				.map((issue) => issue.message)
+				.join(", ");
+			console.error("❌ [ERROR] Invalid file content:", errorMessage);
+			return res
+				.status(400)
+				.send(`Erro no conteúdo do arquivo: ${errorMessage}`);
+		}
+		if (error instanceof Error) {
+			console.error(
+				"❌ [ERROR] Failed to validate file content:",
+				error.message,
+			);
+		} else {
+			console.error("❌ [ERROR] Failed to validate file content:", error);
+		}
+		return res.status(500).send("Erro ao validar o conteúdo do arquivo.");
+	}
+
+	const { minPopularity, gameNames } = validatedContent;
+
+	let foundGames = await searchSteamCharts(gameNames);
+
+	try {
+		foundGames = validateFoundGames(foundGames);
+	} catch (error: unknown) {
+		if (error instanceof ZodError) {
+			const errorMessage = error.issues
+				.map((issue) => issue.message)
+				.join(", ");
+			console.error("❌ [ERROR] Invalid game data:", errorMessage);
+			return res.status(500).send(`Erro nos dados dos jogos: ${errorMessage}`);
+		}
+		if (error instanceof Error) {
+			console.error("❌ [ERROR] Failed to validate game data:", error.message);
+		} else {
+			console.error("❌ [ERROR] Failed to validate game data:", error);
+		}
+		return res.status(500).send("Erro inesperado ao validar dados dos jogos.");
+	}
 
 	foundGames = worthyByPopularity(foundGames, minPopularity);
-
 	foundGames = await searchGamivo(foundGames);
 
 	for (const game of foundGames) {
@@ -71,15 +112,14 @@ export const uploadFile = async (req: MulterRequest, res: Response) => {
 		});
 
 		if (err) {
-			console.error("❌ [DOWNLOAD_ERROR] Error during file download:", err);
+			console.error("❌ [ERROR] Failed to download result file:", err);
 			fs.unlinkSync(filePath);
 		} else {
-			// Se o download for bem-sucedido, exclui o arquivo
+			// Clean up temporary file after successful download
 			fs.unlinkSync(filePath);
+			console.log("✅ [INFO] File downloaded successfully");
 		}
 	});
-
-	// return res.status(200).json(responseFile);
 
 	// O for vai passar em todos os gamesToSearch
 	// for (let game of gamesToSearch) {
