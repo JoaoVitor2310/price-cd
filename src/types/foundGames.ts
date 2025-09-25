@@ -1,4 +1,4 @@
-export type foundGames = {
+export type FoundGames = {
 	id: number;
 	name: string;
 	popularity: number;

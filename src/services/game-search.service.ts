@@ -2,7 +2,7 @@ import { worthyByPopularity } from "@/helpers/worthy-by-popularity";
 import { validateFoundGames } from "@/schemas/game.schema";
 import { searchGamivo } from "@/services/search-gamivo";
 import { searchSteamCharts } from "@/services/search-steam-charts";
-import type { foundGames } from "@/types/foundGames";
+import type { FoundGames } from "@/types/foundGames";
 
 interface SearchGamesRequest {
 	minPopularity: number;
@@ -10,7 +10,7 @@ interface SearchGamesRequest {
 }
 
 interface GameAnalysisResult {
-	games: foundGames[];
+	games: FoundGames[];
 	summary: {
 		totalRequested: number;
 		foundOnSteam: number;

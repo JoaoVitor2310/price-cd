@@ -11,15 +11,15 @@ import {
 	STEAM_CHARTS_BASE_URL,
 	STEAM_CHARTS_SEARCH_URL,
 } from "@/helpers/constants";
-import type { foundGames } from "@/types/foundGames";
+import type { FoundGames } from "@/types/foundGames";
 
 export const searchSteamCharts = async (
 	gamesToSearch: string[],
-): Promise<foundGames[]> => {
+): Promise<FoundGames[]> => {
 	console.log("\n📊 [INFO] Starting SteamCharts popularity search");
 	console.log(`📋 [INFO] Processing ${gamesToSearch.length} games`);
 
-	const foundGames: foundGames[] = [];
+	const foundGames: FoundGames[] = [];
 	for (const [index, gameString] of gamesToSearch.entries()) {
 		let response: AxiosResponse | undefined;
 		console.log(

@@ -1,9 +1,9 @@
-import type { foundGames } from "@/types/foundGames";
+import type { FoundGames } from "@/types/foundGames";
 
 export const worthyByPopularity = (
-	foundGames: foundGames[],
+	foundGames: FoundGames[],
 	minPopularity: number,
-): foundGames[] => {
+): FoundGames[] => {
 	if (minPopularity === 0) return foundGames;
 	return foundGames.filter((game) => game.popularity >= minPopularity);
 };

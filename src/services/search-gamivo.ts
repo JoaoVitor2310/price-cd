@@ -6,7 +6,7 @@ import { clearString } from "@/helpers/clear-string";
 import { GAMIVO_SEARCH_URL } from "@/helpers/constants";
 import { hasEdition } from "@/helpers/has-edition";
 import { cleanupBrowser, initializeBrowser } from "@/lib/puppeteer-browser";
-import type { foundGames } from "@/types/foundGames";
+import type { FoundGames } from "@/types/foundGames";
 
 dotenv.config();
 
@@ -14,13 +14,13 @@ const apiGamivoUrl = process.env.apiGamivoUrl;
 const timeOut = Number(process.env.timeOut) || 3000;
 
 export const searchGamivo = async (
-	gamesToSearch: foundGames[],
-): Promise<foundGames[]> => {
+	gamesToSearch: FoundGames[],
+): Promise<FoundGames[]> => {
 	console.log("\n🎮 [INFO] Starting Gamivo price search");
 	console.log(`📋 [INFO] Processing ${gamesToSearch.length} games`);
 
 	let productSlug = "";
-	const foundGames: foundGames[] = [];
+	const foundGames: FoundGames[] = [];
 
 	let response: AxiosResponse;
 
