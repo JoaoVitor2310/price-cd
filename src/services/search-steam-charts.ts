@@ -35,8 +35,8 @@ export const searchSteamCharts = async (
 			response = await axios.get(
 				`${STEAM_CHARTS_SEARCH_URL}?${params.toString()}`,
 			);
-		} catch (_error) {
-			console.error("❌ [ERROR] Failed to search SteamCharts");
+		} catch (error) {
+			console.error("❌ [ERROR] Failed to search SteamCharts", error);
 			continue;
 		}
 
