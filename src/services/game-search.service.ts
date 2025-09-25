@@ -25,8 +25,7 @@ export const searchGamesService = async (
 ): Promise<GameAnalysisResult> => {
 	const startTime = performance.now();
 	const { minPopularity, gameNames } = req;
-	let foundGames = await searchSteamCharts(gameNames);
-	foundGames = validateFoundGames(foundGames);
+	const foundGames = validateFoundGames(await searchSteamCharts(gameNames));
 
 	const worthyGames = worthyByPopularity(foundGames, minPopularity);
 
