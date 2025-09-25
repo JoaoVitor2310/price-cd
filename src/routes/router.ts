@@ -1,8 +1,8 @@
-import { uploadFile } from "@/controllers/file-controller";
+import uploadFileRoute from "@/routes/upload-file";
 import { Router } from "express";
 
 const router = Router();
 
-router.use(uploadFile);
+router.use(uploadFileRoute);
 
 export default router;
