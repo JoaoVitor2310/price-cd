@@ -16,24 +16,34 @@ import type { foundGames } from "@/types/foundGames";
 export const searchSteamCharts = async (
 	gamesToSearch: string[],
 ): Promise<foundGames[]> => {
+	console.log("\n📊 [INFO] Starting SteamCharts popularity search");
+	console.log(`📋 [INFO] Processing ${gamesToSearch.length} games`);
+
 	const foundGames: foundGames[] = [];
 	for (const [index, gameString] of gamesToSearch.entries()) {
 		let response: AxiosResponse | undefined;
-		console.log(`gameString: ${gameString}`);
+		console.log(
+			`\n🔄 [INFO] Processing game ${index + 1}/${gamesToSearch.length}: ${gameString}`,
+		);
 
 		let gameStringClean: string = gameString;
 		gameStringClean = clearEdition(gameStringClean);
 		const params = new URLSearchParams({ q: gameStringClean });
 
 		try {
+			console.log("🔍 [INFO] Searching SteamCharts");
 			response = await axios.get(
 				`${STEAM_CHARTS_SEARCH_URL}?${params.toString()}`,
 			);
 		} catch (_error) {
+			console.error("❌ [ERROR] Failed to search SteamCharts");
 			continue;
 		}
 
-		if (!response || !response.data) continue;
+		if (!response || !response.data) {
+			console.error("❌ [ERROR] Invalid response from SteamCharts");
+			continue;
+		}
 
 		gameStringClean = clearDLC(gameStringClean);
 		gameStringClean = clearString(gameStringClean);
@@ -50,8 +60,9 @@ export const searchSteamCharts = async (
 			}
 		});
 
-		let id: string = "";
+		console.log(`📝 [INFO] Found ${links.length} potential matches`);
 
+		let id: string = "";
 		for (const link of links) {
 			let gameName = clearString(link.text);
 			gameName = clearDLC(gameName);
@@ -60,19 +71,28 @@ export const searchSteamCharts = async (
 
 			if (gameName === gameStringClean) {
 				id = link.href;
-				break; // Finaliza o loop pois encontrou o elemento
+				console.log("🎯 [INFO] Found matching game page");
+				break;
 			}
 		}
 
-		if (id === "") continue;
-
-		try {
-			response = await axios.get(`${STEAM_CHARTS_BASE_URL}${id}`);
-		} catch (_error) {
+		if (id === "") {
+			console.log("⏭️ [INFO] No matching game found, skipping");
 			continue;
 		}
 
-		if (!response || !response.data) continue;
+		try {
+			console.log("📥 [INFO] Fetching game details");
+			response = await axios.get(`${STEAM_CHARTS_BASE_URL}${id}`);
+		} catch (_error) {
+			console.error("❌ [ERROR] Failed to fetch game details");
+			continue;
+		}
+
+		if (!response || !response.data) {
+			console.error("❌ [ERROR] Invalid game details response");
+			continue;
+		}
 
 		const $details = cheerio.load(response.data);
 		const spans: string[] = [];
@@ -84,14 +104,23 @@ export const searchSteamCharts = async (
 			}
 		});
 
-		if (spans.length < 1) continue;
-		console.log(`popularity: ${Number.parseInt(spans[1], 10)}`);
+		if (spans.length < 1) {
+			console.log("⚠️ [INFO] No popularity data found, skipping");
+			continue;
+		}
+
+		const popularity = Number.parseInt(spans[1], 10);
+		console.log(`👥 [INFO] Found popularity: ${popularity}`);
+
 		foundGames.push({
 			id: index,
 			name: gameString,
-			popularity: Number.parseInt(spans[1], 10),
+			popularity,
 		});
 	}
 
+	console.log(
+		`✅ [INFO] Completed SteamCharts search - found popularity for ${foundGames.length}/${gamesToSearch.length} games`,
+	);
 	return foundGames;
 };

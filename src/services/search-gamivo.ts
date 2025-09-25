@@ -16,6 +16,9 @@ const timeOut = Number(process.env.timeOut) || 3000;
 export const searchGamivo = async (
 	gamesToSearch: foundGames[],
 ): Promise<foundGames[]> => {
+	console.log("\n🎮 [INFO] Starting Gamivo price search");
+	console.log(`📋 [INFO] Processing ${gamesToSearch.length} games`);
+
 	let productSlug = "";
 	const foundGames: foundGames[] = [];
 
@@ -24,28 +27,26 @@ export const searchGamivo = async (
 	const { browser, page } = await initializeBrowser();
 
 	for (const [index, game] of gamesToSearch.entries()) {
-		console.log(`Índice: ${index}, Jogo:`, game.name);
+		console.log(
+			`\n🔄 [INFO] Processing game ${index + 1}/${gamesToSearch.length}: ${game.name}`,
+		);
 		const searchString = encodeURIComponent(game.name).replace(
 			/%E2%84%A2/g,
 			"",
 		); // Remove "™"
 
 		try {
+			console.log(`🔍 [INFO] Searching Gamivo for: ${game.name}`);
 			await page.goto(`${GAMIVO_SEARCH_URL}/${searchString}`);
 
 			await page
-				.waitForSelector(".search-results__tiles", { timeout: timeOut })
-				.catch(async (_error) => {
+				.locator(".search-results__tiles")
+				.wait()
+				.catch(async (error) => {
 					console.log(
-						"A página foi redirecionada após o CAPTCHA. Tentando navegar novamente.",
+						"⚠️ [WARN] Page load timeout or selector not found",
+						error,
 					);
-
-					// Verifique a URL após o erro de seletor
-					const _currentUrl = page.url();
-
-					// await new Promise(resolve => setTimeout(resolve, 20000));
-
-					// const newPage = await context.newPage();
 					await page.goto(`${GAMIVO_SEARCH_URL}/${searchString}`);
 					await page.waitForSelector(".search-results__tiles", {
 						timeout: timeOut,
@@ -53,6 +54,7 @@ export const searchGamivo = async (
 				});
 
 			const resultados = await page.$$(".product-tile__name");
+			console.log(`📝 [INFO] Found ${resultados.length} potential matches`);
 
 			const gameString = game.name;
 			let gameStringClean = clearEdition(gameString);
@@ -70,9 +72,8 @@ export const searchGamivo = async (
 				gameNameClean = clearString(gameNameClean);
 				gameNameClean = clearDLC(gameNameClean);
 				gameNameClean = gameNameClean.toLowerCase().trim();
-				// Verifica se o texto do jogo contém a palavra "Steam"
 				if (gameNameClean.includes(gameStringClean)) {
-					// console.log(gameNameClean);
+					console.log(`🎯 [INFO] Checking match: ${gameNameClean}`);
 					const regex = new RegExp(
 						`^${gameStringClean}\\s*(?!2\\s)([a-z]{2}(?:/[a-z]{2})*)?\\sGlobal(?:\\ssteam)?$`,
 						"i",
@@ -90,11 +91,6 @@ export const searchGamivo = async (
 						regex2.test(gameNameClean) ||
 						regex3.test(gameNameClean)
 					) {
-						// Clica no resultado
-
-						// if (regex.test(gameNameClean)) {
-						// console.log("gameNameClean certo: " + gameNameClean);
-
 						const gameStringKeywords = hasEdition(gameString);
 						const gameNameKeywords = hasEdition(gameName);
 
@@ -119,22 +115,24 @@ export const searchGamivo = async (
 
 						const startIndex = href.indexOf("/product/") + "/product/".length;
 						productSlug = href.substring(startIndex);
-						console.log(productSlug);
-
-						// break; // Encerra o loop depois de clicar em um resultado
+						console.log("✨ [INFO] Found matching product:", gameNameClean);
 					}
 				}
 			}
 
-			if (productSlug === "") continue;
+			if (productSlug === "") {
+				console.log("⏭️ [INFO] No matching product found, skipping game");
+				continue;
+			}
 
 			try {
+				console.log("💰 [INFO] Fetching price from Gamivo API");
 				response = await axios.get(
 					`${apiGamivoUrl}/api/products/priceResearcher/${productSlug}`,
 				);
 				const precoGamivo: number = response.data.menorPreco;
 				const precoFormatado: string = precoGamivo.toString().replace(".", ",");
-				console.log(`precoGamivo: ${precoFormatado}`);
+				console.log(`💵 [INFO] Found price: ${precoFormatado}`);
 
 				foundGames.push({
 					id: index,
@@ -143,28 +141,18 @@ export const searchGamivo = async (
 					GamivoPrice: precoFormatado,
 				});
 			} catch (error) {
-				console.log(error);
-				console.log("API Gamivo desligada ou arquivo env faltando");
+				console.error("❌ [ERROR] Failed to fetch Gamivo price:", error);
 			}
-		} catch (_error) {
-			console.log("não achou");
-		} finally {
-			// if (browser) {
-			//     const pages = await browser.pages();
-			//     // @ts-expect-error
-			//     if (pages) await Promise.all(pages.map((page) => page.close()));
-			//     const childProcess = browser.process()
-			//     if (childProcess) {
-			//         childProcess.kill()
-			//     }
-			//     await browser.close();
-			//     // @ts-expect-error
-			//     if (browser && browser.process()) browser.process().kill('SIGINT');
-			// }
+		} catch (error) {
+			console.error("❌ [ERROR] Failed to process game search", error);
 		}
 	}
 
+	console.log("\n🧹 [INFO] Cleaning up browser resources");
 	await cleanupBrowser(browser);
 
+	console.log(
+		`✅ [INFO] Completed Gamivo search - found prices for ${foundGames.length}/${gamesToSearch.length} games`,
+	);
 	return foundGames;
 };
