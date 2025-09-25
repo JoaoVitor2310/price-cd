@@ -27,11 +27,10 @@ export const searchGames = async (req: Request, res: Response) => {
 			});
 		}
 
-		res.status(500).json({
+		return res.status(500).json({
 			success: false,
 			error: "Internal server error",
 			message: "Failed to analyze games",
 		});
 	}
-	return res.status(200).json({ message: "Games searched" });
 };
