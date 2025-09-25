@@ -2,7 +2,7 @@ export const clearEdition = (stringToSearch: string): string => {
 	const edition = /\bedition\b/gi; // Detectar "edition" como palavra separada
 	const definitiveEditionRegex = /\bdefinitive\b/gi;
 	const standardEditionRegex = /\bstandard\b/gi;
-	const gameOfTheTear = /\bgame of the year\b/gi;
+	const gameOfTheYear = /\bgame of the year\b/gi;
 	const goty = /\bgoty\b/gi;
 	const gotyPoint = /\bg.o.t.y\b/gi;
 	const deluxe = /\bdeluxe\b/gi;
@@ -19,7 +19,7 @@ export const clearEdition = (stringToSearch: string): string => {
 		.replace(edition, "")
 		.replace(definitiveEditionRegex, "")
 		.replace(standardEditionRegex, "")
-		.replace(gameOfTheTear, "")
+		.replace(gameOfTheYear, "")
 		.replace(goty, "")
 		.replace(gotyPoint, "")
 		.replace(deluxe, "")
