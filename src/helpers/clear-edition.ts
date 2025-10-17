@@ -10,6 +10,7 @@ export const clearEdition = (stringToSearch: string): string => {
 	const bundle = /\bbundle\b/gi;
 	const special = /\bspecial\b/gi;
 	const complete = /\bcomplete\b/gi;
+	const dayOne = /\bday\s?one\b/gi;
 
 	const rowRegex = /\brow\b/gi; // Detectar "ROW" como palavra separada
 	const euRegex = /\beu\b/gi; // Detectar "EU" como palavra separada
@@ -27,6 +28,7 @@ export const clearEdition = (stringToSearch: string): string => {
 		.replace(bundle, "")
 		.replace(special, "")
 		.replace(complete, "")
+		.replace(dayOne, "")
 		.replace(rowRegex, "") // Remove "ROW"
 		.replace(euRegex, ""); // Remove "EU"
 

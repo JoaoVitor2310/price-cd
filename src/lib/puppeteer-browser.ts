@@ -15,8 +15,8 @@ export const initializeBrowser = async () => {
 	});
 
 	await page.setViewport({
-		width: 426,
-		height: 240,
+		width: 1920,
+		height: 1080,
 	});
 
 	page.setDefaultTimeout(Number(process.env.timeOut) || 3000);

@@ -1,6 +1,6 @@
-import uploadFileRoute from "@/routes/upload-file";
-import searchGamesRoute from "@/routes/games/search.route";
 import { Router } from "express";
+import searchGamesRoute from "@/routes/games/search.route";
+import uploadFileRoute from "@/routes/upload-file";
 
 const router = Router();
 

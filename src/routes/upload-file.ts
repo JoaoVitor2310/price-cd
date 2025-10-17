@@ -1,7 +1,7 @@
+import path from "node:path";
 import { Router } from "express";
 import multer from "multer";
 import { uploadFile } from "@/controllers/file-controller";
-import path from "node:path";
 
 const upload = multer({
 	dest: path.resolve(process.cwd(), "uploads"),
@@ -16,7 +16,9 @@ const upload = multer({
 		cb(null, true);
 	},
 });
+
 const router = Router();
+
 router.post("/upload", upload.single("fileToUpload"), uploadFile);
 
 export default router;

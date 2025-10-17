@@ -60,7 +60,3 @@ export function RomantoInt(romanStr: string): number {
 	return num;
 }
 
-// Testar a função
-// const testString = "Sid Meier's Civilization IV: Beyond the Sword";
-// const result = clearString(testString);
-// console.log(result); // Deve retornar: "street fighter 6"
