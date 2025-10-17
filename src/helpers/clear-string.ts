@@ -59,4 +59,3 @@ export function RomantoInt(romanStr: string): number {
 
 	return num;
 }
-

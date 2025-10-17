@@ -16,8 +16,9 @@ const timeOut = Number(process.env.timeOut) || 3000;
 export const searchGamivo = async (
 	gamesToSearch: FoundGames[],
 ): Promise<FoundGames[]> => {
-	console.log("\n🎮 [INFO] Starting Gamivo price search");
-	console.log(`📋 [INFO] Processing ${gamesToSearch.length} games`);
+	console.log(
+		`📋 [INFO] Processing ${gamesToSearch.length} Gamivo price search games`,
+	);
 
 	let productSlug = "";
 	const foundGames: FoundGames[] = [];
@@ -27,13 +28,10 @@ export const searchGamivo = async (
 	const { browser, page } = await initializeBrowser();
 
 	for (const [index, game] of gamesToSearch.entries()) {
-		console.log(
-			`\n🔄 [INFO] Processing game ${index + 1}/${gamesToSearch.length}: ${game.name}`,
-		);
 		const searchString = encodeURIComponent(game.name).replace(
 			/%E2%84%A2/g,
 			"",
-		); // Remove "™"
+		); // Remove "™", encodeURIComponent não remove esse
 
 		try {
 			console.log(`🔍 [INFO] Searching Gamivo for: ${game.name}`);
@@ -54,7 +52,6 @@ export const searchGamivo = async (
 				});
 
 			const resultados = await page.$$(".product-tile__name");
-			console.log(`📝 [INFO] Found ${resultados.length} potential matches`);
 
 			const gameString = game.name;
 			let gameStringClean = clearEdition(gameString);
@@ -73,7 +70,6 @@ export const searchGamivo = async (
 				gameNameClean = clearDLC(gameNameClean);
 				gameNameClean = gameNameClean.toLowerCase().trim();
 				if (gameNameClean.includes(gameStringClean)) {
-					console.log(`🎯 [INFO] Checking match: ${gameNameClean}`);
 					const regex = new RegExp(
 						`^${gameStringClean}\\s*(?!2\\s)([a-z]{2}(?:/[a-z]{2})*)?\\sGlobal(?:\\ssteam)?$`,
 						"i",
@@ -126,13 +122,11 @@ export const searchGamivo = async (
 			}
 
 			try {
-				console.log("💰 [INFO] Fetching price from Gamivo API");
 				response = await axios.get(
 					`${apiGamivoUrl}/api/products/priceResearcher/${productSlug}`,
 				);
 				const precoGamivo: number = response.data.menorPreco;
 				const precoFormatado: string = precoGamivo.toString().replace(".", ",");
-				console.log(`💵 [INFO] Found price: ${precoFormatado}`);
 
 				foundGames.push({
 					id: index,
@@ -143,9 +137,50 @@ export const searchGamivo = async (
 			} catch (error) {
 				console.error("❌ [ERROR] Failed to fetch Gamivo price:", error);
 			}
-		} catch (error) {
-			console.error("❌ [ERROR] Failed to process game search", error);
+		} catch (_error) {
+			console.error("❌ [ERROR] Erro ao processar busca do jogo");
+
+			try {
+				// Usar Puppeteer para verificar o status real da resposta
+				const checkResponse = await page.goto(
+					`${GAMIVO_SEARCH_URL}/${searchString}`,
+					{
+						waitUntil: "domcontentloaded",
+					},
+				);
+
+				if (checkResponse) {
+					const status = checkResponse.status();
+					const headers = checkResponse.headers();
+
+					console.log("📊 [INFO] Status da resposta:", status);
+					console.log("📋 [INFO] Headers:", headers);
+
+					if (status === 429) {
+						const retryAfter = headers["retry-after"];
+						console.error(
+							`⏱️ [RATE LIMIT] Cloudflare rate limit detectado! Retry-after: ${retryAfter} segundos`,
+						);
+						// await new Promise(resolve => setTimeout(resolve, Number(retryAfter) * 1000));
+					} else if (status === 403) {
+						console.error(
+							"🚫 [BLOCKED] IP bloqueado pelo Cloudflare (403 Forbidden)",
+						);
+					} else {
+						console.error(`⚠️ [ERROR] Erro inesperado com status: ${status}`);
+					}
+				}
+			} catch (checkError) {
+				console.error(
+					"❌ [ERROR] Falha ao verificar status do rate limit:",
+					checkError,
+				);
+			}
 		}
+
+		setTimeout(() => {
+			console.log("Esperando 10 segundos");
+		}, 1000);
 	}
 
 	console.log("\n🧹 [INFO] Cleaning up browser resources");
