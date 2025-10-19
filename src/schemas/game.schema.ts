@@ -1,5 +1,20 @@
 import * as z from "zod";
 
+export const fileUploadSchema = z.object({
+	file: z.object({
+		path: z.string().min(1, "Caminho do arquivo é obrigatório"),
+		filename: z.string().min(1, "Nome do arquivo é obrigatório"),
+		mimetype: z.string().min(1, "Tipo do arquivo é obrigatório"),
+		size: z.number().min(1, "Arquivo não pode estar vazio"),
+	}).refine((file) => {
+		// Validação adicional para tipos de arquivo permitidos
+		const allowedTypes = ['text/plain'];
+		return allowedTypes.includes(file.mimetype);
+	}, {
+		message: "Tipo de arquivo não suportado. Use .txt"
+	})
+});
+
 export const gameSchema = z.strictObject({
 	id: z.number(),
 	name: z.string().min(1, { message: "Nome do jogo é obrigatório" }),
@@ -23,12 +38,23 @@ export const fileContentSchema = z.strictObject({
 		.min(1, { message: "Pelo menos um nome de jogo é necessário" }),
 });
 
+export type FileUpload = z.infer<typeof fileUploadSchema>;
 export type Game = z.infer<typeof gameSchema>;
 export type FileContent = z.infer<typeof fileContentSchema>;
 
+export const validateFileUpload = (req: { file?: Express.Multer.File }): FileUpload => {
+	if (!req.file) {
+		throw new Error("Nenhum arquivo foi enviado")
+	}
+
+	const result = fileUploadSchema.parse({ file: req.file });
+
+	return result;
+}
+
 const fileLineSchema = z.string().transform((val) => val.trim());
 
-export function validateFileContent(content: string): FileContent {
+export const validateFileContent = (content: string): FileContent => {
 	const lines = content.split("\n");
 
 	if (lines.length < 2) {
@@ -54,7 +80,7 @@ export function validateFileContent(content: string): FileContent {
 	});
 }
 
-export function validateFoundGames(games: unknown): Game[] {
+export const validateFoundGames = (games: unknown): Game[] => {
 	return z
 		.array(gameSchema)
 		.min(1, { message: "Nenhum jogo encontrado" })

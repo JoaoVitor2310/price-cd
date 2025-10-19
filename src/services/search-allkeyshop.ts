@@ -1,0 +1,219 @@
+// biome-ignore assist/source/organizeImports: <explanation>
+import axios, { type AxiosResponse } from "axios";
+import * as cheerio from "cheerio";
+import dotenv from "dotenv";
+import { clearString, clearEdition, hasEdition, getRegion } from "@/helpers/clear-string";
+import { ALLKEYSHOP_SEARCH_FILTERS, ALLKEYSHOP_SEARCH_URL } from "@/helpers/constants";
+import { cleanupBrowser, initializeBrowser } from "@/lib/puppeteer-browser";
+import type { FoundGames, GameData, Price } from "@/types/games";
+import { delay } from "@/helpers/utils";
+
+dotenv.config();
+
+const scrapSearchResults = (html: string): { link: string; name: string; price: string }[] => {
+    const $ = cheerio.load(html);
+
+    const links = $('a.absolute').map((_, el) => $(el).attr('href') || '').get();
+    const names = $('p.text-md.text-white').map((_, el) => $(el).text().trim()).get();
+    const prices = $('a.price-skew span').map((_, el) => $(el).text().trim()).get();
+
+    // Garante que todos os arrays tenham o mesmo tamanho
+    const length = Math.min(links.length, names.length, prices.length);
+
+    const searchResults: { link: string; name: string; price: string }[] = [];
+    for (let i = 0; i < length; i++) {
+        searchResults.push({
+            link: links[i],
+            name: names[i],
+            price: prices[i].toString().replace("€", "").replace(".", ","),
+        });
+    }
+
+    return searchResults;
+}
+
+const scrapGamePage = (html: string): GameData | null => {
+    const $ = cheerio.load(html);
+
+    // Pega o conteúdo do script que contém "gamePageTrans"
+    const scriptContent = $('script#aks-offers-js-extra').html();
+
+    if (!scriptContent) return null;
+
+    // Expressão regular para capturar o JSON dentro de var gamePageTrans = {...};
+    const match = scriptContent.match(/var\s+gamePageTrans\s*=\s*(\{[\s\S]*?\});/);
+
+    if (!match) return null;
+
+    try {
+        const jsonString = match[1];
+        const json = JSON.parse(jsonString);
+        return json;
+    } catch (err) {
+        console.error('Erro ao fazer parse do JSON:', err);
+        return null;
+    }
+}
+
+const detectOfferTooLow = (regionPrices: Price[]) => {
+    if (regionPrices.length === 0) return null;
+
+    let bestOffer: Price | null = null;
+    let secondBestOffer: Price | null = null;
+
+    for (const offer of regionPrices) {
+        if (!bestOffer || offer.originalPrice < bestOffer.originalPrice) {
+            secondBestOffer = bestOffer;
+            bestOffer = offer;
+        } else if (!secondBestOffer || offer.originalPrice < secondBestOffer.originalPrice) {
+            secondBestOffer = offer;
+        }
+    }
+
+    if (!bestOffer) return null;
+
+    const bestOfferPrice = bestOffer.originalPrice;
+
+    if (!secondBestOffer) return bestOfferPrice;
+
+
+    const secondBestOfferPrice = secondBestOffer.originalPrice;
+    const difference = secondBestOfferPrice - bestOfferPrice;
+
+    const percentualDifference =
+        secondBestOfferPrice > 1
+            ? 0.1 * secondBestOfferPrice
+            : 0.05 * secondBestOfferPrice;
+
+
+    if (difference >= percentualDifference) {
+        return secondBestOfferPrice;
+    }
+
+    return bestOfferPrice;
+
+}
+
+const bestOfferPrice = (data: GameData, region: string): string | null => {
+    const { prices, regions } = data;
+
+    const filterNameDictionary: Record<string, string> = {
+        global: "STEAM GLOBAL",
+        eu: "STEAM EU",
+        row: "STEAM ROW",
+    };
+
+    const filterName = filterNameDictionary[region];
+
+    const regionKey = Object.keys(regions).find(
+        key => regions[key].filter_name.toUpperCase() === filterName.toUpperCase()
+    );
+
+    if (!regionKey) {
+        console.log(`❌ [ERROR] Region not found.`);
+        return null;
+    }
+
+    const regionPrices = prices.filter(p => String(p.region) === regionKey);
+
+    if (regionPrices.length === 0) {
+        console.log(`❌ [ERROR] No prices found for the region.`);
+        return null;
+    }
+
+    const bestOffer = detectOfferTooLow(regionPrices);
+    if (bestOffer == null) return null;
+
+    return bestOffer.toString().replace(".", ",");
+}
+
+export const searchAllKeyShop = async (
+    gamesToSearch: FoundGames[],
+): Promise<FoundGames[]> => {
+    console.log(
+        `📋 [INFO] Processing ${gamesToSearch.length} AllKeyShop price search games`,
+    );
+
+    const foundGames: FoundGames[] = [];
+
+    const { browser, page } = await initializeBrowser();
+
+    for (const [index, game] of gamesToSearch.entries()) {
+        console.log(`🔍 [INFO] Searching AllKeyShop for: ${game.name}`);
+        const searchString = new URLSearchParams({ search_name: game.name });
+
+        await page.goto(`${ALLKEYSHOP_SEARCH_URL}${searchString}${ALLKEYSHOP_SEARCH_FILTERS}`);
+
+        const htmlSearchPage = await page.content();
+
+        const searchResults = scrapSearchResults(htmlSearchPage);
+
+        const gameString = game.name;
+
+        let gamePage: string = "";
+
+        let gameStringClean = clearEdition(gameString);
+        gameStringClean = clearString(gameStringClean);
+        gameStringClean = gameStringClean.toLowerCase().trim();
+        
+        for (const searchResult of searchResults) {
+            let searchResultClean = clearEdition(searchResult.name);
+            searchResultClean = clearString(searchResultClean);
+            searchResultClean = searchResultClean.toLowerCase().trim();
+
+
+            const gameStringKeywords = hasEdition(gameString);
+            const searchResultKeywords = hasEdition(searchResult.name);
+
+            // Se um dos conjuntos tiver palavras-'edition' que o outro não tem, faz "continue"
+            if (
+                ![...gameStringKeywords].every((keyword) =>
+                    searchResultKeywords.has(keyword),
+                ) ||
+                ![...searchResultKeywords].every((keyword) =>
+                    gameStringKeywords.has(keyword),
+                )
+            ) {
+                continue;
+            }
+
+            if (searchResultClean === gameStringClean) {
+
+                gamePage = searchResult.link;
+                break;
+            }
+        }
+
+        if (gamePage === "") continue;
+
+        const responseGamePage = await axios.get(gamePage);
+        if (responseGamePage.status !== 200) {
+            continue;
+        }
+
+        const gamePageData = scrapGamePage(responseGamePage.data);
+        if (!gamePageData) continue;
+
+        const region = getRegion(game.name);
+
+        const price = bestOfferPrice(gamePageData, region);
+        if (!price) continue;
+
+        foundGames.push({
+            id: index,
+            name: game.name,
+            popularity: game.popularity,
+            GamivoPrice: price,
+        });
+
+        console.log(`🔍 [INFO] Price found: ${price}`);
+    }
+
+    console.log("\n🧹 [INFO] Cleaning up browser resources");
+    await cleanupBrowser(browser);
+
+    console.log(
+        `✅ [INFO] Completed AllKeyShop search - found prices for ${foundGames.length}/${gamesToSearch.length} games`,
+    );
+    return foundGames;
+};

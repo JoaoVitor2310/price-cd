@@ -1,17 +1,14 @@
 import axios, { type AxiosResponse } from "axios";
 import dotenv from "dotenv";
-import { clearDLC } from "@/helpers/clear-dlc";
-import { clearEdition } from "@/helpers/clear-edition";
-import { clearString } from "@/helpers/clear-string";
+import { clearDLC, clearEdition, clearString, hasEdition } from "@/helpers/clear-string";
 import { GAMIVO_SEARCH_URL } from "@/helpers/constants";
-import { hasEdition } from "@/helpers/has-edition";
 import { cleanupBrowser, initializeBrowser } from "@/lib/puppeteer-browser";
-import type { FoundGames } from "@/types/foundGames";
+import type { FoundGames } from "@/types/games";
 
 dotenv.config();
 
 const apiGamivoUrl = process.env.apiGamivoUrl;
-const timeOut = Number(process.env.timeOut) || 3000;
+const TIMEOUT = Number(process.env.TIMEOUT) || 3000;
 
 export const searchGamivo = async (
 	gamesToSearch: FoundGames[],
@@ -47,7 +44,7 @@ export const searchGamivo = async (
 					);
 					await page.goto(`${GAMIVO_SEARCH_URL}/${searchString}`);
 					await page.waitForSelector(".search-results__tiles", {
-						timeout: timeOut,
+						timeout: TIMEOUT,
 					});
 				});
 

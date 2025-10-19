@@ -1,13 +1,11 @@
 import axios, { type AxiosResponse } from "axios";
 import * as cheerio from "cheerio";
-import { clearDLC } from "@/helpers/clear-dlc";
-import { clearEdition } from "@/helpers/clear-edition";
-import { clearString } from "@/helpers/clear-string";
+import { clearDLC, clearEdition, clearString } from "@/helpers/clear-string";
 import {
 	STEAM_CHARTS_BASE_URL,
 	STEAM_CHARTS_SEARCH_URL,
 } from "@/helpers/constants";
-import type { FoundGames } from "@/types/foundGames";
+import type { FoundGames } from "@/types/games";
 
 /**
  * Processes a single game to find its popularity data on SteamCharts
@@ -21,7 +19,7 @@ const processGame = async (
 ): Promise<FoundGames | null> => {
 	try {
 		console.log(
-			`\n🔄 [INFO] Processing game ${originalIndex + 1}: ${gameString}`,
+			`🔄 [INFO] Processing game ${originalIndex + 1}: ${gameString}`,
 		);
 
 		let gameStringClean: string = gameString;
@@ -30,15 +28,12 @@ const processGame = async (
 
 		let response: AxiosResponse;
 		try {
-			console.log("🔍 [INFO] Searching SteamCharts");
 			response = await axios.get(
 				`${STEAM_CHARTS_SEARCH_URL}?${params.toString()}`,
 			);
 		} catch (error) {
 			console.error(
-				`❌ [ERROR] Failed to search SteamCharts for "${gameString}"`,
-				error,
-			);
+				`❌ [ERROR] Failed to search SteamCharts for "${gameString}"`);
 			return null;
 		}
 
@@ -64,10 +59,6 @@ const processGame = async (
 			}
 		});
 
-		console.log(
-			`📝 [INFO] Found ${links.length} potential matches for "${gameString}"`,
-		);
-
 		let id: string = "";
 		for (const link of links) {
 			let gameName = clearString(link.text);
@@ -77,7 +68,6 @@ const processGame = async (
 
 			if (gameName === gameStringClean) {
 				id = link.href;
-				console.log(`🎯 [INFO] Found matching game page for "${gameString}"`);
 				break;
 			}
 		}
@@ -90,13 +80,10 @@ const processGame = async (
 		}
 
 		try {
-			console.log(`📥 [INFO] Fetching game details for "${gameString}"`);
 			response = await axios.get(`${STEAM_CHARTS_BASE_URL}${id}`);
 		} catch (error) {
 			console.error(
-				`❌ [ERROR] Failed to fetch game details for "${gameString}"`,
-				error,
-			);
+				`❌ [ERROR] Failed to fetch game details for "${gameString}"`);
 			return null;
 		}
 
@@ -159,7 +146,7 @@ const chunkArray = <T>(array: T[], chunkSize: number): T[][] => {
 
 export const searchSteamCharts = async (
 	gamesToSearch: string[],
-	batchSize: number = 5,
+	batchSize: number = 100,
 ): Promise<FoundGames[]> => {
 	console.log("\n📊 [INFO] Starting SteamCharts popularity search");
 	console.log(
@@ -173,9 +160,6 @@ export const searchSteamCharts = async (
 
 	for (let batchIndex = 0; batchIndex < gameBatches.length; batchIndex++) {
 		const batch = gameBatches[batchIndex];
-		console.log(
-			`\n🔄 [INFO] Processing batch ${batchIndex + 1}/${gameBatches.length} (${batch.length} games)`,
-		);
 
 		// Calculate global indices for this batch
 		const globalIndexOffset = batchIndex * batchSize;

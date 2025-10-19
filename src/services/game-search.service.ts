@@ -1,24 +1,8 @@
 import { worthyByPopularity } from "@/helpers/worthy-by-popularity";
 import { validateFoundGames } from "@/schemas/game.schema";
-import { searchGamivo } from "@/services/search-gamivo";
 import { searchSteamCharts } from "@/services/search-steam-charts";
-import type { FoundGames } from "@/types/foundGames";
-
-interface SearchGamesRequest {
-	minPopularity: number;
-	gameNames: string[];
-}
-
-interface GameAnalysisResult {
-	games: FoundGames[];
-	summary: {
-		totalRequested: number;
-		foundOnSteam: number;
-		worthyByPopularity: number;
-		foundPrices: number;
-		processingTimeMs: number;
-	};
-}
+import type { GameAnalysisResult, SearchGamesRequest } from "@/types/games";
+import { searchAllKeyShop } from "./search-allkeyshop";
 
 export const searchGamesService = async (
 	req: SearchGamesRequest,
@@ -29,19 +13,19 @@ export const searchGamesService = async (
 
 	const worthyGames = worthyByPopularity(foundGames, minPopularity);
 
-	const gamesWithPrices = await searchGamivo(worthyGames);
-	const processingTime = performance.now() - startTime;
+	const gamesWithPrices = await searchAllKeyShop(worthyGames);
+	const processingTime = (performance.now() - startTime) / 1000;
 
-	console.log(`🕒 [INFO] Processing time: ${processingTime}ms`);
+	console.log(`🕒 [INFO] Processing time: ${processingTime} seconds.`);
 
 	return {
 		games: gamesWithPrices,
 		summary: {
 			totalRequested: gameNames.length,
-			foundOnSteam: foundGames.length,
+			foundGames: foundGames.length,
 			worthyByPopularity: worthyGames.length,
 			foundPrices: gamesWithPrices.length,
-			processingTimeMs: processingTime,
+			processingTimeSeconds: processingTime,
 		},
 	};
 };

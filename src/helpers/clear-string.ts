@@ -31,10 +31,12 @@ export const clearString = (stringToSearch: string): string => {
 	// Remove todas as vírgulas
 	stringToSearch = stringToSearch.replace(/,/g, "");
 
+	stringToSearch = expandKNumbers(stringToSearch);
+
 	return stringToSearch;
 };
 
-export function RomantoInt(romanStr: string): number {
+const RomantoInt = (romanStr: string): number => {
 	let num = 0;
 	const objRoman: Record<string, number> = {
 		M: 1000,
@@ -59,3 +61,139 @@ export function RomantoInt(romanStr: string): number {
 
 	return num;
 }
+
+const expandKNumbers = (text: string): string => {
+	return text.replace(/\b(\d+(?:\.\d+)?)k\b/gi, (_, numStr: string) => {
+		const num = parseFloat(numStr);
+		const expanded = num * 1000;
+		return expanded.toString();
+	});
+}
+
+/*
+** Removes Roman numerals from a string and normalizes spaces.
+*/
+export const clearRomanNumber = (stringToSearch: string): string => {
+	const romanNumeralsRegex = /\b[IVXLCDM]+\b/g;
+
+	// Substituir os números romanos por uma string vazia (removê-los)
+	const cleanedString = stringToSearch.replace(romanNumeralsRegex, "").trim();
+
+	// Remover espaços extras entre palavras
+	const normalizedString = cleanedString.replace(/\s{2,}/g, " ");
+
+	return normalizedString;
+};
+
+
+export const clearEdition = (stringToSearch: string): string => {
+	const edition = /\bedition\b/gi; // Detectar "edition" como palavra separada
+	const definitiveEditionRegex = /\bdefinitive\b/gi;
+	const standardEditionRegex = /\bstandard\b/gi;
+	const gameOfTheYear = /\bgame of the year\b/gi;
+	const goty = /\bgoty\b/gi;
+	const gotyPoint = /\bg.o.t.y\b/gi;
+	const deluxe = /\bdeluxe\b/gi;
+	const premium = /\bpremium\b/gi;
+	const bundle = /\bbundle\b/gi;
+	const special = /\bspecial\b/gi;
+	const complete = /\bcomplete\b/gi;
+	const dayOne = /\bday\s?one\b/gi;
+
+	const rowRegex = /\brow\b/gi; // Detectar "ROW" como palavra separada
+	const euRegex = /\beu\b/gi; // Detectar "EU" como palavra separada
+
+	// Remover "Definitive Edition"
+	let normalizedString = stringToSearch
+		.replace(edition, "")
+		.replace(definitiveEditionRegex, "")
+		.replace(standardEditionRegex, "")
+		.replace(gameOfTheYear, "")
+		.replace(goty, "")
+		.replace(gotyPoint, "")
+		.replace(deluxe, "")
+		.replace(premium, "")
+		.replace(bundle, "")
+		.replace(special, "")
+		.replace(complete, "")
+		.replace(dayOne, "")
+		.replace(rowRegex, "") // Remove "ROW"
+		.replace(euRegex, ""); // Remove "EU"
+
+	// Remover espaços extras para evitar fragmentos
+	normalizedString = normalizedString.replace(/\s{2,}/g, " ").trim(); // Normaliza a string para evitar múltiplos espaços
+
+	return normalizedString;
+};
+
+
+export const clearDLC = (stringToSearch: string): string => {
+	// Combined regex pattern to match all DLC-related terms as whole words
+	const dlcPattern = /\b(?:dlc|expansion|season|pass)\b/gi;
+
+	// Remove all DLC-related terms in a single pass
+	let normalizedString = stringToSearch.replace(dlcPattern, "");
+
+	// Remove extra spaces and trim
+	normalizedString = normalizedString.replace(/\s{2,}/g, " ").trim();
+
+	return normalizedString;
+};
+
+
+export const hasEdition = (str: string): Set<string> => {
+	const regexList: RegExp[] = [
+		/\bedition\b/gi,
+		/\bdefinitive\b/gi,
+		/\bstandard\b/gi,
+		/\bgame of the year\b/gi,
+		/\bgoty\b/gi,
+		/\bg\.o\.t\.y\b/gi,
+		/\bdeluxe\b/gi,
+		/\bpremium\b/gi,
+		/\bbundle\b/gi,
+		/\bspecial\b/gi,
+		/\bcomplete\b/gi,
+	];
+	const foundKeywords = new Set<string>();
+
+	for (const regex of regexList) {
+		if (regex.test(str)) {
+			foundKeywords.add(regex.source);
+		}
+	}
+
+	return foundKeywords;
+};
+
+export const getRegion = (str: string): string => {
+	const lowerStr = str.toLowerCase();
+
+	if (lowerStr.includes("row")) {
+		return "row";
+	}
+
+	if (/\beu\b/.test(lowerStr)) {
+		return "eu";
+	}
+
+	return "global";
+};
+
+
+export const searchRegion = (stringToSearch: string) => {
+	const dlcRegex = /\bdlc\b/gi;
+	const expansionRegex = /\bexpansion\b/gi;
+	// Pesquisar por região
+
+	// Remover todas as ocorrências de "dlc" ou "DLC"
+	let normalizedString = stringToSearch
+		.replace(dlcRegex, "")
+		.replace(expansionRegex, "");
+
+	// Remover espaços extras para evitar fragmentos
+	normalizedString = normalizedString.replace(/\s{2,}/g, " ").trim(); // Normaliza a string para remover múltiplos espaços
+
+	return normalizedString;
+};
+

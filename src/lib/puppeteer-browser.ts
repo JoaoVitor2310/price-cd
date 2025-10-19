@@ -4,7 +4,7 @@ import { connect } from "puppeteer-real-browser";
 
 export const initializeBrowser = async () => {
 	const { browser, page } = await connect({
-		headless: false,
+		headless: true,
 		args: [],
 		customConfig: {},
 		turnstile: true,
@@ -19,7 +19,7 @@ export const initializeBrowser = async () => {
 		height: 1080,
 	});
 
-	page.setDefaultTimeout(Number(process.env.timeOut) || 3000);
+	page.setDefaultTimeout(Number(process.env.TIMEOUT) || 3000);
 
 	return { browser, page };
 };
