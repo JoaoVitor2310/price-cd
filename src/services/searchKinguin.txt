@@ -8,7 +8,7 @@ import qs from 'qs';
 
 dotenv.config(); // Carregar variáveis de ambiente
 
-const timeOut = process.env.timeOut; // Obter tempo limite das variáveis de ambiente
+const TIMEOUT = process.env.TIMEOUT; // Obter tempo limite das variáveis de ambiente
 
 // Importações locais usando import
 import clearString from './helpers/clearString.js';
@@ -63,7 +63,7 @@ const searchKinguin = async (gameString, minPopularity, popularity) => {
                 // console.log("gameName: " + gameName);
 
                 if (gameName == gameString) {
-                    // await page.waitForSelector(`h3[title="${game}"]`, { timeout: timeOut });
+                    // await page.waitForSelector(`h3[title="${game}"]`, { timeout: TIMEOUT });
                     // await page.click(`h3[title="${game}"]`); // As vezes aqui é o suficiente
 
                     // const selector = `h3[title="${game}"]`; // As vezes precisa clicar por aqui

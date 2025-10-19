@@ -10,7 +10,7 @@ dotenv.config(); // Carregar variáveis de ambiente
 
 // Capturar variáveis de ambiente após o dotenv.config
 const apiG2aUrl = process.env.apiG2aUrl;
-const timeOut = process.env.timeOut;
+const TIMEOUT = process.env.TIMEOUT;
 
 // Converter importações locais para require
 import { clearString } from '../helpers/clearString.js';
