@@ -13,8 +13,8 @@ export const clearString = (stringToSearch: string): string => {
 	// Remove "-", e, quando "-", remove também o espaço subsequente, colocando tudo em minúsculas para melhor reconhecimento dos jogos
 	stringToSearch = stringToSearch.replace(/-\s?/g, "").toLowerCase();
 
-	// Remove "™", ":", "®", "!", "?", ".", "(", ")", "[", "]", "{", "}", "&", "*", "+" e "^"
-	stringToSearch = stringToSearch.replace(/[™:®!?().[\]{}&*+^]/g, "");
+	// Remove "™", ":", "®", "!", "?", ".", "(", ")", "[", "]", "{", "}", "&", "*", "+", "^" e 
+	stringToSearch = stringToSearch.replace(/[™:®!?().[\]{}&*+^;]/g, "");
 
 	// Remove "|" e qualquer espaço após ele
 	stringToSearch = stringToSearch.replace(/\|\s*/g, ""); // Substitui "|" e qualquer espaço subsequente

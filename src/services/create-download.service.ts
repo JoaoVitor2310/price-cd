@@ -8,7 +8,7 @@ export const createDownloadService = async (filePath: string, gamePrices: GameAn
     let fullLine: string = "";
 
     for (const game of gamePrices.games) {
-        fullLine = `G2A\t${game.GamivoPrice}\tKinguin\t\t\t\t${game.popularity}\t${game.name}\n`;
+        fullLine = `G2A\t${game.GamivoPrice}\tKinguin\t\t\t\t${game.popularity}\t${game.name}\t${game.foundName}\n`;
         responseFile += fullLine;
     }
 

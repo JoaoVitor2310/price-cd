@@ -39,6 +39,7 @@ export const uploadFile = async (req: MulterRequest, res: Response) => {
 		}
 
 		if (error instanceof Error) {
+			console.error("❌ [ERROR] Internal server error:", error);
 			res.status(500).json({
 				success: false,
 				error: "Internal server error.",
@@ -47,7 +48,6 @@ export const uploadFile = async (req: MulterRequest, res: Response) => {
 			return;
 		}
 
-		// caso seja algo que não seja um Error
 		res.status(500).json({
 			success: false,
 			error: "Internal server error.",

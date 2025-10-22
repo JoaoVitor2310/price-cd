@@ -7,7 +7,6 @@ export const fileUploadSchema = z.object({
 		mimetype: z.string().min(1, "Tipo do arquivo é obrigatório"),
 		size: z.number().min(1, "Arquivo não pode estar vazio"),
 	}).refine((file) => {
-		// Validação adicional para tipos de arquivo permitidos
 		const allowedTypes = ['text/plain'];
 		return allowedTypes.includes(file.mimetype);
 	}, {
@@ -17,12 +16,12 @@ export const fileUploadSchema = z.object({
 
 export const gameSchema = z.strictObject({
 	id: z.number(),
-	name: z.string().min(1, { message: "Nome do jogo é obrigatório" }),
+	name: z.string().min(1, { message: "Nome do jogo é obrigatório" }), 
 	popularity: z
 		.number()
 		.min(0, { message: "Popularidade deve ser maior ou igual a 0" }),
 	GamivoPrice: z.string().optional(),
-});
+}); 	
 
 export const fileContentSchema = z.strictObject({
 	minPopularity: z

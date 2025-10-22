@@ -1,6 +1,7 @@
 export type FoundGames = {
 	id: number;
 	name: string;
+  foundName?: string;
 	popularity: number;
 	GamivoPrice?: number | string;
 	G2APrice?: number | string;
@@ -23,9 +24,6 @@ export interface GameAnalysisResult {
 		processingTimeSeconds: number;
 	};
 }
-
-
-
 
 // Cada item do array de preços
 export interface Price {
