@@ -1,11 +1,11 @@
 import axios, { type AxiosResponse } from "axios";
 import * as cheerio from "cheerio";
-import { clearDLC, clearEdition, clearString } from "@/helpers/clear-string";
+import { clearDLC, clearEdition, clearString } from "@/helpers/clear-string.js";
 import {
 	STEAM_CHARTS_BASE_URL,
 	STEAM_CHARTS_SEARCH_URL,
-} from "@/helpers/constants";
-import type { FoundGames } from "@/types/games";
+} from "@/helpers/constants.js";
+import type { FoundGames } from "@/types/games.js";
 
 /**
  * Processes a single game to find its popularity data on SteamCharts

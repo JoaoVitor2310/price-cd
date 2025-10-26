@@ -5,10 +5,10 @@ import { ZodError } from "zod";
 import {
 	validateFileContent,
 	validateFileUpload,
-} from "@/schemas/game.schema";
-import type { MulterRequest } from "@/types/MulterRequest";
-import { searchGamesService } from "@/services/game-search.service";
-import { createDownloadService } from "@/services/create-download.service";
+} from "@/schemas/game.schema.js";
+import type { MulterRequest } from "@/types/MulterRequest.js";
+import { searchGamesService } from "@/services/game-search.service.js";
+import { createDownloadService } from "@/services/create-download.service.js";
 
 export const uploadFile = async (req: MulterRequest, res: Response) => {
 	try {

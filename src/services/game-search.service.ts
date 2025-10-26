@@ -1,8 +1,8 @@
-import { worthyByPopularity } from "@/helpers/worthy-by-popularity";
-import { validateFoundGames } from "@/schemas/game.schema";
-import { searchSteamCharts } from "@/services/search-steam-charts";
-import type { GameAnalysisResult, SearchGamesRequest } from "@/types/games";
-import { searchAllKeyShop } from "./search-allkeyshop";
+import { worthyByPopularity } from "@/helpers/worthy-by-popularity.js";
+import { validateFoundGames } from "@/schemas/game.schema.js";
+import { searchSteamCharts } from "@/services/search-steam-charts.js";
+import type { GameAnalysisResult, SearchGamesRequest } from "@/types/games.js";
+import { searchAllKeyShop } from "./search-allkeyshop.js";
 
 export const searchGamesService = async (
 	req: SearchGamesRequest,

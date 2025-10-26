@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { ZodError } from "zod";
-import { fileContentSchema } from "@/schemas/game.schema";
-import { searchGamesService } from "@/services/game-search.service";
+import { fileContentSchema } from "@/schemas/game.schema.js";
+import { searchGamesService } from "@/services/game-search.service.js";
 
 export const searchGames = async (req: Request, res: Response) => {
 	try {

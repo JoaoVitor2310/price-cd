@@ -7,7 +7,7 @@
 	"scripts": {
 		"dev": "tsx watch src/server.ts",
 		"prod": "xvfb-run node index.js",
-		"build": "tsc",
+		"build": "tsc && tsc-alias",
 		"start": "npm run build && node dist/server.js",
 		"lint": "biome check .",
 		"lint:fix": "biome check . --write --unsafe",
@@ -49,6 +49,7 @@
 		"nodemon": "^3.1.9",
 		"ts-node": "^10.9.2",
 		"ts-node-dev": "^2.0.0",
+		"tsc-alias": "^1.8.16",
 		"tsx": "^4.19.2",
 		"typescript": "^5.7.3"
 	}

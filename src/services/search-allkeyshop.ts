@@ -2,11 +2,11 @@
 import axios, { AxiosError, type AxiosResponse } from "axios";
 import * as cheerio from "cheerio";
 import dotenv from "dotenv";
-import { clearString, clearEdition, hasEdition, getRegion } from "@/helpers/clear-string";
-import { ALLKEYSHOP_SEARCH_FILTERS, ALLKEYSHOP_SEARCH_URL } from "@/helpers/constants";
-import { cleanupBrowser, initializeBrowser } from "@/lib/puppeteer-browser";
-import type { FoundGames, GameData, Price } from "@/types/games";
-import { delay } from "@/helpers/utils";
+import { clearString, clearEdition, hasEdition, getRegion } from "@/helpers/clear-string.js";
+import { ALLKEYSHOP_SEARCH_FILTERS, ALLKEYSHOP_SEARCH_URL } from "@/helpers/constants.js";
+import { cleanupBrowser, initializeBrowser } from "@/lib/puppeteer-browser.js";
+import type { FoundGames, GameData, Price } from "@/types/games.js";
+import { delay } from "@/helpers/utils.js";
 import { TimeoutError } from "puppeteer";
 import { PageWithCursor } from "puppeteer-real-browser";
 

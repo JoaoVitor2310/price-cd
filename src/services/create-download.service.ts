@@ -1,5 +1,5 @@
-import type { GameAnalysisResult } from "@/types/games";
-import { MulterRequest } from "@/types/MulterRequest";
+import type { GameAnalysisResult } from "@/types/games.js";
+import { MulterRequest } from "@/types/MulterRequest.js";
 import fs from "node:fs";
 import path from "path";
 

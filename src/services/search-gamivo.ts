@@ -1,9 +1,9 @@
 import axios, { type AxiosResponse } from "axios";
 import dotenv from "dotenv";
-import { clearDLC, clearEdition, clearString, hasEdition } from "@/helpers/clear-string";
-import { GAMIVO_SEARCH_URL } from "@/helpers/constants";
-import { cleanupBrowser, initializeBrowser } from "@/lib/puppeteer-browser";
-import type { FoundGames } from "@/types/games";
+import { clearDLC, clearEdition, clearString, hasEdition } from "@/helpers/clear-string.js";
+import { GAMIVO_SEARCH_URL } from "@/helpers/constants.js";
+import { cleanupBrowser, initializeBrowser } from "@/lib/puppeteer-browser.js";
+import type { FoundGames } from "@/types/games.js";
 
 dotenv.config();
 
