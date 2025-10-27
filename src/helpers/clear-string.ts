@@ -166,16 +166,17 @@ export const hasEdition = (str: string): Set<string> => {
 	return foundKeywords;
 };
 
+/**
+ * Identifies the region lock of a game based on a string.
+ *
+ * @param str - The string containing region information (e.g., "STEAM ROW", "EU").
+ * @returns The region code: "row", "eu", or "global" if no specific region is found.
+ */
 export const getRegion = (str: string): string => {
 	const lowerStr = str.toLowerCase();
 
-	if (lowerStr.includes("row")) {
-		return "row";
-	}
-
-	if (/\beu\b/.test(lowerStr)) {
-		return "eu";
-	}
+	if (/\brow\b/.test(lowerStr)) return "row";
+	if (/\beu\b/.test(lowerStr)) return "eu";
 
 	return "global";
 };

@@ -249,10 +249,12 @@ export const searchAllKeyShop = async (
         const browseURL = await gotoWithRetry(page, `${ALLKEYSHOP_SEARCH_URL}${searchString}${ALLKEYSHOP_SEARCH_FILTERS}`);
         if (!browseURL) continue;
 
+        await page.waitForSelector('p.text-md.text-white', { timeout: 10000 });
+        
         const htmlSearchPage = await page.content();
-
+        
         const searchResults = scrapSearchResults(htmlSearchPage);
-
+        
         const gameString = game.name;
 
         let gamePage: string = "";
