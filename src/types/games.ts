@@ -1,28 +1,43 @@
 export type FoundGames = {
-	id: number;
-	name: string;
+  id: number;
+  name: string;
   foundName?: string;
-	popularity: number;
-	GamivoPrice?: number | string;
-	G2APrice?: number | string;
-	KinguinPrice?: number | string;
+  id_steam?: string;
+  popularity: number;
+  GamivoPrice?: number | string;
+  G2APrice?: number | string;
+  KinguinPrice?: number | string;
 };
 
+export interface SearchGamesIdSteamRequest {
+  games: {
+    id: number;
+    name: string;
+  }[];
+}
+
+export interface SearchGamesIdSteamResponse {
+  games: {
+    id: number;
+    name: string;
+    id_steam?: string;
+  }[];
+}
 
 export interface SearchGamesRequest {
-	minPopularity: number;
-	gameNames: string[];
+  minPopularity: number;
+  gameNames: string[];
 }
 
 export interface GameAnalysisResult {
-	games: FoundGames[];
-	summary: {
-		totalRequested: number;
-		foundGames: number;
-		worthyByPopularity: number;
-		foundPrices: number;
-		processingTimeSeconds: number;
-	};
+  games: FoundGames[];
+  summary: {
+    totalRequested: number;
+    foundGames: number;
+    worthyByPopularity: number;
+    foundPrices: number;
+    processingTimeSeconds: number;
+  };
 }
 
 // Cada item do array de preços

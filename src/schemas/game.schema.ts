@@ -16,12 +16,13 @@ export const fileUploadSchema = z.object({
 
 export const gameSchema = z.strictObject({
 	id: z.number(),
-	name: z.string().min(1, { message: "Nome do jogo é obrigatório" }), 
+	name: z.string().min(1, { message: "Nome do jogo é obrigatório" }),
 	popularity: z
 		.number()
 		.min(0, { message: "Popularidade deve ser maior ou igual a 0" }),
+	id_steam: z.string().optional(),
 	GamivoPrice: z.string().optional(),
-}); 	
+});
 
 export const fileContentSchema = z.strictObject({
 	minPopularity: z
@@ -37,9 +38,36 @@ export const fileContentSchema = z.strictObject({
 		.min(1, { message: "Pelo menos um nome de jogo é necessário" }),
 });
 
+export const gameIdSteamSchema = z.strictObject({
+	id: z.number(),
+	name: z.string().min(1, { message: "Nome do jogo é obrigatório" }),
+});
+
+export const gameIdSteamResponseSchema = z.strictObject({
+	id: z.number(),
+	name: z.string().min(1, { message: "Nome do jogo é obrigatório" }),
+	id_steam: z.string().optional(),
+});
+
+export const fileContentIdSteamSchema = z.strictObject({
+	games: z
+		.array(gameIdSteamSchema)
+		.min(1, { message: "Pelo menos um jogo do sistema é necessário" }),
+});
+
+export const fileContentIdSteamResponseSchema = z.strictObject({
+	games: z
+		.array(gameIdSteamResponseSchema)
+		.min(1, { message: "Pelo menos um jogo do sistema é necessário" }),
+});
+
 export type FileUpload = z.infer<typeof fileUploadSchema>;
 export type Game = z.infer<typeof gameSchema>;
 export type FileContent = z.infer<typeof fileContentSchema>;
+export type GameIdSteam = z.infer<typeof gameIdSteamSchema>;
+export type GameIdSteamResponse = z.infer<typeof gameIdSteamResponseSchema>;
+export type FileContentIdSteam = z.infer<typeof fileContentIdSteamSchema>;
+export type FileContentIdSteamResponse = z.infer<typeof fileContentIdSteamResponseSchema>;
 
 export const validateFileUpload = (req: { file?: Express.Multer.File }): FileUpload => {
 	if (!req.file) {

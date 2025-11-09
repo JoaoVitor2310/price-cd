@@ -1,5 +1,5 @@
 import { worthyByPopularity } from "@/helpers/worthy-by-popularity.js";
-import { validateFoundGames } from "@/schemas/game.schema.js";
+import { fileContentIdSteamResponseSchema, validateFoundGames, type FileContentIdSteam, type FileContentIdSteamResponse } from "@/schemas/game.schema.js";
 import { searchSteamCharts } from "@/services/search-steam-charts.js";
 import type { GameAnalysisResult, SearchGamesRequest } from "@/types/games.js";
 import { searchAllKeyShop } from "./search-allkeyshop.js";
@@ -28,4 +28,28 @@ export const searchGamesService = async (
 			processingTimeSeconds: processingTime,
 		},
 	};
+};
+
+export const searchGamesIdSteamService = async (
+	req: FileContentIdSteam,
+): Promise<FileContentIdSteamResponse> => {
+	const gameNames = req.games.map((game) => game.name);
+
+	const steamChartsResults = await searchSteamCharts(gameNames);
+
+	const gamesWithSteamId = req.games.map((originalGame) => {
+		const steamData = steamChartsResults.find(
+			(result) => result.name === originalGame.name,
+		);
+
+		return {
+			id: originalGame.id,
+			name: originalGame.name,
+			id_steam: steamData?.id_steam,
+		};
+	});
+
+	return fileContentIdSteamResponseSchema.parse({
+		games: gamesWithSteamId,
+	});
 };

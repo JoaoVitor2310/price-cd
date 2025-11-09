@@ -59,7 +59,7 @@ const processGame = async (
 			}
 		});
 
-		let id: string = "";
+		let id_steam: string = "";
 		for (const link of links) {
 			let gameName = clearString(link.text);
 			gameName = clearDLC(gameName);
@@ -67,12 +67,12 @@ const processGame = async (
 			gameName = gameName.trim().toLowerCase();
 
 			if (gameName === gameStringClean) {
-				id = link.href;
+				id_steam = link.href;
 				break;
 			}
 		}
 
-		if (id === "") {
+		if (id_steam === "") {
 			console.log(
 				`⏭️ [INFO] No matching game found for "${gameString}", skipping`,
 			);
@@ -80,7 +80,7 @@ const processGame = async (
 		}
 
 		try {
-			response = await axios.get(`${STEAM_CHARTS_BASE_URL}${id}`);
+			response = await axios.get(`${STEAM_CHARTS_BASE_URL}${id_steam}`);
 		} catch (error) {
 			console.error(
 				`❌ [ERROR] Failed to fetch game details for "${gameString}"`);
@@ -93,6 +93,8 @@ const processGame = async (
 			);
 			return null;
 		}
+
+		id_steam = id_steam.replace("/app/", "");
 
 		const $details = cheerio.load(response.data);
 		const spans: string[] = [];
@@ -120,6 +122,7 @@ const processGame = async (
 			id: originalIndex,
 			name: gameString,
 			popularity,
+			id_steam,
 		};
 	} catch (error) {
 		console.error(
@@ -146,7 +149,7 @@ const chunkArray = <T>(array: T[], chunkSize: number): T[][] => {
 
 export const searchSteamCharts = async (
 	gamesToSearch: string[],
-	batchSize: number = 100,
+	batchSize: number = 50,
 ): Promise<FoundGames[]> => {
 	console.log("\n📊 [INFO] Starting SteamCharts popularity search");
 	console.log(
