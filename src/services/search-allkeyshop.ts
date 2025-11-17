@@ -12,6 +12,17 @@ import { PageWithCursor } from "puppeteer-real-browser";
 
 dotenv.config();
 
+// CONSTANTS
+const REGION_FILTER_DICTIONARY: Record<string, string> = {
+    global: "STEAM GLOBAL",
+    eu: "STEAM EU",
+    row: "STEAM ROW",
+} as const;
+
+const GAMIVO_MERCHANT_NAME = "GAMIVO";
+const MIN_POPULARITY_FOR_GAMIVO_REQUIREMENT = 100;
+
+
 const scrapSearchResults = (html: string): { link: string; name: string; price: string }[] => {
     const $ = cheerio.load(html);
 
@@ -34,15 +45,18 @@ const scrapSearchResults = (html: string): { link: string; name: string; price: 
     return searchResults;
 }
 
+/**
+ * Scrap the game page from AllKeyShop
+ * @param html Page game HTML content from AllKeyShop
+ * @returns Game data from AllKeyShop
+ */
 const scrapGamePage = (html: string): GameData | null => {
     const $ = cheerio.load(html);
 
-    // Pega o conteúdo do script que contém "gamePageTrans"
     const scriptContent = $('script#aks-offers-js-extra').html();
 
     if (!scriptContent) return null;
 
-    // Expressão regular para capturar o JSON dentro de var gamePageTrans = {...};
     const match = scriptContent.match(/var\s+gamePageTrans\s*=\s*(\{[\s\S]*?\});/);
 
     if (!match) return null;
@@ -74,13 +88,13 @@ const detectOfferTooLow = (regionPrices: Price[]) => {
 
     if (!bestOffer) return null;
 
-    const bestOfferPrice = bestOffer.originalPrice;
+    const bestPrice = bestOffer.originalPrice;
 
-    if (!secondBestOffer) return bestOfferPrice;
+    if (!secondBestOffer) return bestPrice;
 
 
     const secondBestOfferPrice = secondBestOffer.originalPrice;
-    const difference = secondBestOfferPrice - bestOfferPrice;
+    const difference = secondBestOfferPrice - bestPrice;
 
     const percentualDifference =
         secondBestOfferPrice > 1
@@ -92,20 +106,21 @@ const detectOfferTooLow = (regionPrices: Price[]) => {
         return secondBestOfferPrice;
     }
 
-    return bestOfferPrice;
+    return bestPrice;
 
 }
 
-const bestOfferPrice = (data: GameData, region: string): string | null => {
-    const { prices, regions } = data;
+/**
+ * Get the best(lowest) offer price from AllKeyShop
+ * @param data GameData from AllKeyShop
+ * @param region Region of the game
+ * @param popularity Popularity of the game
+ * @returns 
+ */
+const bestOfferPrice = (data: GameData, region: string, popularity: number): string | null => {
+    const { prices, regions, merchants } = data;
 
-    const filterNameDictionary: Record<string, string> = {
-        global: "STEAM GLOBAL",
-        eu: "STEAM EU",
-        row: "STEAM ROW",
-    };
-
-    const filterName = filterNameDictionary[region];
+    const filterName = REGION_FILTER_DICTIONARY[region];
 
     const regionKey = Object.keys(regions).find(
         key => regions[key].filter_name.toUpperCase() === filterName.toUpperCase()
@@ -125,6 +140,14 @@ const bestOfferPrice = (data: GameData, region: string): string | null => {
 
     const bestOffer = detectOfferTooLow(regionPrices);
     if (bestOffer == null) return null;
+    
+    const gamivoMerchantCode = Object.keys(merchants).find(key => merchants[key].name === GAMIVO_MERCHANT_NAME);
+
+    const hasGamivoOffer = regionPrices.some(p => Number(p.merchant) === Number(gamivoMerchantCode));
+    if (!hasGamivoOffer && popularity < MIN_POPULARITY_FOR_GAMIVO_REQUIREMENT) {
+        console.log(`❌ [ERROR] Gamivo offer not found.`);
+        return null;
+    }
 
     return bestOffer.toString().replace(".", ",");
 }
@@ -314,7 +337,7 @@ export const searchAllKeyShop = async (
 
         const region = getRegion(game.name);
 
-        const price = bestOfferPrice(gamePageData, region);
+        const price = bestOfferPrice(gamePageData, region, game.popularity);
         if (!price) continue;
 
         foundGames.push({

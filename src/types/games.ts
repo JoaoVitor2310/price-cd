@@ -70,8 +70,24 @@ export interface Regions {
   [key: string]: Region;
 }
 
-// Objeto principal do JSON
+export interface Merchant {
+  name: string;
+  logo: string;
+  rating: {
+    score: number;
+    count: number;
+    maximum: number;
+  };
+  official: boolean;
+  paypal: boolean;
+}
+
+export interface Merchants {
+  [key: string]: Merchant;
+}
+
 export interface GameData {
   prices: Price[];
   regions: Regions;
+  merchants: Merchants;
 }

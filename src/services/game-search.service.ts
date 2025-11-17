@@ -10,7 +10,7 @@ export const searchGamesService = async (
 	const startTime = performance.now();
 	const { minPopularity, gameNames } = req;
 	const foundGames = validateFoundGames(await searchSteamCharts(gameNames));
-
+	
 	const worthyGames = worthyByPopularity(foundGames, minPopularity);
 
 	const gamesWithPrices = await searchAllKeyShop(worthyGames);

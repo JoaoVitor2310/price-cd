@@ -147,6 +147,12 @@ const chunkArray = <T>(array: T[], chunkSize: number): T[][] => {
 	return chunks;
 };
 
+/**
+ * 
+ * @param gamesToSearch Array of games(strings) to search for popularity on SteamCharts
+ * @param batchSize Size of each batch
+ * @returns Array of FoundGames with popularity data
+ */
 export const searchSteamCharts = async (
 	gamesToSearch: string[],
 	batchSize: number = 50,
