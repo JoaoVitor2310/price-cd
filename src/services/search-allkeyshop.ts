@@ -115,9 +115,10 @@ const detectOfferTooLow = (regionPrices: Price[]) => {
  * @param data GameData from AllKeyShop
  * @param region Region of the game
  * @param popularity Popularity of the game
+ * @param checkGamivoOffer Boolean to check if the game has a Gamivo offer
  * @returns 
  */
-const bestOfferPrice = (data: GameData, region: string, popularity: number): string | null => {
+const bestOfferPrice = (data: GameData, region: string, popularity: number, checkGamivoOffer: boolean): string | null => {
     const { prices, regions, merchants } = data;
 
     const filterName = REGION_FILTER_DICTIONARY[region];
@@ -140,13 +141,16 @@ const bestOfferPrice = (data: GameData, region: string, popularity: number): str
 
     const bestOffer = detectOfferTooLow(regionPrices);
     if (bestOffer == null) return null;
-    
-    const gamivoMerchantCode = Object.keys(merchants).find(key => merchants[key].name === GAMIVO_MERCHANT_NAME);
 
-    const hasGamivoOffer = regionPrices.some(p => Number(p.merchant) === Number(gamivoMerchantCode));
-    if (!hasGamivoOffer && popularity < MIN_POPULARITY_FOR_GAMIVO_REQUIREMENT) {
-        console.log(`❌ [ERROR] Gamivo offer not found.`);
-        return null;
+
+    if (checkGamivoOffer) {
+        const gamivoMerchantCode = Object.keys(merchants).find(key => merchants[key].name === GAMIVO_MERCHANT_NAME);
+
+        const hasGamivoOffer = regionPrices.some(p => Number(p.merchant) === Number(gamivoMerchantCode));
+        if (!hasGamivoOffer && popularity < MIN_POPULARITY_FOR_GAMIVO_REQUIREMENT) {
+            console.log(`❌ [ERROR] Gamivo offer not found.`);
+            return null;
+        }
     }
 
     return bestOffer.toString().replace(".", ",");
@@ -222,7 +226,7 @@ async function gotoWithRetry(page: PageWithCursor, url: string, maxRetries = 3):
                 const retryAfterSeconds = retryAfterHeader ? parseInt(retryAfterHeader, 10) : 5;
 
                 console.warn(`⚠️ [INFO] Too many requests(puppeteer). Attempt ${attempt}/${maxRetries}. Retrying in ${retryAfterSeconds}s...`);
-                
+
                 await delay(retryAfterSeconds * 1000);
                 continue;
             }
@@ -252,10 +256,12 @@ async function gotoWithRetry(page: PageWithCursor, url: string, maxRetries = 3):
  * Go to page with automatic retry if timeouts or status 429
  * 
  * @param gamesToSearch Array of games to search for prices on AllKeyShop
+ * @param checkGamivoOffer Boolean to check if the game has a Gamivo offer
  * @returns FoundGames with prices 
  */
 export const searchAllKeyShop = async (
     gamesToSearch: FoundGames[],
+    checkGamivoOffer: boolean,
 ): Promise<FoundGames[]> => {
     console.log(
         `📋 [INFO] Processing ${gamesToSearch.length} AllKeyShop price search games`,
@@ -273,11 +279,11 @@ export const searchAllKeyShop = async (
         if (!browseURL) continue;
 
         await page.waitForSelector('p.text-md.text-white', { timeout: 10000 });
-        
+
         const htmlSearchPage = await page.content();
-        
+
         const searchResults = scrapSearchResults(htmlSearchPage);
-        
+
         const gameString = game.name;
 
         let gamePage: string = "";
@@ -337,7 +343,7 @@ export const searchAllKeyShop = async (
 
         const region = getRegion(game.name);
 
-        const price = bestOfferPrice(gamePageData, region, game.popularity);
+        const price = bestOfferPrice(gamePageData, region, game.popularity, checkGamivoOffer);
         if (!price) continue;
 
         foundGames.push({

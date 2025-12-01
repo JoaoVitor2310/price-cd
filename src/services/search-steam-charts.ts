@@ -155,12 +155,22 @@ const chunkArray = <T>(array: T[], chunkSize: number): T[][] => {
  */
 export const searchSteamCharts = async (
 	gamesToSearch: string[],
+	minPopularity: number,
 	batchSize: number = 50,
 ): Promise<FoundGames[]> => {
 	console.log("\n📊 [INFO] Starting SteamCharts popularity search");
 	console.log(
 		`📋 [INFO] Processing ${gamesToSearch.length} games in batches of ${batchSize}`,
 	);
+
+	if (minPopularity === 0) {
+		console.log("⚡ [INFO] minPopularity is 0, returning all games without popularity check");
+		return gamesToSearch.map((gameName, index) => ({
+			id: index,
+			name: gameName,
+			popularity: 0,
+		}));
+	}
 
 	const foundGames: FoundGames[] = [];
 

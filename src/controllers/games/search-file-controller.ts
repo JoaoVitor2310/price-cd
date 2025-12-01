@@ -16,7 +16,8 @@ export const uploadFile = async (req: MulterRequest, res: Response) => {
 
 		const fileContent: string = fs.readFileSync(validatedFile.file.path, "utf8");
 
-		const validatedContent = validateFileContent(fileContent);
+		const checkGamivoOffer = req.body.checkGamivoOffer ?? false;
+		const validatedContent = validateFileContent(fileContent, checkGamivoOffer);
 
 		const gamePrices = await searchGamesService(validatedContent);
 

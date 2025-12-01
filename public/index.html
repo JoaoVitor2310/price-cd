@@ -57,6 +57,8 @@
           janela irá piscar em laranja).
         </p>
         <form id="uploadForm">
+          <label for="checkGamivoOffer">Retornar somente se houver oferta na Gamivo</label>
+          <input type="checkbox" id="checkGamivoOffer" name="checkGamivoOffer" checked style="margin-bottom: 10px;">
           <div id="dropArea">
             Arraste e solte aqui ou clique para selecionar o arquivo
           </div>
@@ -150,6 +152,7 @@
 
       const formData = new FormData();
       formData.append("fileToUpload", file);
+      formData.append("checkGamivoOffer", document.getElementById("checkGamivoOffer").checked ? "true" : "false");
 
       try {
         const response = await fetch("/api/upload", {
@@ -199,9 +202,7 @@
       }
     }
 
-    document
-      .getElementById("uploadForm")
-      .addEventListener("submit", function (event) {
+    document.getElementById("uploadForm").addEventListener("submit", function (event) {
         event.preventDefault(); // Isso impede o envio do formulário padrão
       });
   </script>

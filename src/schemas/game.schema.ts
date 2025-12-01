@@ -36,6 +36,7 @@ export const fileContentSchema = z.strictObject({
 				.min(1, { message: "Nome do jogo não pode estar vazio" }),
 		)
 		.min(1, { message: "Pelo menos um nome de jogo é necessário" }),
+	checkGamivoOffer: z.boolean(),
 });
 
 export const gameIdSteamSchema = z.strictObject({
@@ -81,7 +82,7 @@ export const validateFileUpload = (req: { file?: Express.Multer.File }): FileUpl
 
 const fileLineSchema = z.string().transform((val) => val.trim());
 
-export const validateFileContent = (content: string): FileContent => {
+export const validateFileContent = (content: string, checkGamivoOffer: string | boolean): FileContent => {
 	const lines = content.split("\n");
 
 	if (lines.length < 2) {
@@ -101,9 +102,15 @@ export const validateFileContent = (content: string): FileContent => {
 		.map((line) => fileLineSchema.parse(line))
 		.filter((line) => line !== "");
 
+	// Convert string "true"/"false" to boolean
+	const checkGamivoOfferBoolean = typeof checkGamivoOffer === 'string'
+		? checkGamivoOffer === 'true'
+		: checkGamivoOffer;
+
 	return fileContentSchema.parse({
 		minPopularity,
 		gameNames,
+		checkGamivoOffer: checkGamivoOfferBoolean,
 	});
 }
 

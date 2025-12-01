@@ -27,6 +27,7 @@ export interface SearchGamesIdSteamResponse {
 export interface SearchGamesRequest {
   minPopularity: number;
   gameNames: string[];
+  checkGamivoOffer: boolean;
 }
 
 export interface GameAnalysisResult {

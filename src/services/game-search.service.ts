@@ -9,11 +9,11 @@ export const searchGamesService = async (
 ): Promise<GameAnalysisResult> => {
 	const startTime = performance.now();
 	const { minPopularity, gameNames } = req;
-	const foundGames = validateFoundGames(await searchSteamCharts(gameNames));
+	const foundGames = validateFoundGames(await searchSteamCharts(gameNames, minPopularity));
 	
 	const worthyGames = worthyByPopularity(foundGames, minPopularity);
 
-	const gamesWithPrices = await searchAllKeyShop(worthyGames);
+	const gamesWithPrices = await searchAllKeyShop(worthyGames, req.checkGamivoOffer);
 	const processingTime = (performance.now() - startTime) / 1000;
 
 	console.log(`🕒 [INFO] Processing time: ${processingTime} seconds.`);
