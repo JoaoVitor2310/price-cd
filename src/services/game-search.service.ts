@@ -10,7 +10,7 @@ export const searchGamesService = async (
 	const startTime = performance.now();
 	const { minPopularity, gameNames } = req;
 	const foundGames = validateFoundGames(await searchSteamCharts(gameNames, minPopularity));
-	
+
 	const worthyGames = worthyByPopularity(foundGames, minPopularity);
 
 	const gamesWithPrices = await searchAllKeyShop(worthyGames, req.checkGamivoOffer);
@@ -35,7 +35,7 @@ export const searchGamesIdSteamService = async (
 ): Promise<FileContentIdSteamResponse> => {
 	const gameNames = req.games.map((game) => game.name);
 
-	const steamChartsResults = await searchSteamCharts(gameNames);
+	const steamChartsResults = await searchSteamCharts(gameNames, 1);
 
 	const gamesWithSteamId = req.games.map((originalGame) => {
 		const steamData = steamChartsResults.find(
