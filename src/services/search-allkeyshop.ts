@@ -278,7 +278,12 @@ export const searchAllKeyShop = async (
         const browseURL = await gotoWithRetry(page, `${ALLKEYSHOP_SEARCH_URL}${searchString}${ALLKEYSHOP_SEARCH_FILTERS}`);
         if (!browseURL) continue;
 
-        await page.waitForSelector('p.text-md.text-white', { timeout: 10000 });
+        try {
+            await page.waitForSelector('p.text-md.text-white', { timeout: 10000 });
+        } catch (error) {
+            console.log(`⚠️ [INFO] Timeout waiting for selector for "${game.name}". Skipping to the next game.`);
+            continue;
+        }
 
         const htmlSearchPage = await page.content();
 
