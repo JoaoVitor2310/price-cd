@@ -21,6 +21,7 @@ export const gameSchema = z.strictObject({
 		.number()
 		.min(0, { message: "Popularidade deve ser maior ou igual a 0" }),
 	id_steam: z.string().optional(),
+	region: z.string().optional(),
 	GamivoPrice: z.string().optional(),
 });
 

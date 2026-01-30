@@ -181,6 +181,16 @@ export const getRegion = (str: string): string => {
 	return "global";
 };
 
+/**
+ * Removes the region from a string.
+ * @param str - The string to remove the region from.
+ * @returns The string without the region.
+ */
+export const removeRegion = (str: string): string => {
+	const regionRegex = /\b(?:row|eu|global)\b/gi;
+	return str.replace(regionRegex, "");
+};
+
 
 export const searchRegion = (stringToSearch: string) => {
 	const dlcRegex = /\bdlc\b/gi;

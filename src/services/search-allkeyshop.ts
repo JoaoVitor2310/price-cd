@@ -2,7 +2,7 @@
 import axios, { AxiosError, type AxiosResponse } from "axios";
 import * as cheerio from "cheerio";
 import dotenv from "dotenv";
-import { clearString, clearEdition, hasEdition, getRegion } from "@/helpers/clear-string.js";
+import { clearString, clearEdition, hasEdition, getRegion, removeRegion } from "@/helpers/clear-string.js";
 import { ALLKEYSHOP_SEARCH_FILTERS, ALLKEYSHOP_SEARCH_URL } from "@/helpers/constants.js";
 import { cleanupBrowser, initializeBrowser } from "@/lib/puppeteer-browser.js";
 import type { FoundGames, GameData, Price } from "@/types/games.js";
@@ -346,16 +346,21 @@ export const searchAllKeyShop = async (
         const gamePageData = scrapGamePage(responseGamePage.data);
         if (!gamePageData) continue;
 
-        const region = getRegion(game.name);
+        let region = getRegion(game.name);
 
         const price = bestOfferPrice(gamePageData, region, game.popularity, checkGamivoOffer);
         if (!price) continue;
 
+        region = region == "global" ? "" : region.toUpperCase();
+
+        game.name = removeRegion(game.name);
+        
         foundGames.push({
             id: index,
             name: game.name,
             foundName: foundName,
             popularity: game.popularity,
+            region,
             GamivoPrice: price,
         });
 
