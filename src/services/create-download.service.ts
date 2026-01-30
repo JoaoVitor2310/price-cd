@@ -6,9 +6,10 @@ import path from "path";
 export const createDownloadService = async (filePath: string, gamePrices: GameAnalysisResult, req: MulterRequest): Promise<string> => {
     let responseFile: string = "";
     let fullLine: string = "";
+    const date = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
 
     for (const game of gamePrices.games) {
-        fullLine = `G2A\t${game.GamivoPrice}\tKinguin\t\t\t\t${game.popularity}\t${game.name}\t${game.foundName}\n`;
+        fullLine = `\t${date}\t${game.GamivoPrice}\t\t\t\t\t${game.popularity}\t${game.region}\t\t${game.name}\n`;
         responseFile += fullLine;
     }
 
