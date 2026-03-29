@@ -1,7 +1,7 @@
 import * as cheerio from "cheerio";
 import { ListTopic } from "@/domain/lists/list-topic.js";
 import type { ListTopicFetcher } from "@/application/lists/ports/list-run.ports.js";
-import { cleanupBrowser, initializeBrowser } from "@/lib/puppeteer-browser";
+import { cleanupBrowser, initializeBrowser } from "@/lib/puppeteer-browser.js";
 
 /**
  * Implementação de busca de jogos a partir de uma lista de tópicos.
