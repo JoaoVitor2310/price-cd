@@ -12,7 +12,12 @@ export class AxiosRunListsCallbackPoster implements RunListsCallbackPoster {
 		payload: RunListsCallbackPayload,
 	): Promise<void> {
 		const timeout = this.options?.timeoutMs ?? 30_000;
-		await axios.post(callbackUrl, payload, { timeout });
+		try {
+			await axios.post(callbackUrl, payload, { timeout });
+		} catch (error) {
+			// console.log("error");
+			// console.error("❌ [ERROR] Failed to post callback:", error);
+		}
 	}
 }
 

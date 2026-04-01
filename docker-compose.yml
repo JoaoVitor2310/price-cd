@@ -1,0 +1,33 @@
+# Orquestra o container: build, portas, variáveis e recursos (sem precisar lembrar flags longas do docker run).
+
+services:
+  price-researcher:
+    build: .
+
+    container_name: price-researcher
+
+    restart: unless-stopped
+
+    ports:
+      - "${HOST_PORT:-5555}:5555"
+
+    env_file:
+      - .env
+
+    environment:
+      # Sinaliza ao app que está no Docker: em puppeteer-browser.ts isso desliga o Xvfb interno do puppeteer-real-browser
+      # para não haver dois servidores X (o nosso sobe no docker/start.sh).
+      DOCKER: "true"
+
+      # Número do display virtual onde o Xvfb do start.sh publica a “tela”. O Chromium headed precisa de DISPLAY válido.
+      DISPLAY: ":99"
+
+      # Modo produção para Node (menos verbosidade, algumas libs mudam comportamento).
+      NODE_ENV: production
+
+      # Caminho do Chromium instalado via apt na imagem. O chrome-launcher / fluxo real-browser usa isso em vez do Chrome baixado pelo Puppeteer.
+      CHROME_PATH: /usr/bin/chromium
+
+    # Memória compartilhada (/dev/shm) maior que o padrão (~64MB). Chromium usa muito shm para GPU/texturas;
+    # sem isso o browser pode crashar ou ficar instável no Docker.
+    shm_size: 1gb

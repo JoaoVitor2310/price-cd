@@ -2,14 +2,23 @@ import AdblockerPlugin from "puppeteer-extra-plugin-adblocker";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import { connect } from "puppeteer-real-browser";
 
+const useExternalXvfb =
+	process.env.DOCKER === "true" || process.env.USE_EXTERNAL_XVFB === "true";
+
 export const initializeBrowser = async () => {
 	const { browser, page } = await connect({
-		headless: true,
-		args: [],
+		headless: false,
+		args: [
+			'--no-sandbox',
+			'--disable-setuid-sandbox',
+			'--disable-dev-shm-usage',
+			'--disable-gpu'
+		],
 		customConfig: {},
 		turnstile: true,
 		connectOption: {},
-		disableXvfb: false,
+		// No Docker usamos Xvfb do start.sh; evita dois servidores X.
+		disableXvfb: useExternalXvfb,
 		ignoreAllFlags: false,
 		plugins: [AdblockerPlugin(), StealthPlugin()],
 	});

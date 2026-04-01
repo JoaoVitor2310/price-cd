@@ -1,6 +1,6 @@
 import { EnqueueRunListsUseCase } from "@/application/lists/enqueue-run-lists.use-case.js";
 import type { VipListRequest } from "@/schemas/list.schema.js";
-import { SetImmediateScheduler } from "@/infrastructure/background/set-immediate.scheduler.js";
+import { createLimitedConcurrencySchedulerFromEnv } from "@/infrastructure/background/limited-concurrency.scheduler.js";
 import { AxiosRunListsCallbackPoster } from "@/infrastructure/http/axios-run-lists-callback-poster.js";
 import {
 	runListsService,
@@ -23,7 +23,7 @@ const enqueueRunListsUseCase = new EnqueueRunListsUseCase();
 export const enqueueRunListsService = async (vipListRequest: VipListRequest) => {
 	await enqueueRunListsUseCase.execute({
 		request: vipListRequest,
-		scheduler: new SetImmediateScheduler(),
+		scheduler: createLimitedConcurrencySchedulerFromEnv(),
 		runner: new RunListsServiceRunner(),
 		callbackPoster: new AxiosRunListsCallbackPoster(),
 	});

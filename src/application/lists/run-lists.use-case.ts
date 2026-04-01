@@ -1,9 +1,10 @@
-import type { VipListRequest } from "@/schemas/list.schema.js";
-import { searchGamesService } from "@/services/game-search.service.js";
 import type {
 	ListResultFormatter,
 	ListTopicFetcher,
 } from "@/application/lists/ports/list-run.ports.js";
+import { disposeIfPresent } from "@/lib/dispose.js";
+import type { VipListRequest } from "@/schemas/list.schema.js";
+import { searchGamesService } from "@/services/game-search.service.js";
 
 const MIN_POPULARITY = 30;
 
@@ -35,14 +36,21 @@ export class RunListsUseCase {
 
 		const allGameNames: string[] = [];
 
-		const userLists = await fetcher.fetchUserLists(idSteam);
+		const maxActiveLists = Number(process.env.MAX_ACTIVE_LISTS) || 3;
 
-		for (const userList of userLists) {
-			const list = await fetcher.fetchList(userList.url);
+		try {
+			const userLists = await fetcher.fetchUserLists(idSteam);
+			const limitedLists = userLists.slice(0, Math.max(1, maxActiveLists));
 
-			if (list.status === "inactive") continue;
+			for (const userList of limitedLists) {
+				const list = await fetcher.fetchList(userList.url);
 
-			allGameNames.push(...list.gameNames);
+				if (list.status === "inactive") continue;
+
+				allGameNames.push(...list.gameNames);
+			}
+		} finally {
+			await disposeIfPresent(fetcher);
 		}
 
 		const analysis = await searchGamesService({
