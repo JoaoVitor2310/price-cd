@@ -9,11 +9,31 @@ export const searchGamesService = async (
 ): Promise<GameAnalysisResult> => {
 	const startTime = performance.now();
 	const { minPopularity, gameNames } = req;
-	const foundGames = validateFoundGames(await searchSteamCharts(gameNames, minPopularity));
+
+	if (gameNames.length === 0) {
+		const processingTime = (performance.now() - startTime) / 1000;
+		return {
+			games: [],
+			summary: {
+				totalRequested: 0,
+				foundGames: 0,
+				worthyByPopularity: 0,
+				foundPrices: 0,
+				processingTimeSeconds: processingTime,
+			},
+		};
+	}
+
+	const foundGames = validateFoundGames(
+		await searchSteamCharts(gameNames, minPopularity),
+	);
 
 	const worthyGames = worthyByPopularity(foundGames, minPopularity);
 
-	const gamesWithPrices = await searchAllKeyShop(worthyGames, req.checkGamivoOffer);
+	const gamesWithPrices =
+		worthyGames.length === 0
+			? []
+			: await searchAllKeyShop(worthyGames, req.checkGamivoOffer);
 	const processingTime = (performance.now() - startTime) / 1000;
 
 	console.log(`🕒 [INFO] Processing time: ${processingTime} seconds.`);
