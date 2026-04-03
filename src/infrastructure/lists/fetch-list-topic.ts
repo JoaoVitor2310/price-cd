@@ -4,6 +4,12 @@ import type { ListTopicFetcher } from "@/application/lists/ports/list-run.ports.
 import { ListTopic } from "@/domain/lists/list-topic.js";
 import { cleanupBrowser, initializeBrowser } from "@/lib/puppeteer-browser.js";
 
+/** Mesmo TIMEOUT do browser; 2s fixo estourava na VPS com listas concorrentes. */
+function navigationTimeoutMs(): number {
+	const n = Number(process.env.TIMEOUT);
+	return Number.isFinite(n) && n > 0 ? n : 30_000;
+}
+
 /**
  * Implementação de busca de jogos a partir de uma lista de tópicos.
  */
@@ -41,7 +47,7 @@ export class FetchListTopic implements ListTopicFetcher {
 			`https://www.steamtrades.com/trades/search?user=${idSteam}`,
 			{
 				waitUntil: "domcontentloaded",
-				timeout: 2000,
+				timeout: navigationTimeoutMs(),
 			},
 		);
 
@@ -84,7 +90,7 @@ export class FetchListTopic implements ListTopicFetcher {
 
 		const response = await page.goto(topicRef, {
 			waitUntil: "domcontentloaded",
-			timeout: 2000,
+			timeout: navigationTimeoutMs(),
 		});
 
 		const status = response?.status();
