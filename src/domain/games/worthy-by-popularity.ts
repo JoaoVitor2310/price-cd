@@ -1,9 +1,9 @@
-import type { FoundGames } from "@/types/games.js";
+type WithPopularity = { popularity: number };
 
-export const worthyByPopularity = (
-	foundGames: FoundGames[],
+export const worthyByPopularity = <T extends WithPopularity>(
+	games: T[],
 	minPopularity: number,
-): FoundGames[] => {
-	if (minPopularity === 0) return foundGames;
-	return foundGames.filter((game) => game.popularity >= minPopularity);
+): T[] => {
+	if (minPopularity === 0) return games;
+	return games.filter((game) => game.popularity >= minPopularity);
 };

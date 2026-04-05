@@ -1,7 +1,7 @@
 import type { VipListRequest } from "@/schemas/list.schema.js";
 import type { ListTopic } from "@/domain/lists/list-topic.js";
 import type { RunListsServiceResult } from "@/services/lists/run-lists.service.js";
-import type { GameAnalysisResult, SearchGamesRequest } from "@/types/games";
+import type { GameAnalysisResult, SearchGamesRequest } from "@/application/games/game.types.js";
 
 /**
  * Portas (interfaces): o caso de uso depende disso; a infraestrutura implementa.

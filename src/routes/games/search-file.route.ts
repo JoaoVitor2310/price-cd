@@ -1,7 +1,7 @@
 import path from "node:path";
 import { Router } from "express";
 import multer from "multer";
-import { uploadFile } from "@/controllers/games/search-file-controller.js";
+import { uploadFile } from "@/controllers/games/search-file.controller.js";
 
 const upload = multer({
 	dest: path.resolve(process.cwd(), "uploads"),

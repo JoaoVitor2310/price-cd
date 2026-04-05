@@ -1,6 +1,5 @@
 import type { PopularityFetcher, PriceFetcher } from "@/application/games/ports/game-search.ports.js";
-import { validateFoundGames } from "@/schemas/game.schema.js";
-import type { GameAnalysisResult } from "@/types/games.js";
+import type { FoundGames, GameAnalysisResult } from "@/application/games/game.types.js";
 import { worthyByPopularity } from "@/domain/games/worthy-by-popularity.js";
 
 export type SearchGamesInput = {
@@ -31,9 +30,7 @@ export class SearchGamesUseCase {
 			};
 		}
 
-		const foundGames = validateFoundGames(
-			await popularityFetcher.fetch(gameNames, minPopularity),
-		);
+		const foundGames: FoundGames[] = await popularityFetcher.fetch(gameNames, minPopularity);
 
 		const worthyGames = worthyByPopularity(foundGames, minPopularity);
 

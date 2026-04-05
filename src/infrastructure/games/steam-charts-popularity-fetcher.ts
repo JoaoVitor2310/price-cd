@@ -6,7 +6,7 @@ import {
 	STEAM_CHARTS_SEARCH_URL,
 } from "@/helpers/constants.js";
 import type { PopularityFetcher } from "@/application/games/ports/game-search.ports.js";
-import type { FoundGames } from "@/types/games.js";
+import type { FoundGames } from "@/application/games/game.types.js";
 
 const processGame = async (
 	gameString: string,

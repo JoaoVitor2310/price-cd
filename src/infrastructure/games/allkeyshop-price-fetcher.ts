@@ -6,7 +6,8 @@ import { clearString, clearEdition, hasEdition, getRegion, removeRegion } from "
 import { ALLKEYSHOP_SEARCH_FILTERS, ALLKEYSHOP_SEARCH_URL } from "@/helpers/constants.js";
 import { enqueueWithBrowser, getSharedSession, invalidateSharedSession } from "@/lib/puppeteer-browser.js";
 import type { PriceFetcher } from "@/application/games/ports/game-search.ports.js";
-import type { FoundGames, GameData, Price } from "@/types/games.js";
+import type { FoundGames } from "@/application/games/game.types.js";
+import type { GameData, Price } from "@/infrastructure/games/allkeyshop.types.js";
 import { delay } from "@/helpers/utils.js";
 import { TimeoutError } from "puppeteer";
 import { PageWithCursor } from "puppeteer-real-browser";

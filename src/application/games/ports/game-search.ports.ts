@@ -1,5 +1,4 @@
-import type { FoundGames, GameAnalysisResult } from "@/types/games.js";
-import type { SearchGamesRequest } from "@/types/games.js";
+import type { FoundGames, GameAnalysisResult, SearchGamesRequest } from "@/application/games/game.types.js";
 
 export interface PopularityFetcher {
 	fetch(gameNames: string[], minPopularity: number): Promise<FoundGames[]>;

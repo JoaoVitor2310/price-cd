@@ -1,4 +1,4 @@
-import type { GameAnalysisResult } from "@/types/games.js";
+import type { GameAnalysisResult } from "@/application/games/game.types.js";
 import fs from "node:fs";
 import path from "path";
 

@@ -6,7 +6,7 @@ import { formatList } from "@/infrastructure/lists/format-list-result.js";
 import { SearchGamesUseCase } from "@/application/games/search-games.use-case.js";
 import { SteamChartsPopularityFetcher } from "@/infrastructure/games/steam-charts-popularity-fetcher.js";
 import { AllKeyShopPriceFetcher } from "@/infrastructure/games/allkeyshop-price-fetcher.js";
-import type { GameAnalysisResult, SearchGamesRequest } from "@/types/games.js";
+import type { GameAnalysisResult, SearchGamesRequest } from "@/application/games/game.types.js";
 
 export type RunListsServiceResult = {
 	status: "completed" | "failed";

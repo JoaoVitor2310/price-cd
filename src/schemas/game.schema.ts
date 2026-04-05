@@ -114,8 +114,3 @@ export const validateFileContent = (content: string, checkGamivoOffer: string | 
 		checkGamivoOffer: checkGamivoOfferBoolean,
 	});
 }
-
-/** Valida formato; lista vazia é válida (ex.: nada extraído do SteamTrades ou 0 matches no SteamCharts). */
-export const validateFoundGames = (games: unknown): Game[] => {
-	return z.array(gameSchema).parse(games);
-};

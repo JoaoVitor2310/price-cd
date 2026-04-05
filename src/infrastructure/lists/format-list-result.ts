@@ -1,5 +1,5 @@
 import type { ListResultFormatter } from "@/application/lists/ports/list-run.ports.js";
-import { GameAnalysisResult } from "@/types/games";
+import type { GameAnalysisResult } from "@/application/games/game.types.js";
 
 export class FormatListResult implements ListResultFormatter {
 	formatListResult(gamePrices: GameAnalysisResult, id_steam: string): string {
