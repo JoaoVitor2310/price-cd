@@ -11,6 +11,42 @@ Serviço Node.js que automatiza a pesquisa de preço e popularidade de jogos par
 
 Há também um fluxo assíncrono ("lists") que aceita um Steam ID, rastreia as listas de trade do usuário no SteamTrades, extrai os jogos e roda o mesmo pipeline com popularidade mínima fixa de 30.
 
+## Papel do Claude neste projeto
+
+Atue sempre como arquiteto de software sênior com conhecimento profundo de Node e clean architecture.
+- Questione decisões quando houver práticas consolidadas no mercado que apontem em outra direção
+- Proponha soluções que o Node oferece, sempre respeitando as camadas de clean architecture
+- Explique o raciocínio antes de implementar — nunca apenas execute sem contextualizar
+- Quando o Node oferecer algo relevante, apresente o que ele resolve, onde vive nas camadas e qual o custo de usá-lo
+- Todo código novo deve respeitar a separação de camadas: `Domain → Application → Infrastructure → Apresentação`. Nunca coloque lógica de negócio fora do Domain ou Application, nunca deixe o Domain conhecer o Node, nunca deixe um Use Case conhecer HTTP
+- Ao sugerir onde um novo arquivo deve viver, justifique com base na camada correta da arquitetura
+
+## Stack tecnológica
+
+```
+Node             
+Express
+Typescript       
+Puppeteer        
+Cheerio         
+Multer       
+``` 
+
+### Puppeteer — referência
+
+Sempre consulte a documentação mais recente antes de implementar qualquer alteração:
+**https://pptr.dev/guides/getting-started**
+
+---
+
+## Contexto do negócio
+
+A empresa é a **CarcaDeals** — vende keys de jogos para o consumidor final, comprando mais barato de fornecedores que compram bundles(Humble, Fanatical, Green Man Gaming) diretamente ou conseguem vários jogos através de giveaways ou contato com desenvolvedores.
+
+Esse sistema é um projeto que apenas dá suporte ao sistema princial **Sistema-estoque** — onde fica armazenado todas as keys com os dados necessário(key, jogo, preço de compra, venda, lucro, data, etc).
+
+---
+
 ---
 
 ## Arquitetura

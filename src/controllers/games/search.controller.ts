@@ -1,12 +1,23 @@
 import type { Request, Response } from "express";
 import { ZodError } from "zod";
 import { fileContentSchema } from "@/schemas/game.schema.js";
-import { searchGamesService } from "@/services/game-search.service.js";
+import { SearchGamesUseCase } from "@/application/games/search-games.use-case.js";
+import { SteamChartsPopularityFetcher } from "@/infrastructure/games/steam-charts-popularity-fetcher.js";
+import { AllKeyShopPriceFetcher } from "@/infrastructure/games/allkeyshop-price-fetcher.js";
+
+const searchGamesUseCase = new SearchGamesUseCase();
+const popularityFetcher = new SteamChartsPopularityFetcher();
+const priceFetcher = new AllKeyShopPriceFetcher();
 
 export const searchGames = async (req: Request, res: Response) => {
 	try {
 		const validatedData = fileContentSchema.parse(req.body);
-		const result = await searchGamesService(validatedData);
+
+		const result = await searchGamesUseCase.execute({
+			...validatedData,
+			popularityFetcher,
+			priceFetcher,
+		});
 
 		res.status(200).json({
 			success: true,

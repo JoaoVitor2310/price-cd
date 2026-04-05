@@ -1,4 +1,3 @@
-
 import fs from "node:fs";
 import type { Response } from "express";
 import { ZodError } from "zod";
@@ -7,8 +6,14 @@ import {
 	validateFileUpload,
 } from "@/schemas/game.schema.js";
 import type { MulterRequest } from "@/types/MulterRequest.js";
-import { searchGamesService } from "@/services/game-search.service.js";
+import { SearchGamesUseCase } from "@/application/games/search-games.use-case.js";
+import { SteamChartsPopularityFetcher } from "@/infrastructure/games/steam-charts-popularity-fetcher.js";
+import { AllKeyShopPriceFetcher } from "@/infrastructure/games/allkeyshop-price-fetcher.js";
 import { createDownloadService } from "@/services/create-download.service.js";
+
+const searchGamesUseCase = new SearchGamesUseCase();
+const popularityFetcher = new SteamChartsPopularityFetcher();
+const priceFetcher = new AllKeyShopPriceFetcher();
 
 export const uploadFile = async (req: MulterRequest, res: Response) => {
 	try {
@@ -19,9 +24,14 @@ export const uploadFile = async (req: MulterRequest, res: Response) => {
 		const checkGamivoOffer = req.body.checkGamivoOffer ?? false;
 		const validatedContent = validateFileContent(fileContent, checkGamivoOffer);
 
-		const gamePrices = await searchGamesService(validatedContent);
+		const gamePrices = await searchGamesUseCase.execute({
+			...validatedContent,
+			popularityFetcher,
+			priceFetcher,
+		});
 
-		const resultName = await createDownloadService(validatedFile.file.path, gamePrices, req);
+		const originalName = req.file?.originalname ?? "resultado.txt";
+		const resultName = await createDownloadService(validatedFile.file.path, gamePrices, originalName);
 
 		res.download(validatedFile.file.path, resultName, (err) => {
 			fs.unlink(validatedFile.file.path, (unlinkErr) => {
