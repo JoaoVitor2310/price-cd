@@ -1,10 +1,11 @@
 // biome-ignore assist/source/organizeImports: <explanation>
-import axios, { AxiosError, type AxiosResponse } from "axios";
+import axios, { type AxiosResponse } from "axios";
 import * as cheerio from "cheerio";
 import dotenv from "dotenv";
 import { clearString, clearEdition, hasEdition, getRegion, removeRegion } from "@/helpers/clear-string.js";
 import { ALLKEYSHOP_SEARCH_FILTERS, ALLKEYSHOP_SEARCH_URL } from "@/helpers/constants.js";
 import { enqueueWithBrowser, getSharedSession, invalidateSharedSession } from "@/lib/puppeteer-browser.js";
+import type { PriceFetcher } from "@/application/games/ports/game-search.ports.js";
 import type { FoundGames, GameData, Price } from "@/types/games.js";
 import { delay } from "@/helpers/utils.js";
 import { TimeoutError } from "puppeteer";
@@ -12,7 +13,6 @@ import { PageWithCursor } from "puppeteer-real-browser";
 
 dotenv.config();
 
-// CONSTANTS
 const REGION_FILTER_DICTIONARY: Record<string, string> = {
     global: "STEAM GLOBAL",
     eu: "STEAM EU",
@@ -30,7 +30,6 @@ const scrapSearchResults = (html: string): { link: string; name: string; price: 
     const names = $('p.text-md.text-white').map((_, el) => $(el).text().trim()).get();
     const prices = $('a.price-skew span').map((_, el) => $(el).text().trim()).get();
 
-    // Garante que todos os arrays tenham o mesmo tamanho
     const length = Math.min(links.length, names.length, prices.length);
 
     const searchResults: { link: string; name: string; price: string }[] = [];
@@ -43,13 +42,8 @@ const scrapSearchResults = (html: string): { link: string; name: string; price: 
     }
 
     return searchResults;
-}
+};
 
-/**
- * Scrap the game page from AllKeyShop
- * @param html Page game HTML content from AllKeyShop
- * @returns Game data from AllKeyShop
- */
 const scrapGamePage = (html: string): GameData | null => {
     const $ = cheerio.load(html);
 
@@ -69,7 +63,7 @@ const scrapGamePage = (html: string): GameData | null => {
         console.error('Erro ao fazer parse do JSON:', err);
         return null;
     }
-}
+};
 
 const detectOfferTooLow = (regionPrices: Price[]) => {
     if (regionPrices.length === 0) return null;
@@ -92,7 +86,6 @@ const detectOfferTooLow = (regionPrices: Price[]) => {
 
     if (!secondBestOffer) return bestPrice;
 
-
     const secondBestOfferPrice = secondBestOffer.originalPrice;
     const difference = secondBestOfferPrice - bestPrice;
 
@@ -101,23 +94,13 @@ const detectOfferTooLow = (regionPrices: Price[]) => {
             ? 0.1 * secondBestOfferPrice
             : 0.05 * secondBestOfferPrice;
 
-
     if (difference >= percentualDifference) {
         return secondBestOfferPrice;
     }
 
     return bestPrice;
+};
 
-}
-
-/**
- * Get the best(lowest) offer price from AllKeyShop
- * @param data GameData from AllKeyShop
- * @param region Region of the game
- * @param popularity Popularity of the game
- * @param checkGamivoOffer Boolean to check if the game has a Gamivo offer
- * @returns 
- */
 const bestOfferPrice = (data: GameData, region: string, popularity: number, checkGamivoOffer: boolean): string | null => {
     const { prices, regions, merchants } = data;
 
@@ -142,7 +125,6 @@ const bestOfferPrice = (data: GameData, region: string, popularity: number, chec
     const bestOffer = detectOfferTooLow(regionPrices);
     if (bestOffer == null) return null;
 
-
     if (checkGamivoOffer) {
         const gamivoMerchantCode = Object.keys(merchants).find(key => merchants[key].name === GAMIVO_MERCHANT_NAME);
 
@@ -154,16 +136,8 @@ const bestOfferPrice = (data: GameData, region: string, popularity: number, chec
     }
 
     return bestOffer.toString().replace(".", ",");
-}
+};
 
-/**
- * Faz uma requisição GET com retry automático em caso de 429 (Too Many Requests)
- * 
- * @param url URL do recurso
- * @param maxRetries Max attempts (padrão: 3)
- * @param baseDelay Tempo base de espera (em ms) para o backoff exponencial (padrão: 5000ms)
- * @returns AxiosResponse with response data 
- */
 export async function fetchWithRetry<T = any>(
     url: string,
     maxRetries: number = 3,
@@ -175,7 +149,7 @@ export async function fetchWithRetry<T = any>(
             return response;
         } catch (error: any) {
             if (axios.isAxiosError(error) && error.response) {
-                const { status, headers, statusText } = error.response;
+                const { status, headers } = error.response;
 
                 if (status === 429) {
                     const retryAfterHeader = headers["retry-after"];
@@ -204,13 +178,6 @@ export async function fetchWithRetry<T = any>(
     throw new Error(`❌ [ERROR] Failed after ${maxRetries} attempts: ${url}`);
 }
 
-/**
- * Go to page with automatic retry if timeouts or status 429
- * 
- * @param page Puppeteer Page instance used for navigation
- * @param maxRetries Max attempts (standard: 3)
- * @returns AxiosResponse with response data 
- */
 async function gotoWithRetry(page: PageWithCursor, url: string, maxRetries = 3): Promise<boolean> {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
@@ -251,15 +218,7 @@ async function gotoWithRetry(page: PageWithCursor, url: string, maxRetries = 3):
     return false;
 }
 
-
-/**
- * Go to page with automatic retry if timeouts or status 429
- * 
- * @param gamesToSearch Array of games to search for prices on AllKeyShop
- * @param checkGamivoOffer Boolean to check if the game has a Gamivo offer
- * @returns FoundGames with prices 
- */
-export const searchAllKeyShop = async (
+const searchAllKeyShop = async (
     gamesToSearch: FoundGames[],
     checkGamivoOffer: boolean,
 ): Promise<FoundGames[]> => {
@@ -288,9 +247,7 @@ export const searchAllKeyShop = async (
                 }
 
                 const htmlSearchPage = await page.content();
-
                 const searchResults = scrapSearchResults(htmlSearchPage);
-
                 const gameString = game.name;
 
                 let gamePage: string = "";
@@ -305,11 +262,9 @@ export const searchAllKeyShop = async (
                     searchResultClean = clearString(searchResultClean);
                     searchResultClean = searchResultClean.toLowerCase().trim();
 
-
                     const gameStringKeywords = hasEdition(gameString);
                     const searchResultKeywords = hasEdition(searchResult.name);
 
-                    // Se um dos conjuntos tiver palavras-'edition' que o outro não tem, continue
                     if (
                         ![...gameStringKeywords].every((keyword) =>
                             searchResultKeywords.has(keyword),
@@ -323,7 +278,7 @@ export const searchAllKeyShop = async (
 
                     if (searchResultClean === gameStringClean) {
                         gamePage = searchResult.link;
-                        foundName = searchResult.name
+                        foundName = searchResult.name;
                         break;
                     }
                 }
@@ -354,11 +309,10 @@ export const searchAllKeyShop = async (
                 if (!price) continue;
 
                 region = region == "global" ? "" : region.toUpperCase();
-
                 game.name = removeRegion(game.name);
 
                 foundGames.push({
-                    id: index,
+                    id: game.id,
                     name: game.name,
                     foundName: foundName,
                     popularity: game.popularity,
@@ -377,5 +331,11 @@ export const searchAllKeyShop = async (
             invalidateSharedSession();
             throw error;
         }
-    }); // enqueueWithBrowser
+    });
 };
+
+export class AllKeyShopPriceFetcher implements PriceFetcher {
+    async fetch(games: FoundGames[], checkGamivoOffer: boolean): Promise<FoundGames[]> {
+        return searchAllKeyShop(games, checkGamivoOffer);
+    }
+}

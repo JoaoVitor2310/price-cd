@@ -1,7 +1,7 @@
 import type { VipListRequest } from "@/schemas/list.schema.js";
 import type { ListTopic } from "@/domain/lists/list-topic.js";
 import type { RunListsServiceResult } from "@/services/lists/run-lists.service.js";
-import type { GameAnalysisResult } from "@/types/games";
+import type { GameAnalysisResult, SearchGamesRequest } from "@/types/games";
 
 /**
  * Portas (interfaces): o caso de uso depende disso; a infraestrutura implementa.
@@ -51,4 +51,12 @@ export interface BackgroundScheduler {
  */
 export interface RunListsRunner {
 	run(vipListRequest: VipListRequest): Promise<RunListsServiceResult>;
+}
+
+/**
+ * Porta para buscar popularidade e preços de jogos.
+ * Isola RunListsUseCase da implementação concreta de SearchGamesUseCase.
+ */
+export interface GameSearcher {
+	search(request: SearchGamesRequest): Promise<GameAnalysisResult>;
 }

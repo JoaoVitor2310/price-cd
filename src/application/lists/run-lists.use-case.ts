@@ -1,10 +1,10 @@
 import type {
+	GameSearcher,
 	ListResultFormatter,
 	ListTopicFetcher,
 } from "@/application/lists/ports/list-run.ports.js";
 import { disposeIfPresent } from "@/lib/dispose.js";
 import type { VipListRequest } from "@/schemas/list.schema.js";
-import { searchGamesService } from "@/services/game-search.service.js";
 
 const MIN_POPULARITY = 30;
 
@@ -13,6 +13,7 @@ export type RunListsInput = {
 	fetcher: ListTopicFetcher;
 	checkGamivoOffer: boolean;
 	formatter: ListResultFormatter;
+	gameSearcher: GameSearcher;
 };
 
 export type RunListsOutput = {
@@ -31,7 +32,7 @@ export type RunListsOutput = {
  */
 export class RunListsUseCase {
 	async execute(input: RunListsInput): Promise<RunListsOutput> {
-		const { vipListRequest, fetcher, checkGamivoOffer, formatter } = input;
+		const { vipListRequest, fetcher, checkGamivoOffer, formatter, gameSearcher } = input;
 		const idSteam = vipListRequest.id_steam;
 
 		const allGameNames: string[] = [];
@@ -53,7 +54,7 @@ export class RunListsUseCase {
 			await disposeIfPresent(fetcher);
 		}
 
-		const analysis = await searchGamesService({
+		const analysis = await gameSearcher.search({
 			minPopularity: MIN_POPULARITY,
 			gameNames: allGameNames,
 			checkGamivoOffer,
