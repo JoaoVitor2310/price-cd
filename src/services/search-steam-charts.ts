@@ -97,23 +97,22 @@ const processGame = async (
 		id_steam = id_steam.replace("/app/", "");
 
 		const $details = cheerio.load(response.data);
-		const spans: string[] = [];
 
-		$details("span.num").each((_, element) => {
-			const numText = $details(element).text().trim();
-			if (numText) {
-				spans.push(numText);
+		let popularity24hText: string | null = null;
+		$details("#app-heading .app-stat").each((_, el) => {
+			if ($details(el).text().toLowerCase().includes("24-hour peak")) {
+				popularity24hText = $details(el).find("span.num").text().trim();
 			}
 		});
 
-		if (spans.length < 1) {
+		if (!popularity24hText) {
 			console.log(
 				`⚠️ [INFO] No popularity data found for "${gameString}", skipping`,
 			);
 			return null;
 		}
 
-		const popularity = Number.parseInt(spans[1], 10);
+		const popularity = Number.parseInt((popularity24hText as string).replace(/,/g, ""), 10);
 		console.log(
 			`👥 [INFO] Found popularity: ${popularity} for "${gameString}"`,
 		);

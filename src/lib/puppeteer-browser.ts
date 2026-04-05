@@ -2,6 +2,8 @@ import AdblockerPlugin from "puppeteer-extra-plugin-adblocker";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import { connect } from "puppeteer-real-browser";
 
+type BrowserInstance = Awaited<ReturnType<typeof connect>>["browser"];
+
 const useExternalXvfb =
 	process.env.DOCKER === "true" || process.env.USE_EXTERNAL_XVFB === "true";
 
@@ -34,7 +36,7 @@ export const initializeBrowser = async () => {
 };
 
 export const cleanupBrowser = async (
-	browser: Awaited<ReturnType<typeof connect>>["browser"],
+	browser: BrowserInstance,
 ): Promise<void> => {
 	const pages = await browser.pages();
 	if (pages) {
@@ -51,4 +53,62 @@ export const cleanupBrowser = async (
 	if (browser?.process()) {
 		browser.process()?.kill("SIGINT");
 	}
+};
+
+// ---------------------------------------------------------------------------
+// Singleton session (browser + page) + serial queue
+// ---------------------------------------------------------------------------
+
+type SharedSession = Awaited<ReturnType<typeof initializeBrowser>>;
+
+let _session: SharedSession | null = null;
+let _sessionPromise: Promise<SharedSession> | null = null;
+let _queue: Promise<unknown> = Promise.resolve();
+
+export const getSharedSession = async (): Promise<SharedSession> => {
+	if (_session) {
+		try {
+			await _session.browser.pages(); // throws if the process died
+			return _session;
+		} catch {
+			_session = null;
+			_sessionPromise = null;
+		}
+	}
+
+	if (!_sessionPromise) {
+		_sessionPromise = initializeBrowser()
+			.then((session) => {
+				_session = session;
+				_sessionPromise = null;
+				return session;
+			})
+			.catch((err) => {
+				_sessionPromise = null;
+				throw err;
+			});
+	}
+
+	return _sessionPromise;
+};
+
+export const invalidateSharedSession = (): void => {
+	_session = null;
+	_sessionPromise = null;
+};
+
+/**
+ * Enqueue a task that requires the browser so that only one runs at a time.
+ * If the previous task threw, this one still runs (the queue never stalls).
+ */
+export const enqueueWithBrowser = <T>(task: () => Promise<T>): Promise<T> => {
+	const result = (_queue as Promise<unknown>).then(
+		() => task(),
+		() => task(),
+	) as Promise<T>;
+	_queue = result.then(
+		() => {},
+		() => {},
+	);
+	return result;
 };

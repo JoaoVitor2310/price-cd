@@ -16,7 +16,7 @@ export class AxiosRunListsCallbackPoster implements RunListsCallbackPoster {
 			await axios.post(callbackUrl, payload, { timeout });
 		} catch (error) {
 			// console.log("error");
-			// console.error("❌ [ERROR] Failed to post callback:", error);
+			console.error("❌ [ERROR] Failed to post callback:", error);
 		}
 	}
 }
