@@ -2,7 +2,7 @@
 import axios, { type AxiosResponse } from "axios";
 import * as cheerio from "cheerio";
 import dotenv from "dotenv";
-import { clearString, clearEdition, hasEdition, getRegion, removeRegion } from "@/helpers/clear-string.js";
+import { clearString, clearEdition, hasEdition, getRegion, removeRegion, clearQuantity } from "@/helpers/clear-string.js";
 import { ALLKEYSHOP_SEARCH_FILTERS, ALLKEYSHOP_SEARCH_URL } from "@/helpers/constants.js";
 import { enqueueWithBrowser, getSharedSession, invalidateSharedSession } from "@/lib/puppeteer-browser.js";
 import type { PriceFetcher } from "@/application/games/ports/game-search.ports.js";
@@ -235,10 +235,21 @@ const searchAllKeyShop = async (
         try {
             for (const [index, game] of gamesToSearch.entries()) {
                 console.log(`🔍 [INFO] Searching AllKeyShop ${index + 1} for: ${game.name}`);
-                const searchString = new URLSearchParams({ search_name: game.name });
+                
+                let searchString = game.name;
+                searchString = clearQuantity(searchString);
+                searchString = new URLSearchParams({ search_name: searchString }).toString();
 
                 const browseURL = await gotoWithRetry(page, `${ALLKEYSHOP_SEARCH_URL}${searchString}${ALLKEYSHOP_SEARCH_FILTERS}`);
                 if (!browseURL) continue;
+
+                const htmlSearchPage = await page.content();
+
+                const $page = cheerio.load(htmlSearchPage);
+                if ($page('div').filter((_, el) => $page(el).text().trim() === "Sorry, there aren't any results matching your search criteria.").length > 0) {
+                    console.log(`⚠️ [INFO] No results found on AllKeyShop for "${game.name}". Skipping.`);
+                    continue;
+                }
 
                 try {
                     await page.waitForSelector('p.text-md.text-white', { timeout: 10000 });
@@ -247,7 +258,6 @@ const searchAllKeyShop = async (
                     continue;
                 }
 
-                const htmlSearchPage = await page.content();
                 const searchResults = scrapSearchResults(htmlSearchPage);
                 const gameString = game.name;
 
@@ -256,11 +266,13 @@ const searchAllKeyShop = async (
 
                 let gameStringClean = clearEdition(gameString);
                 gameStringClean = clearString(gameStringClean);
+                gameStringClean = clearQuantity(gameStringClean);
                 gameStringClean = gameStringClean.toLowerCase().trim();
 
                 for (const searchResult of searchResults) {
                     let searchResultClean = clearEdition(searchResult.name);
                     searchResultClean = clearString(searchResultClean);
+                    searchResultClean = clearQuantity(searchResultClean);
                     searchResultClean = searchResultClean.toLowerCase().trim();
 
                     const gameStringKeywords = hasEdition(gameString);

@@ -33,6 +33,9 @@ export const clearString = (stringToSearch: string): string => {
 
 	stringToSearch = expandKNumbers(stringToSearch);
 
+	// Remove indicadores de quantidade como "x2", "X3", "2x", "10x"
+	stringToSearch = stringToSearch.replace(/\bx\d+\b|\b\d+x\b/gi, "");
+
 	return stringToSearch;
 };
 
@@ -125,6 +128,10 @@ export const clearEdition = (stringToSearch: string): string => {
 
 	return normalizedString;
 };
+
+export const clearQuantity = (stringToSearch: string): string => {
+	return stringToSearch.replace(/\bx\d+\b|\b\d+x\b/gi, "");
+}
 
 
 export const clearDLC = (stringToSearch: string): string => {

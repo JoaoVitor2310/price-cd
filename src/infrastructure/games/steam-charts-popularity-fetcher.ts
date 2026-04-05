@@ -1,6 +1,6 @@
 import axios, { type AxiosResponse } from "axios";
 import * as cheerio from "cheerio";
-import { clearDLC, clearEdition, clearString } from "@/helpers/clear-string.js";
+import { clearDLC, clearEdition, clearQuantity, clearString } from "@/helpers/clear-string.js";
 import {
 	STEAM_CHARTS_BASE_URL,
 	STEAM_CHARTS_SEARCH_URL,
@@ -19,6 +19,7 @@ const processGame = async (
 
 		let gameStringClean: string = gameString;
 		gameStringClean = clearEdition(gameStringClean);
+		gameStringClean = clearQuantity(gameStringClean);
 		const params = new URLSearchParams({ q: gameStringClean });
 
 		let response: AxiosResponse;
