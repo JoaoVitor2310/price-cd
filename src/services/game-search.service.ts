@@ -8,7 +8,8 @@ export const searchGamesService = async (
 	req: SearchGamesRequest,
 ): Promise<GameAnalysisResult> => {
 	const startTime = performance.now();
-	const { minPopularity, gameNames } = req;
+	const { minPopularity } = req;
+	const gameNames = [...new Set(req.gameNames)];
 
 	if (gameNames.length === 0) {
 		const processingTime = (performance.now() - startTime) / 1000;

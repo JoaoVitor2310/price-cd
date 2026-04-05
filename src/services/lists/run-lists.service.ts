@@ -16,12 +16,11 @@ const runListsUseCase = new RunListsUseCase();
  */
 export const runListsService = async (
 	vipListRequest: VipListRequest,
-	options?: { checkGamivoOffer?: boolean },
 ): Promise<RunListsServiceResult> => {
 	const listResult = await runListsUseCase.execute({
 		vipListRequest,
 		fetcher: fetchListTopic(),
-		checkGamivoOffer: options?.checkGamivoOffer ?? true,
+		checkGamivoOffer: vipListRequest.checkGamivoOffer,
 		formatter: formatList(),
 	});
 

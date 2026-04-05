@@ -23,7 +23,14 @@ export const uploadFile = async (req: MulterRequest, res: Response) => {
 
 		const resultName = await createDownloadService(validatedFile.file.path, gamePrices, req);
 
-		res.download(validatedFile.file.path, resultName);
+		res.download(validatedFile.file.path, resultName, (err) => {
+			fs.unlink(validatedFile.file.path, (unlinkErr) => {
+				if (unlinkErr) console.error("❌ [ERROR] Failed to delete upload file:", unlinkErr);
+			});
+			if (err && !res.headersSent) {
+				console.error("❌ [ERROR] Failed to send file download:", err);
+			}
+		});
 
 		return;
 	} catch (error) {

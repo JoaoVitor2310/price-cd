@@ -4,7 +4,7 @@ import * as cheerio from "cheerio";
 import dotenv from "dotenv";
 import { clearString, clearEdition, hasEdition, getRegion, removeRegion } from "@/helpers/clear-string.js";
 import { ALLKEYSHOP_SEARCH_FILTERS, ALLKEYSHOP_SEARCH_URL } from "@/helpers/constants.js";
-import { cleanupBrowser, initializeBrowser } from "@/lib/puppeteer-browser.js";
+import { enqueueWithBrowser, getSharedSession, invalidateSharedSession } from "@/lib/puppeteer-browser.js";
 import type { FoundGames, GameData, Price } from "@/types/games.js";
 import { delay } from "@/helpers/utils.js";
 import { TimeoutError } from "puppeteer";
@@ -267,111 +267,115 @@ export const searchAllKeyShop = async (
         `📋 [INFO] Processing ${gamesToSearch.length} AllKeyShop price search games`,
     );
 
-    const foundGames: FoundGames[] = [];
+    return enqueueWithBrowser(async () => {
+        const foundGames: FoundGames[] = [];
 
-    const { browser, page } = await initializeBrowser();
-
-    for (const [index, game] of gamesToSearch.entries()) {
-        console.log(`🔍 [INFO] Searching AllKeyShop ${index + 1} for: ${game.name}`);
-        const searchString = new URLSearchParams({ search_name: game.name });
-
-        const browseURL = await gotoWithRetry(page, `${ALLKEYSHOP_SEARCH_URL}${searchString}${ALLKEYSHOP_SEARCH_FILTERS}`);
-        if (!browseURL) continue;
+        const { page } = await getSharedSession();
 
         try {
-            await page.waitForSelector('p.text-md.text-white', { timeout: 10000 });
+            for (const [index, game] of gamesToSearch.entries()) {
+                console.log(`🔍 [INFO] Searching AllKeyShop ${index + 1} for: ${game.name}`);
+                const searchString = new URLSearchParams({ search_name: game.name });
+
+                const browseURL = await gotoWithRetry(page, `${ALLKEYSHOP_SEARCH_URL}${searchString}${ALLKEYSHOP_SEARCH_FILTERS}`);
+                if (!browseURL) continue;
+
+                try {
+                    await page.waitForSelector('p.text-md.text-white', { timeout: 10000 });
+                } catch (error) {
+                    console.log(`⚠️ [INFO] Timeout waiting for selector for "${game.name}". Skipping to the next game.`);
+                    continue;
+                }
+
+                const htmlSearchPage = await page.content();
+
+                const searchResults = scrapSearchResults(htmlSearchPage);
+
+                const gameString = game.name;
+
+                let gamePage: string = "";
+                let foundName: string = "";
+
+                let gameStringClean = clearEdition(gameString);
+                gameStringClean = clearString(gameStringClean);
+                gameStringClean = gameStringClean.toLowerCase().trim();
+
+                for (const searchResult of searchResults) {
+                    let searchResultClean = clearEdition(searchResult.name);
+                    searchResultClean = clearString(searchResultClean);
+                    searchResultClean = searchResultClean.toLowerCase().trim();
+
+
+                    const gameStringKeywords = hasEdition(gameString);
+                    const searchResultKeywords = hasEdition(searchResult.name);
+
+                    // Se um dos conjuntos tiver palavras-'edition' que o outro não tem, continue
+                    if (
+                        ![...gameStringKeywords].every((keyword) =>
+                            searchResultKeywords.has(keyword),
+                        ) ||
+                        ![...searchResultKeywords].every((keyword) =>
+                            gameStringKeywords.has(keyword),
+                        )
+                    ) {
+                        continue;
+                    }
+
+                    if (searchResultClean === gameStringClean) {
+                        gamePage = searchResult.link;
+                        foundName = searchResult.name
+                        break;
+                    }
+                }
+
+                if (gamePage === "") {
+                    console.log(`⚠️ [INFO] Game not found. Skipping to the next game.`);
+                    continue;
+                }
+
+                let responseGamePage: AxiosResponse;
+
+                try {
+                    responseGamePage = await fetchWithRetry(gamePage);
+                } catch (_error) {
+                    continue;
+                }
+
+                if (responseGamePage.status !== 200) {
+                    continue;
+                }
+
+                const gamePageData = scrapGamePage(responseGamePage.data);
+                if (!gamePageData) continue;
+
+                let region = getRegion(game.name);
+
+                const price = bestOfferPrice(gamePageData, region, game.popularity, checkGamivoOffer);
+                if (!price) continue;
+
+                region = region == "global" ? "" : region.toUpperCase();
+
+                game.name = removeRegion(game.name);
+
+                foundGames.push({
+                    id: index,
+                    name: game.name,
+                    foundName: foundName,
+                    popularity: game.popularity,
+                    region,
+                    GamivoPrice: price,
+                });
+
+                console.log(`🔍 [INFO] Price found: ${price}`);
+            }
+
+            console.log(
+                `✅ [INFO] Completed AllKeyShop search - found prices for ${foundGames.length}/${gamesToSearch.length} games`,
+            );
+            return foundGames;
         } catch (error) {
-            console.log(`⚠️ [INFO] Timeout waiting for selector for "${game.name}". Skipping to the next game.`);
-            continue;
+            invalidateSharedSession();
+            throw error;
         }
-
-        const htmlSearchPage = await page.content();
-
-        const searchResults = scrapSearchResults(htmlSearchPage);
-
-        const gameString = game.name;
-
-        let gamePage: string = "";
-        let foundName: string = "";
-
-        let gameStringClean = clearEdition(gameString);
-        gameStringClean = clearString(gameStringClean);
-        gameStringClean = gameStringClean.toLowerCase().trim();
-
-        for (const searchResult of searchResults) {
-            let searchResultClean = clearEdition(searchResult.name);
-            searchResultClean = clearString(searchResultClean);
-            searchResultClean = searchResultClean.toLowerCase().trim();
-
-
-            const gameStringKeywords = hasEdition(gameString);
-            const searchResultKeywords = hasEdition(searchResult.name);
-
-            // Se um dos conjuntos tiver palavras-'edition' que o outro não tem, continue
-            if (
-                ![...gameStringKeywords].every((keyword) =>
-                    searchResultKeywords.has(keyword),
-                ) ||
-                ![...searchResultKeywords].every((keyword) =>
-                    gameStringKeywords.has(keyword),
-                )
-            ) {
-                continue;
-            }
-
-            if (searchResultClean === gameStringClean) {
-                gamePage = searchResult.link;
-                foundName = searchResult.name
-                break;
-            }
-        }
-
-        if (gamePage === "") {
-            console.log(`⚠️ [INFO] Game not found. Skipping to the next game.`);
-            continue;
-        }
-
-        let responseGamePage: AxiosResponse;
-
-        try {
-            responseGamePage = await fetchWithRetry(gamePage);
-        } catch (_error) {
-            continue;
-        }
-
-        if (responseGamePage.status !== 200) {
-            continue;
-        }
-
-        const gamePageData = scrapGamePage(responseGamePage.data);
-        if (!gamePageData) continue;
-
-        let region = getRegion(game.name);
-
-        const price = bestOfferPrice(gamePageData, region, game.popularity, checkGamivoOffer);
-        if (!price) continue;
-
-        region = region == "global" ? "" : region.toUpperCase();
-
-        game.name = removeRegion(game.name);
-        
-        foundGames.push({
-            id: index,
-            name: game.name,
-            foundName: foundName,
-            popularity: game.popularity,
-            region,
-            GamivoPrice: price,
-        });
-
-        console.log(`🔍 [INFO] Price found: ${price}`);
-    }
-
-    console.log("\n🧹 [INFO] Cleaning up browser resources");
-    await cleanupBrowser(browser);
-
-    console.log(
-        `✅ [INFO] Completed AllKeyShop search - found prices for ${foundGames.length}/${gamesToSearch.length} games`,
-    );
-    return foundGames;
+    }); // enqueueWithBrowser
 };
