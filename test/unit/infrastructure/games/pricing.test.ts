@@ -64,33 +64,30 @@ const makeGameData = (overrides: Partial<GameData> = {}): GameData => ({
 // ---------------------------------------------------------------------------
 
 describe("detectOfferTooLow", () => {
-	it("retorna null para array vazio", () => {
+	it("returns null for empty array", () => {
 		expect(detectOfferTooLow([])).toBeNull();
 	});
 
-	it("retorna o preço da única oferta disponível", () => {
+	it("returns the price of the only available offer", () => {
 		expect(detectOfferTooLow([makePrice(3.99)])).toBe(3.99);
 	});
 
-	it("retorna o melhor preço quando a diferença é pequena (≤ 10%)", () => {
-		// gap = 0.10, percentual = 10% de 5.00 = 0.50 → gap < percentual → retorna best
+	it("returns the best price when the gap is small (≤ 10%)", () => {
 		const prices = [makePrice(4.90), makePrice(5.00)];
 		expect(detectOfferTooLow(prices)).toBe(4.90);
 	});
 
-	it("retorna o segundo melhor quando a diferença é grande (> 10%)", () => {
-		// gap = 2.00, percentual = 10% de 5.00 = 0.50 → gap > percentual → retorna segundo
+	it("returns the second best price when the gap is large (> 10%)", () => {
 		const prices = [makePrice(3.00), makePrice(5.00)];
 		expect(detectOfferTooLow(prices)).toBe(5.00);
 	});
 
-	it("usa threshold de 5% para preços abaixo de 1", () => {
-		// gap = 0.10, percentual = 5% de 0.80 = 0.04 → gap > percentual → retorna segundo
+	it("uses 5% threshold for prices below 1", () => {
 		const prices = [makePrice(0.70), makePrice(0.80)];
 		expect(detectOfferTooLow(prices)).toBe(0.80);
 	});
 
-	it("encontra o melhor e segundo melhor independente de ordem no array", () => {
+	it("finds best and second best regardless of array order", () => {
 		const prices = [makePrice(5.00), makePrice(3.00), makePrice(4.50)];
 		// best=3.00, second=4.50, gap=1.50, 10%*4.50=0.45 → gap > percentual → retorna segundo
 		expect(detectOfferTooLow(prices)).toBe(4.50);
@@ -102,26 +99,26 @@ describe("detectOfferTooLow", () => {
 // ---------------------------------------------------------------------------
 
 describe("bestOfferPrice", () => {
-	it("retorna null quando a região não existe no GameData", () => {
+	it("returns null when region does not exist in GameData", () => {
 		const data = makeGameData();
 		expect(bestOfferPrice(data, "eu", 500, false)).toBeNull();
 	});
 
-	it("retorna null quando não há preços para a região encontrada", () => {
+	it("returns null when no prices exist for the matched region", () => {
 		const data = makeGameData({
 			prices: [makePrice(4.99, { region: "99" })], // região diferente da do dicionário
 		});
 		expect(bestOfferPrice(data, "global", 500, false)).toBeNull();
 	});
 
-	it("retorna preço formatado com vírgula para global", () => {
+	it("returns price formatted with comma for global region", () => {
 		const data = makeGameData();
 		const result = bestOfferPrice(data, "global", 500, false);
 		expect(result).not.toBeNull();
-		expect(result).toMatch(/,/); // decimal com vírgula
+		expect(result).toMatch(/,/);
 	});
 
-	it("retorna null quando checkGamivoOffer=true, sem oferta Gamivo e popularidade < 100", () => {
+	it("returns null when checkGamivoOffer=true, no Gamivo offer, and popularity < 100", () => {
 		const data = makeGameData({
 			merchants: {
 				"1": {
@@ -137,7 +134,7 @@ describe("bestOfferPrice", () => {
 		expect(bestOfferPrice(data, "global", 50, true)).toBeNull();
 	});
 
-	it("retorna preço quando checkGamivoOffer=true mas popularidade >= 100 (dispensa exigência)", () => {
+	it("returns price when checkGamivoOffer=true but popularity >= 100 (waives requirement)", () => {
 		const data = makeGameData({
 			merchants: {
 				"1": {
@@ -154,7 +151,7 @@ describe("bestOfferPrice", () => {
 		expect(result).not.toBeNull();
 	});
 
-	it("retorna preço quando checkGamivoOffer=true e Gamivo está presente", () => {
+	it("returns price when checkGamivoOffer=true and Gamivo is present", () => {
 		const data = makeGameData(); // merchant 2 = GAMIVO na fixture padrão
 		const result = bestOfferPrice(data, "global", 50, true);
 		expect(result).not.toBeNull();

@@ -5,35 +5,35 @@ const makeGames = (popularities: number[]) =>
 	popularities.map((popularity, i) => ({ id: i, name: `Game ${i}`, popularity }));
 
 describe("worthyByPopularity", () => {
-	it("retorna todos os jogos quando minPopularity é 0", () => {
+	it("returns all games when minPopularity is 0", () => {
 		const games = makeGames([0, 5, 100]);
 		expect(worthyByPopularity(games, 0)).toHaveLength(3);
 	});
 
-	it("filtra jogos abaixo da popularidade mínima", () => {
+	it("filters games below the minimum popularity", () => {
 		const games = makeGames([10, 50, 200]);
 		const result = worthyByPopularity(games, 100);
 		expect(result).toHaveLength(1);
 		expect(result[0].popularity).toBe(200);
 	});
 
-	it("inclui jogo exatamente no limite mínimo", () => {
+	it("includes game exactly at the minimum threshold", () => {
 		const games = makeGames([99, 100, 101]);
 		const result = worthyByPopularity(games, 100);
 		expect(result).toHaveLength(2);
 		expect(result.map((g) => g.popularity)).toEqual([100, 101]);
 	});
 
-	it("retorna array vazio quando nenhum jogo atinge o mínimo", () => {
+	it("returns empty array when no game reaches the minimum", () => {
 		const games = makeGames([1, 5, 30]);
 		expect(worthyByPopularity(games, 1000)).toHaveLength(0);
 	});
 
-	it("retorna array vazio para input vazio", () => {
+	it("returns empty array for empty input", () => {
 		expect(worthyByPopularity([], 50)).toHaveLength(0);
 	});
 
-	it("preserva o tipo genérico — campos extras são mantidos", () => {
+	it("preserves generic type — extra fields are kept", () => {
 		const games = [
 			{ id: 0, name: "Game A", popularity: 200, region: "global", GamivoPrice: "4,50" },
 		];
@@ -42,7 +42,7 @@ describe("worthyByPopularity", () => {
 		expect(result[0].GamivoPrice).toBe("4,50");
 	});
 
-	it("não muta o array original", () => {
+	it("does not mutate the original array", () => {
 		const games = makeGames([10, 50, 200]);
 		const original = [...games];
 		worthyByPopularity(games, 100);

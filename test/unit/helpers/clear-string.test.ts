@@ -13,65 +13,58 @@ import {
 // ---------------------------------------------------------------------------
 
 describe("clearString", () => {
-	it("converte numeral romano isolado para decimal", () => {
+	it("converts standalone roman numeral to decimal", () => {
 		expect(clearString("Fallout IV")).toBe("fallout 4");
 	});
 
-	it("não converte numeral romano colado a número (ex: x2)", () => {
-		// 'x' em 'x2' não tem word boundary após si → não vira romano
+	it("does not convert roman numeral attached to number (e.g. x2)", () => {
 		const result = clearString("Game x2");
 		expect(result).not.toContain("102");
 	});
 
-	it("remove indicador de quantidade sufixo (x2)", () => {
+	it("removes suffix quantity indicator (x2)", () => {
 		expect(clearString("Pain Train PainPocalypse x2").trim()).toBe(
 			"pain train painpocalypse",
 		);
 	});
 
-	it("remove indicador de quantidade prefixo (2x)", () => {
+	it("removes prefix quantity indicator (2x)", () => {
 		expect(clearString("2x Game").trim()).toBe("game");
 	});
 
-	it("remove indicador de quantidade case-insensitive (X3)", () => {
+	it("removes quantity indicator case-insensitively (X3)", () => {
 		expect(clearString("Game X3").trim()).toBe("game");
 	});
 
-	it("expande número com K para inteiro", () => {
+	it("expands K-suffixed number to integer", () => {
 		expect(clearString("10k")).toBe("10000");
 	});
 
-	it("expande número decimal com K (ponto é removido antes da expansão, vira inteiro * 1000)", () => {
-		// O regex de caracteres especiais remove o "." antes de expandKNumbers rodar,
-		// portanto "1.5k" → "15k" → 15 * 1000 = "15000"
+	it("expands decimal K-number (dot removed before expansion, becomes integer * 1000)", () => {
 		expect(clearString("1.5k")).toBe("15000");
 	});
 
-	it("remove traço e converte para minúsculas", () => {
+	it("removes dash and converts to lowercase", () => {
 		expect(clearString("Dark-Souls")).toBe("darksouls");
 	});
 
-	it("remove caracteres especiais ™ : ® ! ? e também remove 'the'", () => {
-		// A função remove "the" via /the\s*/gi (sem word boundary),
-		// portanto "Game™: The® Adventure!?" → remover símbolos → "Game The Adventure"
-		// → remover "The " → "Game Adventure" → lowercase → "game adventure"
+	it("removes special characters ™ : ® ! ? and also removes 'the'", () => {
 		expect(clearString("Game™: The® Adventure!?")).toBe("game adventure");
 	});
 
-	it("remove 'the' como palavra isolada", () => {
+	it("removes 'the' as a standalone word", () => {
 		expect(clearString("The Witcher")).toBe("witcher");
 	});
 
-	it("remove vírgulas", () => {
+	it("removes commas", () => {
 		expect(clearString("Hello, World")).toBe("hello world");
 	});
 
-	it("remove /mx case-insensitive", () => {
+	it("removes /mx case-insensitively", () => {
 		expect(clearString("Game/MX Edition")).toBe("game edition");
 	});
 
-	it("não remove 'x' isolado de nomes (ex: Street Fighter X Tekken vira romano 10)", () => {
-		// X isolado vira roman → "10" — comportamento esperado
+	it("standalone 'x' is treated as roman numeral X (becomes 10)", () => {
 		const result = clearString("Street Fighter X Tekken");
 		expect(result).toBe("street fighter 10 tekken");
 	});
@@ -82,55 +75,55 @@ describe("clearString", () => {
 // ---------------------------------------------------------------------------
 
 describe("clearEdition", () => {
-	it("remove 'Edition'", () => {
+	it("removes 'Edition'", () => {
 		expect(clearEdition("Game Edition").trim()).toBe("Game");
 	});
 
-	it("remove 'Definitive'", () => {
+	it("removes 'Definitive'", () => {
 		expect(clearEdition("Game Definitive Edition").trim()).toBe("Game");
 	});
 
-	it("remove 'GOTY'", () => {
+	it("removes 'GOTY'", () => {
 		expect(clearEdition("Game GOTY").trim()).toBe("Game");
 	});
 
-	it("remove 'Game of the Year'", () => {
+	it("removes 'Game of the Year'", () => {
 		expect(clearEdition("Game Game of the Year").trim()).toBe("Game");
 	});
 
-	it("remove 'Deluxe'", () => {
+	it("removes 'Deluxe'", () => {
 		expect(clearEdition("Game Deluxe Edition").trim()).toBe("Game");
 	});
 
-	it("remove 'Premium'", () => {
+	it("removes 'Premium'", () => {
 		expect(clearEdition("Game Premium Edition").trim()).toBe("Game");
 	});
 
-	it("remove 'Bundle'", () => {
+	it("removes 'Bundle'", () => {
 		expect(clearEdition("Game Bundle").trim()).toBe("Game");
 	});
 
-	it("remove 'Special'", () => {
+	it("removes 'Special'", () => {
 		expect(clearEdition("Game Special Edition").trim()).toBe("Game");
 	});
 
-	it("remove 'Complete'", () => {
+	it("removes 'Complete'", () => {
 		expect(clearEdition("Game Complete Edition").trim()).toBe("Game");
 	});
 
-	it("remove 'Day One'", () => {
+	it("removes 'Day One'", () => {
 		expect(clearEdition("Game Day One Edition").trim()).toBe("Game");
 	});
 
-	it("remove 'ROW' como palavra isolada", () => {
+	it("removes 'ROW' as standalone word", () => {
 		expect(clearEdition("Game ROW").trim()).toBe("Game");
 	});
 
-	it("remove 'EU' como palavra isolada", () => {
+	it("removes 'EU' as standalone word", () => {
 		expect(clearEdition("Game EU").trim()).toBe("Game");
 	});
 
-	it("não altera nome sem edition keywords", () => {
+	it("does not alter name without edition keywords", () => {
 		expect(clearEdition("The Witcher 3").trim()).toBe("The Witcher 3");
 	});
 });
@@ -140,23 +133,23 @@ describe("clearEdition", () => {
 // ---------------------------------------------------------------------------
 
 describe("clearDLC", () => {
-	it("remove 'DLC' como palavra isolada", () => {
+	it("removes 'DLC' as standalone word", () => {
 		expect(clearDLC("Game DLC")).toBe("Game");
 	});
 
-	it("remove 'expansion'", () => {
+	it("removes 'expansion'", () => {
 		expect(clearDLC("Game Expansion")).toBe("Game");
 	});
 
-	it("remove 'season'", () => {
+	it("removes 'season'", () => {
 		expect(clearDLC("Game Season")).toBe("Game");
 	});
 
-	it("remove 'pass'", () => {
+	it("removes 'pass'", () => {
 		expect(clearDLC("Game Pass")).toBe("Game");
 	});
 
-	it("não remove 'DLC' embutido em palavra", () => {
+	it("does not remove 'DLC' embedded in a word", () => {
 		// \b garante que só remove como palavra separada
 		expect(clearDLC("ClassicDLC")).toBe("ClassicDLC");
 	});
@@ -167,33 +160,33 @@ describe("clearDLC", () => {
 // ---------------------------------------------------------------------------
 
 describe("hasEdition", () => {
-	it("retorna set vazio para nome sem edition keywords", () => {
+	it("returns empty set for name without edition keywords", () => {
 		expect(hasEdition("The Witcher 3").size).toBe(0);
 	});
 
-	it("detecta 'edition'", () => {
+	it("detects 'edition'", () => {
 		const result = hasEdition("Game Edition");
 		expect(result.size).toBeGreaterThan(0);
 	});
 
-	it("detecta 'GOTY' e 'edition' juntos", () => {
+	it("detects both 'GOTY' and 'edition'", () => {
 		const result = hasEdition("Game GOTY Edition");
 		expect(result.size).toBe(2);
 	});
 
-	it("detecta 'deluxe'", () => {
+	it("detects 'deluxe'", () => {
 		const result = hasEdition("Game Deluxe");
 		expect(result.size).toBe(1);
 	});
 
-	it("comparação simétrica: mesmo set para dois nomes equivalentes", () => {
+	it("symmetric match: same set for two equivalent names", () => {
 		const a = hasEdition("Game Deluxe Edition");
 		const b = hasEdition("Game Deluxe Edition");
 		expect([...a].every((k) => b.has(k))).toBe(true);
 		expect([...b].every((k) => a.has(k))).toBe(true);
 	});
 
-	it("comparação assimétrica: nomes com editions diferentes não batem", () => {
+	it("asymmetric match: names with different editions do not match", () => {
 		const a = hasEdition("Game Deluxe Edition");
 		const b = hasEdition("Game Standard Edition");
 		const allMatch = [...a].every((k) => b.has(k)) && [...b].every((k) => a.has(k));
@@ -206,19 +199,19 @@ describe("hasEdition", () => {
 // ---------------------------------------------------------------------------
 
 describe("getRegion", () => {
-	it("retorna 'row' quando encontra ROW", () => {
+	it("returns 'row' when ROW is found", () => {
 		expect(getRegion("Game ROW")).toBe("row");
 	});
 
-	it("retorna 'eu' quando encontra EU", () => {
+	it("returns 'eu' when EU is found", () => {
 		expect(getRegion("Game EU")).toBe("eu");
 	});
 
-	it("retorna 'global' quando não encontra região", () => {
+	it("returns 'global' when no region is found", () => {
 		expect(getRegion("Game")).toBe("global");
 	});
 
-	it("é case-insensitive para row", () => {
+	it("is case-insensitive for row", () => {
 		expect(getRegion("game row")).toBe("row");
 	});
 });
@@ -228,15 +221,15 @@ describe("getRegion", () => {
 // ---------------------------------------------------------------------------
 
 describe("removeRegion", () => {
-	it("remove 'ROW' da string", () => {
+	it("removes 'ROW' from string", () => {
 		expect(removeRegion("Game ROW").trim()).toBe("Game");
 	});
 
-	it("remove 'EU' da string", () => {
+	it("removes 'EU' from string", () => {
 		expect(removeRegion("Game EU").trim()).toBe("Game");
 	});
 
-	it("não altera string sem região", () => {
+	it("does not alter string without region", () => {
 		expect(removeRegion("The Witcher 3")).toBe("The Witcher 3");
 	});
 });

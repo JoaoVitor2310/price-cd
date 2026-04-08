@@ -23,7 +23,7 @@ const makeSearchHtml = (items: { link: string; name: string; price: string }[]) 
 `;
 
 describe("scrapSearchResults", () => {
-	it("retorna resultados corretos a partir do HTML", () => {
+	it("returns correct results from HTML", () => {
 		const html = makeSearchHtml([
 			{ link: "/game/house-flipper", name: "House Flipper", price: "€4.99" },
 		]);
@@ -33,7 +33,7 @@ describe("scrapSearchResults", () => {
 		expect(results[0].name).toBe("House Flipper");
 	});
 
-	it("substitui € e ponto decimal por vírgula no preço", () => {
+	it("replaces € and decimal point with comma in price", () => {
 		const html = makeSearchHtml([
 			{ link: "/game/test", name: "Test Game", price: "€4.99" },
 		]);
@@ -41,12 +41,12 @@ describe("scrapSearchResults", () => {
 		expect(results[0].price).toBe("4,99");
 	});
 
-	it("retorna array vazio quando não há resultados no HTML", () => {
+	it("returns empty array when there are no results in HTML", () => {
 		const results = scrapSearchResults("<html><body></body></html>");
 		expect(results).toHaveLength(0);
 	});
 
-	it("limita pelo menor array quando quantidades diferem", () => {
+	it("limits by smallest array when counts differ", () => {
 		// 2 links, 1 nome, 2 preços → mínimo é 1
 		const html = `
 			<html><body>
@@ -61,7 +61,7 @@ describe("scrapSearchResults", () => {
 		expect(results).toHaveLength(1);
 	});
 
-	it("retorna múltiplos resultados na ordem correta", () => {
+	it("returns multiple results in correct order", () => {
 		const html = makeSearchHtml([
 			{ link: "/game/a", name: "Game A", price: "€1.00" },
 			{ link: "/game/b", name: "Game B", price: "€2.00" },
@@ -86,7 +86,7 @@ const makeGamePageHtml = (jsonContent: string) => `
 `;
 
 describe("scrapGamePage", () => {
-	it("retorna GameData quando o script está presente e válido", () => {
+	it("returns GameData when script is present and valid", () => {
 		const payload = JSON.stringify({
 			prices: [],
 			regions: {},
@@ -100,12 +100,12 @@ describe("scrapGamePage", () => {
 		expect(result).toHaveProperty("merchants");
 	});
 
-	it("retorna null quando o script não existe no HTML", () => {
+	it("returns null when script does not exist in HTML", () => {
 		const html = "<html><body><p>No script here</p></body></html>";
 		expect(scrapGamePage(html)).toBeNull();
 	});
 
-	it("retorna null quando o JSON dentro do script é inválido", () => {
+	it("returns null when JSON inside script is invalid", () => {
 		const html = `
 			<html><body>
 				<script id="aks-offers-js-extra">
@@ -116,7 +116,7 @@ describe("scrapGamePage", () => {
 		expect(scrapGamePage(html)).toBeNull();
 	});
 
-	it("retorna null quando o padrão gamePageTrans não está presente no script", () => {
+	it("returns null when gamePageTrans pattern is not present in script", () => {
 		const html = `
 			<html><body>
 				<script id="aks-offers-js-extra">
@@ -127,7 +127,7 @@ describe("scrapGamePage", () => {
 		expect(scrapGamePage(html)).toBeNull();
 	});
 
-	it("parseia corretamente preços e merchants aninhados", () => {
+	it("correctly parses nested prices and merchants", () => {
 		const payload = JSON.stringify({
 			prices: [{ id: 1, originalPrice: 4.99 }],
 			regions: { "1": { filter_name: "STEAM GLOBAL" } },
