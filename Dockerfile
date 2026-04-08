@@ -3,7 +3,7 @@
 # ---------------------------------------------------------------------------
 # Estágio builder: dependências completas (inclui TypeScript) e gera dist/
 # ---------------------------------------------------------------------------
-FROM node:20-bookworm-slim AS builder
+FROM node:22-bookworm-slim AS builder
 
 WORKDIR /app
 
@@ -25,7 +25,7 @@ RUN npm run build
 # ---------------------------------------------------------------------------
 # Estágio final: só Node produção + bibliotecas de sistema para o Chromium
 # ---------------------------------------------------------------------------
-FROM node:20-bookworm-slim
+FROM node:22-bookworm-slim
 
 # Pacotes mínimos para rodar Chromium “de verdade” (UI toolkit, áudio, DRM/GBM, etc.).
 # --no-install-recommends reduz tamanho; rm -rf limpa cache do apt na mesma camada (imagem menor).
