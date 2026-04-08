@@ -112,14 +112,14 @@ export const bestOfferPrice = (data: GameData, region: string, popularity: numbe
     );
 
     if (!regionKey) {
-        console.log(`❌ [ERROR] Region not found.`);
+        console.log(`⚠️ [INFO] Region not found.`);
         return null;
     }
 
     const regionPrices = prices.filter(p => String(p.region) === regionKey);
 
     if (regionPrices.length === 0) {
-        console.log(`❌ [ERROR] No prices found for the region.`);
+        console.log(`⚠️ [INFO] No prices found for the region.`);
         return null;
     }
 
@@ -131,7 +131,7 @@ export const bestOfferPrice = (data: GameData, region: string, popularity: numbe
 
         const hasGamivoOffer = regionPrices.some(p => Number(p.merchant) === Number(gamivoMerchantCode));
         if (!hasGamivoOffer && popularity < MIN_POPULARITY_FOR_GAMIVO_REQUIREMENT) {
-            console.log(`❌ [ERROR] Gamivo offer not found.`);
+            console.log(`⚠️ [INFO] Gamivo offer not found.`);
             return null;
         }
     }

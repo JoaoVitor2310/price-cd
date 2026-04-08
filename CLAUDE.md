@@ -20,17 +20,7 @@ Atue sempre como arquiteto de software sênior com conhecimento profundo de Node
 - Quando o Node oferecer algo relevante, apresente o que ele resolve, onde vive nas camadas e qual o custo de usá-lo
 - Todo código novo deve respeitar a separação de camadas: `Domain → Application → Infrastructure → Apresentação`. Nunca coloque lógica de negócio fora do Domain ou Application, nunca deixe o Domain conhecer o Node, nunca deixe um Use Case conhecer HTTP
 - Ao sugerir onde um novo arquivo deve viver, justifique com base na camada correta da arquitetura
-
-## Stack tecnológica
-
-```
-Node             
-Express
-Typescript       
-Puppeteer        
-Cheerio         
-Multer       
-``` 
+- Sempre gerar testes para cada alteração feita no projeto e só aceitar depois de executar os testes e passarem todos.
 
 ### Puppeteer — referência
 
@@ -80,7 +70,7 @@ Segue uma arquitetura hexagonal leve: o subdomínio `lists` tem interfaces de po
 
 | Tecnologia | Uso |
 |---|---|
-| Node.js 20 + TypeScript 5 | Runtime e linguagem |
+| Node.js 22 + TypeScript 5 | Runtime e linguagem |
 | Express 5 | HTTP server |
 | Multer | Upload de arquivos `.txt` (máx 1 MB) |
 | Zod 4 | Validação de input (body e conteúdo do arquivo) |
