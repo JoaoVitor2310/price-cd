@@ -24,7 +24,7 @@ const GAMIVO_MERCHANT_NAME = "GAMIVO";
 const MIN_POPULARITY_FOR_GAMIVO_REQUIREMENT = 100;
 
 
-const scrapSearchResults = (html: string): { link: string; name: string; price: string }[] => {
+export const scrapSearchResults = (html: string): { link: string; name: string; price: string }[] => {
     const $ = cheerio.load(html);
 
     const links = $('a.absolute').map((_, el) => $(el).attr('href') || '').get();
@@ -45,7 +45,7 @@ const scrapSearchResults = (html: string): { link: string; name: string; price: 
     return searchResults;
 };
 
-const scrapGamePage = (html: string): GameData | null => {
+export const scrapGamePage = (html: string): GameData | null => {
     const $ = cheerio.load(html);
 
     const scriptContent = $('script#aks-offers-js-extra').html();
@@ -66,7 +66,7 @@ const scrapGamePage = (html: string): GameData | null => {
     }
 };
 
-const detectOfferTooLow = (regionPrices: Price[]) => {
+export const detectOfferTooLow = (regionPrices: Price[]) => {
     if (regionPrices.length === 0) return null;
 
     let bestOffer: Price | null = null;
@@ -102,7 +102,7 @@ const detectOfferTooLow = (regionPrices: Price[]) => {
     return bestPrice;
 };
 
-const bestOfferPrice = (data: GameData, region: string, popularity: number, checkGamivoOffer: boolean): string | null => {
+export const bestOfferPrice = (data: GameData, region: string, popularity: number, checkGamivoOffer: boolean): string | null => {
     const { prices, regions, merchants } = data;
 
     const filterName = REGION_FILTER_DICTIONARY[region];
