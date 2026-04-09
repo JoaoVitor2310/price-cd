@@ -1,76 +1,194 @@
+<div align="center">
 
-<h1 align="center" style="font-weight: bold;">Price Researcher 💻</h1>
+# Price Researcher
 
-<p align="center">
- <a href="#about">Problema e contextualização</a> • 
- <a href="#technologies">Tecnologias utilizadas</a> • 
-  <a href="#started">Como executar</a> •
-  <a href="#routes">API's utilizadas</a> •
-</p>
+**Automated game price & popularity intelligence for resellers**
 
-<p align="center">
-    <b>Pesquisador de preço de jogos de forma completamente automatizada.</b>
-</p>
+[![CI](https://github.com/JoaoVitor2310/price-researcher/actions/workflows/ci.yml/badge.svg)](https://github.com/JoaoVitor2310/price-researcher/actions/workflows/ci.yml)
+![Node](https://img.shields.io/badge/Node.js-22-339933?logo=nodedotjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
+![Vitest](https://img.shields.io/badge/Tested%20with-Vitest-6E9F18?logo=vitest&logoColor=white)
+![License](https://img.shields.io/badge/License-ISC-blue)
 
+> **Personal project** built for real production use at **CarcaDeals**, a game key reseller.<br/>
+> Replaced a fully manual process, cutting research time from hours to minutes.
 
-<h2 id="about"> Problema e contextualização </h2>
+</div>
 
-### Imagine-se na seguinte situação 
-Uma pessoa deseja vender vários jogos para você e lhe envia uma lista com mais de 100, 200 ou 500 jogos com o preço dela, como saber se o preço de cada jogo é justo? Bom, existem 3 sites para isso: G2A, Gamivo e Kinguin. Porém, pesquisar cada jogo 3 vezes não parece ser algo muito empolgante de se fazer, certo?
+---
 
-### Solução
-O Price-researcher nada mais é do que uma ferramenta para procurar pelos preço de jogos em sites de marketplace, fornecendo para o meu cliente um ganho de tempo para quando se está em dúvida se deve ou não comprar os jogos em uma lista para revender. Fazer isso manualmente era um trabalho árduo, repetitivo e frustante.
+## The Problem
 
-### Como funciona
-Bsicamente o usuário irá enviar um arquivo .txt(Bloco de notas) bem simples, contendo as informações que vão ajudar o price a buscar o preço dos jogos. Um exemplo é o arquivo TESTE_PRICE.txt que está na pasta "test".  
-Exemplo de arquivo a ser enviado:   
-![alt text](ArquivoExemplo.PNG)
+A supplier sends a list of 200+ game titles with asking prices. The buyer needs to cross-reference each game against marketplaces to decide what's worth purchasing — a process that previously took **hours of manual copy-pasting** across multiple sites.
 
-#### Popularidade
-Na primeira linha o usuário deve fornecer o mínimo de popularidade que o jogo deve ter para ele considerar. A popularidade nada mais é do que o pico de jogadores que jogaram o jogo nas últimas 24h. Isso é importante para saber se o jogo ainda é minimamente relevante.
+## The Solution
 
-### Lista de jogos
-Na sequência, cada linha irá conter um jogo, sem limite de tamanho(obviamente é recomendado não abusar para não deixar o servidor sobrecarregado). Assim será possível pesquisar pelo nome de cada jogo nos marketplaces e retornar o seu preço, sem perder tempo.
+Price Researcher fully automates that workflow:
 
-### Resultado
-O resultado será entregue em um arquivo .txt(bloco de notas) informando os preços na ordem G2A, Gamivo, Kinguin e Popularidade. Um exemplo é o arquivo resultado-price-researcher.txt. Mais detalhes sobre como utilizar você encontra na página principal do projeto quando executar ele.  
-Exemplo de resposta:  
-![alt text](RespostaExemplo.PNG)  
-Essa formatação é proposital, pois o cliente pediu para que fosse formatado da mesma forma que ele utiliza nas planilhas dele, sendo assim ele só precisa copiar tudo e colar já no formato necessário.
+1. Accepts a plain `.txt` file (one game per line + a minimum popularity threshold)
+2. Fetches the **24h peak player count** from SteamCharts for each game
+3. Filters out unpopular games (low demand = hard to resell)
+4. Scrapes **AllKeyShop** for the best current price on each qualifying game
+5. Returns a `.txt` file pre-formatted to paste directly into the buyer's spreadsheet
 
+A second async flow accepts a **Steam ID**, crawls the user's trade lists on SteamTrades, extracts game names, and runs the same analysis pipeline — fully hands-off.
 
-<h2 id="technologies">💻 Stack utilizada</h2>
+---
 
-Recursos utilizados para desenvolver o projeto:
-- **Node.js** - biblioteca fundamental no projeto para executar javascript fora do navegador e conseguir desenvolver o projeto.
-- **Puppeteer** -  importante para realizar o web-scrapping das páginas, navegando pelos sites e colhendo infomações de forma automatizada.
-- **Axios** - importante para realizar as requisições nas apis.
+## Business Impact
 
-<h2 id="started">🚀 Primeiros passos</h2>
+| Before | After |
+|---|---|
+| 2–4 hours of manual research per list | ~5 minutes end-to-end |
+| Human error in copy-pasting prices | Zero manual steps |
+| No popularity signal → bad purchases | Games pre-filtered by real demand data |
+| No SteamTrades integration | Full trade list automation via Steam ID |
 
-<h3>Pré-requisitos</h3>
+---
 
-- [NodeJS](https://nodejs.org/en/download/prebuilt-installer)  
+## Technical Highlights
 
+- **Clean Architecture** — strict `Domain → Application → Infrastructure → Presentation` layering with port/adapter interfaces for every external dependency, enabling full testability without a real browser or network
+- **Anti-bot scraping** — Puppeteer Real Browser + stealth plugin to bypass Cloudflare and similar protections on AllKeyShop and SteamTrades
+- **Multi-strategy concurrency** — SteamCharts runs in parallel batches of 50; AllKeyShop is strictly sequential (one browser page); SteamTrades uses a serialized promise gate to avoid rate limits
+- **Rate limit resilience** — `fetchWithRetry` honours `Retry-After` headers on HTTP 429 with exponential backoff (3 attempts, 5 s base delay); `gotoWithRetry` handles Puppeteer timeouts the same way
+- **Async background jobs** — `LimitedConcurrencyScheduler` queues list-processing jobs in-process with configurable concurrency; on completion it POSTs a callback to any URL the caller provides
+- **Game name normalisation** — `clear-string.ts` normalises roman numerals, K-suffixed numbers, edition keywords, DLC tags, regional tags and special characters to maximise match accuracy across different naming conventions
+- **Full test suite** — 102 tests (unit + integration) with zero real network or browser calls; integration layer tests the full HTTP pipeline via supertest with vitest mocks at the infrastructure boundary
+- **CI/CD** — GitHub Actions runs the full test suite on every pull request; merging to `main` is blocked on failure
 
-### Como executar:
-```sh
-git clone https://github.com/JoaoVitor2310/price-researcher # Clonar o repositório
-cd price-researcher # Entrar no diretório do projeto
-npm install # Instalar as dependências
-npm start # Executar o projeto
+---
+
+## Stack
+
+| Layer | Technology |
+|---|---|
+| Runtime | Node.js 22 + TypeScript 5 |
+| HTTP Server | Express 5 |
+| Validation | Zod 4 |
+| Scraping | Puppeteer Real Browser + stealth/adblocker plugins |
+| HTTP Client | Axios |
+| HTML Parsing | Cheerio |
+| File Upload | Multer |
+| Testing | Vitest + Supertest |
+| Linting | Biome |
+| Containerisation | Docker + Xvfb (headless Chromium in Linux) |
+
+---
+
+## Architecture
+
+```
+src/
+├── routes/            # Thin HTTP routing (method + path only)
+├── controllers/       # Request parsing, Zod validation, response shaping
+├── schemas/           # Zod schemas + parse helpers
+├── application/       # Use cases + port interfaces (dependency inversion)
+│   ├── games/         #   SearchGamesUseCase
+│   └── lists/         #   RunListsUseCase, EnqueueRunListsUseCase
+├── domain/            # Pure domain entities (ListTopic, worthyByPopularity)
+├── infrastructure/    # Concrete adapters (SteamCharts, AllKeyShop, SteamTrades)
+│   ├── background/    #   LimitedConcurrencyScheduler
+│   ├── http/          #   AxiosRunListsCallbackPoster
+│   └── lists/         #   FetchListTopic, FormatListResult
+├── services/          # Application service orchestration
+├── helpers/           # Pure string-transformation utilities (clear-string.ts)
+├── lib/               # Shared infrastructure (Puppeteer factory, Disposable)
+└── types/             # TypeScript type definitions
 ```
 
-<h2 id="routes">📍 API's Utilizadas</h2>
+The `lists` subdomain exposes explicit port interfaces (`ListTopicFetcher`, `BackgroundScheduler`, `RunListsCallbackPoster`, `RunListsRunner`) injected via factory functions — every use case is testable with zero infrastructure.
 
-Todas as api's utilizadas são de **minha** autoria e estão em produção.
+---
 
-<h3> API Gamivo</h3>
-- http://191.101.70.89:3000/api/products/priceResearcher/{productString}  
+## Getting Started
 
-Esse endpoint envia o slug do jogo para a minha API da gamivo, lá ela irá fazer toda a lógica do meu cliente para identificar qual é o valor mais baixo daquele jogo. Saiba mais sobre essa api clicando <a href="https://github.com/JoaoVitor2310/api-gamivo"> aqui </a>
+**Prerequisites:** Node.js ≥ 22, Docker (optional)
 
-<h3> API G2A</h3>
-- http://191.101.70.89:4000/g2a/api/products/priceResearcher/${productId}  
+```bash
+git clone https://github.com/JoaoVitor2310/price-researcher
+cd price-researcher
+npm install
+cp .env.example .env   # fill in your environment variables
+npm run dev
+```
 
-Esse endpoint envia o id do jogo para a minha API da G2A, lá ela irá fazer toda a lógica do meu cliente para identificar qual é o valor mais baixo daquele jogo. Saiba mais sobre essa api clicando <a href="https://github.com/JoaoVitor2310/api-g2a"> aqui </a>
+**With Docker:**
+```bash
+docker-compose up --build
+```
+
+**Run tests:**
+```bash
+npm test
+```
+
+---
+
+## API Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/games/search` | Search prices for a JSON list of game names |
+| `POST` | `/api/games/upload` | Upload a `.txt` file and receive a formatted result file |
+| `POST` | `/api/games/search-id-steam` | Resolve Steam IDs for a list of games |
+| `POST` | `/api/lists/run` | Async: crawl a Steam user's trade lists and run full analysis |
+
+<details>
+<summary><strong>POST /api/games/upload — input format</strong></summary>
+
+Upload a `text/plain` file via the `fileToUpload` field:
+
+```
+100
+Half-Life
+Portal 2
+Hades
+```
+
+Line 1 is the **minimum 24h peak player count**. Every subsequent line is a game name.
+The response is a `.txt` file ready to paste into a spreadsheet.
+
+</details>
+
+<details>
+<summary><strong>POST /api/lists/run — request body</strong></summary>
+
+```json
+{
+  "id_steam": "76561198000000000",
+  "callback_url": "https://your-server.com/callback",
+  "checkGamivoOffer": true
+}
+```
+
+Returns `202 Accepted` immediately. When analysis completes, POSTs to `callback_url`:
+
+```json
+{
+  "status": "completed",
+  "result": "<tab-separated game data>"
+}
+```
+
+</details>
+
+---
+
+## Input / Output Examples
+
+**Input file**
+
+![Input example](ArquivoExemplo.PNG)
+
+**Output file** (paste-ready for spreadsheet)
+
+![Output example](RespostaExemplo.PNG)
+
+---
+
+<div align="center">
+
+Built by [João Vitor Gouveia](https://www.linkedin.com/in/jo%C3%A3o-vitor-matos-gouveia-14b71437/) · Personal project · Production use at CarcaDeals
+
+</div>

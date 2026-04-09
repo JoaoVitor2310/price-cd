@@ -155,7 +155,7 @@
       formData.append("checkGamivoOffer", document.getElementById("checkGamivoOffer").checked ? "true" : "false");
 
       try {
-        const response = await fetch("/api/upload", {
+        const response = await fetch("/api/games/upload", {
           method: "POST",
           body: formData,
         });

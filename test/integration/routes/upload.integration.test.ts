@@ -51,7 +51,7 @@ const makeTxt = (minPopularity: number, ...games: string[]) =>
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("POST /api/upload", () => {
+describe("POST /api/games/upload", () => {
 	beforeAll(() => {
 		fs.mkdirSync(uploadsDir, { recursive: true });
 	});
@@ -66,7 +66,7 @@ describe("POST /api/upload", () => {
 		mockPriceFetch.mockResolvedValueOnce([game]);
 
 		const res = await request(app)
-			.post("/api/upload")
+			.post("/api/games/upload")
 			.field("checkGamivoOffer", "false")
 			.attach("fileToUpload", makeTxt(100, "Half-Life"), {
 				filename: "games.txt",
@@ -84,7 +84,7 @@ describe("POST /api/upload", () => {
 		mockPriceFetch.mockResolvedValueOnce([game]);
 
 		const res = await request(app)
-			.post("/api/upload")
+			.post("/api/games/upload")
 			.field("checkGamivoOffer", "false")
 			.attach("fileToUpload", makeTxt(100, "Half-Life"), {
 				filename: "games.txt",
@@ -107,7 +107,7 @@ describe("POST /api/upload", () => {
 		mockPriceFetch.mockResolvedValueOnce(games);
 
 		const res = await request(app)
-			.post("/api/upload")
+			.post("/api/games/upload")
 			.field("checkGamivoOffer", "false")
 			.attach("fileToUpload", makeTxt(0, "Half-Life", "Portal"), {
 				filename: "games.txt",
@@ -125,7 +125,7 @@ describe("POST /api/upload", () => {
 		const content = Buffer.from("100\n   \n   \n");
 
 		const res = await request(app)
-			.post("/api/upload")
+			.post("/api/games/upload")
 			.field("checkGamivoOffer", "false")
 			.attach("fileToUpload", content, {
 				filename: "games.txt",
@@ -140,7 +140,7 @@ describe("POST /api/upload", () => {
 		const content = Buffer.from("not-a-number\nHalf-Life");
 
 		const res = await request(app)
-			.post("/api/upload")
+			.post("/api/games/upload")
 			.field("checkGamivoOffer", "false")
 			.attach("fileToUpload", content, {
 				filename: "games.txt",
@@ -155,7 +155,7 @@ describe("POST /api/upload", () => {
 		const content = Buffer.from("-10\nHalf-Life");
 
 		const res = await request(app)
-			.post("/api/upload")
+			.post("/api/games/upload")
 			.field("checkGamivoOffer", "false")
 			.attach("fileToUpload", content, {
 				filename: "games.txt",
@@ -168,7 +168,7 @@ describe("POST /api/upload", () => {
 
 	it("returns 500 when no file is attached", async () => {
 		const res = await request(app)
-			.post("/api/upload")
+			.post("/api/games/upload")
 			.field("checkGamivoOffer", "false");
 
 		expect(res.status).toBe(500);
@@ -179,7 +179,7 @@ describe("POST /api/upload", () => {
 		mockPopularityFetch.mockResolvedValueOnce([makeGame({ popularity: 5 })]);
 
 		const res = await request(app)
-			.post("/api/upload")
+			.post("/api/games/upload")
 			.field("checkGamivoOffer", "false")
 			.attach("fileToUpload", makeTxt(100, "Obscure Game"), {
 				filename: "games.txt",
