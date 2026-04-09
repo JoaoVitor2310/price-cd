@@ -154,6 +154,6 @@ describe("bestOfferPrice", () => {
 	it("returns price when checkGamivoOffer=true and Gamivo is present", () => {
 		const data = makeGameData(); // merchant 2 = GAMIVO na fixture padrão
 		const result = bestOfferPrice(data, "global", 50, true);
-		expect(result).toBeNull();
+		expect(result).not.toBeNull();
 	});
 });
