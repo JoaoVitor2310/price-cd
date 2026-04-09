@@ -179,11 +179,11 @@ Returns `202 Accepted` immediately. When analysis completes, POSTs to `callback_
 
 **Input file**
 
-![Input example](ArquivoExemplo.PNG)
+![Input example](file_example.png)
 
 **Output file** (paste-ready for spreadsheet)
 
-![Output example](RespostaExemplo.PNG)
+![Output example](result_example.png)
 
 ---
 
