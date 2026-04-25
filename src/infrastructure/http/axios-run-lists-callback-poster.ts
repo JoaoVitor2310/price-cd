@@ -12,10 +12,18 @@ export class AxiosRunListsCallbackPoster implements RunListsCallbackPoster {
 		payload: RunListsCallbackPayload,
 	): Promise<void> {
 		const timeout = this.options?.timeoutMs ?? 30_000;
+		const secret = process.env.EXTERNAL_SECRET;
+
+		const headers: Record<string, string> = {};
+		if (secret) {
+			headers.Authorization = `Bearer ${secret}`;
+		} else {
+			console.warn("⚠️ [WARN] EXTERNAL_SECRET não definido — callback enviado sem autenticação.");
+		}
+
 		try {
-			await axios.post(callbackUrl, payload, { timeout });
+			await axios.post(callbackUrl, payload, { timeout, headers });
 		} catch (error) {
-			// console.log("error");
 			console.error("❌ [ERROR] Failed to post callback:", error);
 		}
 	}

@@ -21,6 +21,7 @@ Atue sempre como arquiteto de software sênior com conhecimento profundo de Node
 - Todo código novo deve respeitar a separação de camadas: `Domain → Application → Infrastructure → Apresentação`. Nunca coloque lógica de negócio fora do Domain ou Application, nunca deixe o Domain conhecer o Node, nunca deixe um Use Case conhecer HTTP
 - Ao sugerir onde um novo arquivo deve viver, justifique com base na camada correta da arquitetura
 - Sempre gerar testes para cada alteração feita no projeto e só aceitar depois de executar os testes e passarem todos.
+- Esse sistema é utilizado pelo Sistema Estoque, mantenha o arquivo PRICE_RESEARCHER.md sempre atualizado.
 
 ### Puppeteer — referência
 
