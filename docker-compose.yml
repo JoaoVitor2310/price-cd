@@ -19,9 +19,6 @@ services:
       # para não haver dois servidores X (o nosso sobe no docker/start.sh).
       DOCKER: "true"
 
-      # Número do display virtual onde o Xvfb do start.sh publica a “tela”. O Chromium headed precisa de DISPLAY válido.
-      DISPLAY: ":99"
-
       # Modo produção para Node (menos verbosidade, algumas libs mudam comportamento).
       NODE_ENV: production
 
