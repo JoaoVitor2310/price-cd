@@ -3,7 +3,7 @@ import axios, { type AxiosResponse } from "axios";
 import * as cheerio from "cheerio";
 import dotenv from "dotenv";
 import { clearString, clearEdition, hasEdition, getRegion, removeRegion, clearQuantity } from "@/helpers/clear-string.js";
-import { ALLKEYSHOP_SEARCH_FILTERS, ALLKEYSHOP_SEARCH_URL } from "@/helpers/constants.js";
+import { ALLKEYSHOP_BASE_URL, ALLKEYSHOP_SEARCH_FILTERS, ALLKEYSHOP_SEARCH_URL } from "@/helpers/constants.js";
 import { enqueueWithBrowser, getSharedSession, invalidateSharedSession } from "@/lib/puppeteer-browser.js";
 import type { PriceFetcher } from "@/application/games/ports/game-search.ports.js";
 import type { FoundGames } from "@/application/games/game.types.js";
@@ -243,10 +243,9 @@ const searchAllKeyShop = async (
                 const browseURL = await gotoWithRetry(page, `${ALLKEYSHOP_SEARCH_URL}${searchString}${ALLKEYSHOP_SEARCH_FILTERS}`);
                 if (!browseURL) continue;
 
-                const htmlSearchPage = await page.content();
-
-                const $page = cheerio.load(htmlSearchPage);
-                if ($page('div').filter((_, el) => $page(el).text().trim() === "Sorry, there aren't any results matching your search criteria.").length > 0) {
+                const initialHtml = await page.content();
+                const $initial = cheerio.load(initialHtml);
+                if ($initial('div').filter((_, el) => $initial(el).text().trim() === "Sorry, there aren't any results matching your search criteria.").length > 0) {
                     console.log(`⚠️ [INFO] No results found on AllKeyShop for "${game.name}". Skipping.`);
                     continue;
                 }
@@ -258,6 +257,7 @@ const searchAllKeyShop = async (
                     continue;
                 }
 
+                const htmlSearchPage = await page.content();
                 const searchResults = scrapSearchResults(htmlSearchPage);
                 const gameString = game.name;
 
@@ -278,16 +278,11 @@ const searchAllKeyShop = async (
                     const gameStringKeywords = hasEdition(gameString);
                     const searchResultKeywords = hasEdition(searchResult.name);
 
-                    if (
-                        ![...gameStringKeywords].every((keyword) =>
-                            searchResultKeywords.has(keyword),
-                        ) ||
-                        ![...searchResultKeywords].every((keyword) =>
-                            gameStringKeywords.has(keyword),
-                        )
-                    ) {
-                        continue;
-                    }
+                    const editionMismatch =
+                        ![...gameStringKeywords].every((keyword) => searchResultKeywords.has(keyword)) ||
+                        ![...searchResultKeywords].every((keyword) => gameStringKeywords.has(keyword));
+
+                    if (editionMismatch) continue;
 
                     if (searchResultClean === gameStringClean) {
                         gamePage = searchResult.link;
@@ -303,8 +298,10 @@ const searchAllKeyShop = async (
 
                 let responseGamePage: AxiosResponse;
 
+                const gamePageUrl = gamePage.startsWith("http") ? gamePage : `${ALLKEYSHOP_BASE_URL}${gamePage}`;
+
                 try {
-                    responseGamePage = await fetchWithRetry(gamePage);
+                    responseGamePage = await fetchWithRetry(gamePageUrl);
                 } catch (_error) {
                     continue;
                 }
