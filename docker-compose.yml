@@ -1,6 +1,30 @@
 # Orquestra o container: build, portas, variáveis e recursos (sem precisar lembrar flags longas do docker run).
 
 services:
+  price-researcher-dev:
+    build:
+      context: .
+      target: dev
+
+    container_name: price-researcher-dev
+
+    ports:
+      - "${HOST_PORT_DEV:-5556}:5555"
+
+    env_file:
+      - .env
+
+    environment:
+      DOCKER: "true"
+      NODE_ENV: development
+      CHROME_PATH: /usr/bin/chromium
+
+    volumes:
+      - ./src:/app/src
+      - ./public:/app/public
+
+    shm_size: 1gb
+
   price-researcher:
     build: .
 

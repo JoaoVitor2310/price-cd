@@ -1,3 +1,47 @@
+# Imagem em três estágios: (1) builder — compila TS, (2) prod — runtime mínimo, (3) dev — hot-reload com tsx watch.
+
+# ---------------------------------------------------------------------------
+# Estágio dev: hot-reload via tsx watch + src/ montado como volume
+# ---------------------------------------------------------------------------
+FROM node:22-bookworm-slim AS dev
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+	chromium \
+	xvfb \
+	fonts-liberation \
+	libatk-bridge2.0-0 \
+	libgtk-3-0 \
+	libnss3 \
+	libxss1 \
+	libasound2 \
+	libx11-xcb1 \
+	libxcb-dri3-0 \
+	libdrm2 \
+	libgbm1 \
+	ca-certificates \
+	wget \
+	&& rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY package*.json tsconfig.json ./
+
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+ENV NODE_ENV=development
+ENV DOCKER=true
+ENV DISPLAY=:99
+ENV CHROME_PATH=/usr/bin/chromium
+
+# Instala todas as dependências (incluindo devDependencies para tsx/typescript)
+RUN npm ci
+
+COPY docker/start.dev.sh /app/start.dev.sh
+RUN chmod +x /app/start.dev.sh
+
+EXPOSE 5555
+
+CMD ["/app/start.dev.sh"]
+
 # Imagem em duas etapas: (1) compila TypeScript, (2) imagem final só com runtime + Chromium leve.
 
 # ---------------------------------------------------------------------------
