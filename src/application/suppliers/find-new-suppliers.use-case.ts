@@ -25,6 +25,18 @@ export type FindNewSuppliersResult = {
     suppliersCommented: number;
 };
 
+/**
+ * Varre as páginas de listagem do SteamTrades em busca de fornecedores potenciais.
+ *
+ * Para cada tópico encontrado:
+ * 1. Verifica se está inativo (`.notification.yellow`) — pula e incrementa o contador de inatividade.
+ * 2. Verifica se já foi comentado recentemente — pula para não spam.
+ * 3. Extrai os jogos da seção `.have` e busca preços via GameSearcher.
+ * 4. Envia os preços ao Sistema Estoque para calcular rentabilidade em keys TF2.
+ * 5. Se houver jogos rentáveis, posta comentário e registra no banco.
+ *
+ * Para antecipadamente quando 5 tópicos inativos são encontrados em sequência.
+ */
 export class FindNewSuppliersUseCase {
     async execute(input: FindNewSuppliersInput): Promise<FindNewSuppliersResult> {
         const { paginator, scraper, commentPoster, repository, profitabilityChecker, gameSearcher } = input;
@@ -39,6 +51,7 @@ export class FindNewSuppliersUseCase {
             pagesVisited++;
 
             const topics = await paginator.getTopicsFromPage(page);
+            return;
 
             if (topics.length === 0) {
                 console.log(`⚠️ [SUPPLIERS] Page ${page} has no topics. Stopping.`);

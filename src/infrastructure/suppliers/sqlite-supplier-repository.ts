@@ -23,6 +23,12 @@ CREATE TABLE IF NOT EXISTS topics (
 );
 `;
 
+/**
+ * Implementação de `SupplierRepository` com SQLite via better-sqlite3.
+ * Usa WAL mode para melhor performance em leituras concorrentes.
+ * O banco é criado automaticamente em `data/suppliers.db` na primeira execução.
+ * Aceita `:memory:` como `dbPath` para testes em memória sem tocar disco.
+ */
 export class SqliteSupplierRepository implements SupplierRepository {
     private readonly db: Database.Database;
 
@@ -43,6 +49,11 @@ export class SqliteSupplierRepository implements SupplierRepository {
         );
     }
 
+    /**
+     * Cria o supplier se não existir (`INSERT OR IGNORE`) e retorna o id.
+     * Dois passos são necessários porque SQLite não suporta `RETURNING` em `INSERT OR IGNORE`
+     * quando a linha já existe — a query retornaria 0 linhas afetadas.
+     */
     upsertSupplier(steamId: string): number {
         this.db
             .prepare("INSERT OR IGNORE INTO suppliers (steam_id) VALUES (?)")

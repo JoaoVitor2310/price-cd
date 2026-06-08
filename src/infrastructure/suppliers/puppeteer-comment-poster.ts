@@ -1,6 +1,7 @@
 import { initializeBrowser, cleanupBrowser } from "@/lib/puppeteer-browser.js";
 import type { CommentPoster } from "@/application/suppliers/ports/comment-poster.port.js";
 import type { ProfitableGameResult } from "@/application/suppliers/ports/profitability-checker.port.js";
+import { PAGE_NAVIGATION_TIMEOUT, ELEMENT_WAIT_TIMEOUT } from "@/infrastructure/suppliers/steamtrades.constants.js";
 
 const INTROS = [
     "Hi! Interested in:",
@@ -9,6 +10,10 @@ const INTROS = [
     "Hi there! Interested in these:",
 ];
 
+/**
+ * Monta o texto do comentário com intro aleatória + lista de jogos + "Add me 🙂".
+ * Exportada separadamente para facilitar testes sem Puppeteer.
+ */
 export function buildCommentText(games: ProfitableGameResult[]): string {
     const intro = INTROS[Math.floor(Math.random() * INTROS.length)];
     const lines = games
@@ -17,6 +22,11 @@ export function buildCommentText(games: ProfitableGameResult[]): string {
     return `${intro}\n\n${lines}\n\nAdd me 🙂`;
 }
 
+/**
+ * Implementação de `CommentPoster` via Puppeteer.
+ * Injeta o cookie `PHPSESSID` antes de navegar para autenticar no SteamTrades
+ * sem precisar de um fluxo de login interativo a cada execução.
+ */
 export class PuppeteerCommentPoster implements CommentPoster {
     constructor(private readonly phpSessionId: string) {}
 
@@ -33,14 +43,14 @@ export class PuppeteerCommentPoster implements CommentPoster {
                 secure: false,
             });
 
-            await page.goto(tradeUrl, { waitUntil: "domcontentloaded", timeout: 20000 });
+            await page.goto(tradeUrl, { waitUntil: "domcontentloaded", timeout: PAGE_NAVIGATION_TIMEOUT });
 
             const comment = buildCommentText(games);
 
-            await page.waitForSelector('textarea[name="description"]', { timeout: 10000 });
+            await page.waitForSelector('textarea[name="description"]', { timeout: ELEMENT_WAIT_TIMEOUT });
             await page.type('textarea[name="description"]', comment);
             await page.click(".btn_action.white.js_submit");
-            await page.waitForNetworkIdle({ idleTime: 1000, timeout: 10000 }).catch(() => {});
+            await page.waitForNetworkIdle({ idleTime: 1000, timeout: ELEMENT_WAIT_TIMEOUT }).catch(() => {});
 
             console.log(`✅ [SUPPLIERS] Comentário postado em ${tradeUrl}`);
         } finally {

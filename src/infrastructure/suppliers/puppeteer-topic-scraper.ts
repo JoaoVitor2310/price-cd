@@ -1,10 +1,14 @@
 import * as cheerio from "cheerio";
 import { initializeBrowser, cleanupBrowser } from "@/lib/puppeteer-browser.js";
 import type { TopicScraper, TopicData } from "@/application/suppliers/ports/topic-scraper.port.js";
+import { PAGE_NAVIGATION_TIMEOUT } from "@/infrastructure/suppliers/steamtrades.constants.js";
 
-const STEAMTRADES_BASE = "https://www.steamtrades.com";
 const STEAM_ID_REGEX = /\/user\/([^\/?#]+)/i;
 
+/**
+ * Extrai os dados relevantes do HTML de um tópico individual.
+ * Exportada separadamente para permitir testes unitários sem Puppeteer.
+ */
 function extractTopicData(html: string): TopicData {
     const $ = cheerio.load(html);
 
@@ -44,12 +48,16 @@ function extractTopicData(html: string): TopicData {
     return { authorName, steamId, games, isInactive, hasRecentComment };
 }
 
+/**
+ * Implementação de `TopicScraper` via Puppeteer.
+ * Abre e fecha um browser por chamada para evitar acúmulo de memória durante a paginação.
+ */
 export class PuppeteerTopicScraper implements TopicScraper {
     async scrape(url: string): Promise<TopicData> {
         const { browser, page } = await initializeBrowser();
 
         try {
-            await page.goto(url, { waitUntil: "domcontentloaded", timeout: 20000 });
+            await page.goto(url, { waitUntil: "domcontentloaded", timeout: PAGE_NAVIGATION_TIMEOUT });
             const html = await page.content();
             return extractTopicData(html);
         } finally {

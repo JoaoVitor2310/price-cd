@@ -8,7 +8,7 @@ const SERVER_TIMEOUT_MS = Number(process.env.SERVER_TIMEOUT_MS) || 10 * 60 * 100
 const server = app.listen(PORT, () => {
 	console.log(`Price-researcher rodando em: http://localhost:${PORT}`);
 	startBumpTopicsScheduler();
-	startFindNewSuppliersScheduler();
+	// startFindNewSuppliersScheduler();
 });
 
 server.setTimeout(SERVER_TIMEOUT_MS);

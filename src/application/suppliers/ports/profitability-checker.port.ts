@@ -1,7 +1,11 @@
+/** Jogo com preço já descoberto pelo price researcher, pronto para avaliação de rentabilidade. */
 export type GamePriceInput = {
     name: string;
+    /** Preço em EUR obtido no AllKeyShop/Gamivo. */
     priceEur: number;
+    /** Pico de jogadores em 24h no SteamCharts. */
     popularity: number;
+    /** Região da oferta (ex.: "Global", "EU"), ou null se não identificado. */
     region: string | null;
 };
 
