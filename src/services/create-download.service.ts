@@ -12,7 +12,7 @@ export const createDownloadService = async (
 		.map((game) =>
 			formatGameResultLine({
 				name: game.name,
-				price: String(game.GamivoPrice),
+				price: game.GamivoPrice?.toFixed(2).replace(".", ",") ?? "",
 				popularity: game.popularity,
 				region: game.region,
 			})

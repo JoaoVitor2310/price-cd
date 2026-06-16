@@ -111,11 +111,11 @@ describe("bestOfferPrice", () => {
 		expect(bestOfferPrice(data, "global", 500, false)).toBeNull();
 	});
 
-	it("returns price formatted with comma for global region", () => {
+	it("returns price as a number for global region", () => {
 		const data = makeGameData();
 		const result = bestOfferPrice(data, "global", 500, false);
 		expect(result).not.toBeNull();
-		expect(result).toMatch(/,/);
+		expect(typeof result).toBe("number");
 	});
 
 	it("returns null when checkGamivoOffer=true, no Gamivo offer, and popularity < 100", () => {

@@ -15,7 +15,8 @@ export class FormatListResult implements ListResultFormatter {
 
 
 		for (const game of gamePrices.games) {
-			const fullLine = `${date}\t${game.GamivoPrice}\t${steamProfileUrl}\t\t\t\t${game.popularity}\t${game.region}\t\t${game.name}\n`;
+			const price = game.GamivoPrice?.toFixed(2).replace(".", ",") ?? "";
+			const fullLine = `${date}\t${price}\t${steamProfileUrl}\t\t\t\t${game.popularity}\t${game.region}\t\t${game.name}\n`;
 			listResult += fullLine;
 		}
 

@@ -35,11 +35,11 @@ describe("worthyByPopularity", () => {
 
 	it("preserves generic type — extra fields are kept", () => {
 		const games = [
-			{ id: 0, name: "Game A", popularity: 200, region: "global", GamivoPrice: "4,50" },
+			{ id: 0, name: "Game A", popularity: 200, region: "global", GamivoPrice: 4.5 },
 		];
 		const result = worthyByPopularity(games, 100);
 		expect(result[0].region).toBe("global");
-		expect(result[0].GamivoPrice).toBe("4,50");
+		expect(result[0].GamivoPrice).toBe(4.5);
 	});
 
 	it("does not mutate the original array", () => {

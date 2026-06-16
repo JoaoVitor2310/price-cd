@@ -102,7 +102,7 @@ export const detectOfferTooLow = (regionPrices: Price[]) => {
     return bestPrice;
 };
 
-export const bestOfferPrice = (data: GameData, region: string, popularity: number, checkGamivoOffer: boolean): string | null => {
+export const bestOfferPrice = (data: GameData, region: string, popularity: number, checkGamivoOffer: boolean): number | null => {
     const { prices, regions, merchants } = data;
 
     const filterName = REGION_FILTER_DICTIONARY[region];
@@ -136,7 +136,7 @@ export const bestOfferPrice = (data: GameData, region: string, popularity: numbe
         }
     }
 
-    return bestOffer.toString().replace(".", ",");
+    return bestOffer;
 };
 
 export async function fetchWithRetry<T = any>(
