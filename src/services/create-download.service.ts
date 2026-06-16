@@ -1,4 +1,5 @@
 import type { GameAnalysisResult } from "@/application/games/game.types.js";
+import { formatGameResultLine } from "@/helpers/format-game-result.js";
 import fs from "node:fs";
 import path from "path";
 
@@ -7,12 +8,16 @@ export const createDownloadService = async (
 	gamePrices: GameAnalysisResult,
 	originalName: string,
 ): Promise<string> => {
-	let responseFile = "";
-	const date = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
-
-	for (const game of gamePrices.games) {
-		responseFile += `\t${date}\t${game.GamivoPrice}\t\t\t\t\t${game.popularity}\t${game.region}\t\t${game.name}\n`;
-	}
+	const responseFile = gamePrices.games
+		.map((game) =>
+			formatGameResultLine({
+				name: game.name,
+				price: String(game.GamivoPrice),
+				popularity: game.popularity,
+				region: game.region,
+			})
+		)
+		.join("\n");
 
 	const baseName = path.parse(originalName).name;
 	const resultName = `${baseName}-result.txt`;

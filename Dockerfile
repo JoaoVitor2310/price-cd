@@ -20,6 +20,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 	libgbm1 \
 	ca-certificates \
 	wget \
+	python3 \
+	make \
+	g++ \
 	&& rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -48,6 +51,13 @@ CMD ["/app/start.dev.sh"]
 # Estágio builder: dependências completas (inclui TypeScript) e gera dist/
 # ---------------------------------------------------------------------------
 FROM node:22-bookworm-slim AS builder
+
+# Ferramentas de compilação nativas necessárias para better-sqlite3 (node-gyp)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+	python3 \
+	make \
+	g++ \
+	&& rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -109,8 +119,10 @@ ENV DISPLAY=:99
 # Qual binário o launcher deve usar (Chromium do sistema, não o bundle do Puppeteer).
 ENV CHROME_PATH=/usr/bin/chromium
 
-# Só dependências de runtime.
-RUN npm ci --omit=dev
+# Reutiliza o node_modules do builder (já compilado com build tools, incluindo better-sqlite3).
+# Prune remove as devDependencies sem precisar de python3/make/g++ na imagem final.
+COPY --from=builder /app/node_modules ./node_modules
+RUN npm prune --omit=dev
 
 # Artefatos já compilados no estágio builder (não copiamos src/ nem node de dev).
 COPY --from=builder /app/dist ./dist
