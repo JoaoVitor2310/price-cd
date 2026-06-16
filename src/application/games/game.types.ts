@@ -5,9 +5,9 @@ export type FoundGames = {
 	id_steam?: string;
 	popularity: number;
 	region?: string;
-	GamivoPrice?: number | string;
-	G2APrice?: number | string;
-	KinguinPrice?: number | string;
+	GamivoPrice?: number;
+	G2APrice?: number;
+	KinguinPrice?: number;
 };
 
 export interface SearchGamesRequest {

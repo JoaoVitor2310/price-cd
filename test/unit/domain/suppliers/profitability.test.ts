@@ -4,7 +4,7 @@ import type { ProfitableGameResult } from "@/application/suppliers/ports/profita
 
 const makeGame = (overrides: Partial<ProfitableGameResult> = {}): ProfitableGameResult => ({
     name: "Half-Life",
-    priceEur: 4.50,
+    price_euro: 4.50,
     popularity: 500,
     region: "global",
     tf2_price: 2.10,
@@ -12,7 +12,7 @@ const makeGame = (overrides: Partial<ProfitableGameResult> = {}): ProfitableGame
 });
 
 describe("formatResult", () => {
-    it("returns one line per game in TSV format", () => {
+    it("returns one line per game in TSV format with correct column positions", () => {
         const result = formatResult([makeGame()]);
         // \t{date}\t{price}\t\t\t\t\t{pop}\t{region}\t\t{name}
         //  [0]""  [1]date  [2]price [3..6]"" [7]pop  [8]region [9]"" [10]name
@@ -25,18 +25,31 @@ describe("formatResult", () => {
     });
 
     it("uses comma as decimal separator for price", () => {
-        const result = formatResult([makeGame({ priceEur: 3.99 })]);
+        const result = formatResult([makeGame({ price_euro: 3.99 })]);
         expect(result).toContain("3,99");
         expect(result).not.toContain("3.99");
     });
 
-    it("returns multiple lines for multiple games", () => {
+    it("formats price with exactly two decimal places", () => {
+        const result = formatResult([makeGame({ price_euro: 2.1 })]);
+        expect(result).toContain("2,10");
+    });
+
+    it("returns multiple lines separated by newline for multiple games", () => {
         const games = [makeGame({ name: "Game A" }), makeGame({ name: "Game B" })];
-        const result = formatResult(games);
-        expect(result.split("\n")).toHaveLength(2);
+        const lines = formatResult(games).split("\n");
+        expect(lines).toHaveLength(2);
+        expect(lines[0]).toContain("Game A");
+        expect(lines[1]).toContain("Game B");
     });
 
     it("returns empty string for empty games array", () => {
         expect(formatResult([])).toBe("");
+    });
+
+    it("uses empty string when region is null", () => {
+        const result = formatResult([makeGame({ region: null })]);
+        const parts = result.split("\t");
+        expect(parts[8]).toBe("");
     });
 });

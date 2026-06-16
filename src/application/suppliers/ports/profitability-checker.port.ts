@@ -2,16 +2,16 @@
 export type GamePriceInput = {
     name: string;
     /** Preço em EUR obtido no AllKeyShop/Gamivo. */
-    priceEur: number;
+    price_euro: number;
     /** Pico de jogadores em 24h no SteamCharts. */
     popularity: number;
-    /** Região da oferta (ex.: "Global", "EU"), ou null se não identificado. */
+    /** Região da oferta: "global", "eu", "row", ou null se não identificado. */
     region: string | null;
 };
 
 export type ProfitableGameResult = {
     name: string;
-    priceEur: number;
+    price_euro: number;
     popularity: number;
     region: string | null;
     /** Preço em keys TF2, calculado pelo Sistema Estoque. */

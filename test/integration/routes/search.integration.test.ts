@@ -35,7 +35,7 @@ const makeGame = (overrides: Partial<FoundGames> = {}): FoundGames => ({
 	id_steam: "70",
 	popularity: 500,
 	region: "global",
-	GamivoPrice: "4,50",
+	GamivoPrice: 4.5,
 	...overrides,
 });
 
@@ -65,7 +65,7 @@ describe("POST /api/games/search", () => {
 		expect(res.body.success).toBe(true);
 		expect(res.body.data.games).toHaveLength(1);
 		expect(res.body.data.games[0].name).toBe("Half-Life");
-		expect(res.body.data.games[0].GamivoPrice).toBe("4,50");
+		expect(res.body.data.games[0].GamivoPrice).toBe(4.5);
 	});
 
 	it("returns correct summary fields", async () => {

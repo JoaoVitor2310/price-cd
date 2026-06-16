@@ -39,7 +39,7 @@ const makeGame = (overrides: Partial<FoundGames> = {}): FoundGames => ({
 	id_steam: "70",
 	popularity: 500,
 	region: "global",
-	GamivoPrice: "4,50",
+	GamivoPrice: 4.5,
 	...overrides,
 });
 
@@ -100,8 +100,8 @@ describe("POST /api/games/upload", () => {
 
 	it("uploads multiple games and returns all in the result file", async () => {
 		const games = [
-			makeGame({ id: 0, name: "Half-Life", GamivoPrice: "4,50" }),
-			makeGame({ id: 1, name: "Portal", GamivoPrice: "3,00" }),
+			makeGame({ id: 0, name: "Half-Life", GamivoPrice: 4.5 }),
+			makeGame({ id: 1, name: "Portal", GamivoPrice: 3.0 }),
 		];
 		mockPopularityFetch.mockResolvedValueOnce(games);
 		mockPriceFetch.mockResolvedValueOnce(games);
