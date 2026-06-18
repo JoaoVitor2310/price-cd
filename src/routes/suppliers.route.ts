@@ -3,6 +3,6 @@ import { findNewSuppliers } from "@/controllers/suppliers/find-new-suppliers.con
 
 const router = Router();
 
-router.post("/run", findNewSuppliers);
+router.post("/find-new", findNewSuppliers);
 
 export default router;

@@ -7,7 +7,7 @@ const INITIAL_DELAY_MS = 90_000; // 90s — after BUMP (60s) has already stabili
  * - First run 90s after server startup.
  * - Default interval: 24h (configurable via NEW_SUPPLIERS_INTERVAL_HOURS).
  * - Skips tick if previous run is still in progress.
- * - Does not start if STEAMTRADES_SESSION or SISTEMA_ESTOQUE_PROFITABILITY_URL are not set.
+ * - Does not start if STEAMTRADES_SESSION or SISTEMA_ESTOQUE_URL are not set.
  */
 export function startFindNewSuppliersScheduler(): void {
     const session = process.env.STEAMTRADES_SESSION?.trim();
