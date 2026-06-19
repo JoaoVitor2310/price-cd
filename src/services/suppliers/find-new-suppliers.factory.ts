@@ -3,7 +3,6 @@ import { PuppeteerTradePaginator } from "@/infrastructure/suppliers/puppeteer-tr
 import { PuppeteerTopicScraper } from "@/infrastructure/suppliers/puppeteer-topic-scraper.js";
 import { PuppeteerCommentPoster } from "@/infrastructure/suppliers/puppeteer-comment-poster.js";
 import { HttpProfitabilityChecker } from "@/infrastructure/suppliers/http-profitability-checker.js";
-import { SqliteSupplierRepository } from "@/infrastructure/suppliers/sqlite-supplier-repository.js";
 import { SearchGamesUseCase } from "@/application/games/search-games.use-case.js";
 import { SteamChartsPopularityFetcher } from "@/infrastructure/games/steam-charts-popularity-fetcher.js";
 import { AllKeyShopPriceFetcher } from "@/infrastructure/games/allkeyshop-price-fetcher.js";
