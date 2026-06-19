@@ -1,5 +1,5 @@
 import * as cheerio from "cheerio";
-import { initializeBrowser, cleanupBrowser } from "@/lib/puppeteer-browser.js";
+import { getSuppliersSession } from "@/lib/puppeteer-browser.js";
 import type { TradePaginator } from "@/application/suppliers/ports/trade-paginator.port.js";
 import { STEAMTRADES_BASE, PAGE_NAVIGATION_TIMEOUT } from "@/infrastructure/suppliers/steamtrades.constants.js";
 
@@ -27,21 +27,21 @@ function extractTopicsFromHtml(html: string): Array<{ code: string; url: string 
 
 /**
  * Implementação de `TradePaginator` via Puppeteer.
- * Abre e fecha um browser por chamada — adequado ao uso sequencial do use case.
+ * Reutiliza o browser da sessão compartilhada de suppliers — abre e fecha apenas
+ * uma `page` por chamada, sem inicializar um novo processo Chrome a cada paginação.
  */
 export class PuppeteerTradePaginator implements TradePaginator {
-    async getTopicsFromPage(page: number): Promise<Array<{ code: string; url: string }>> {
-        const { browser, page: browserPage } = await initializeBrowser();
+    async getTopicsFromPage(pageNumber: number): Promise<Array<{ code: string; url: string }>> {
+        const { browser } = await getSuppliersSession();
+        const browserPage = await browser.newPage();
 
         try {
-            const url = buildPageUrl(page);
+            const url = buildPageUrl(pageNumber);
             await browserPage.goto(url, { waitUntil: "domcontentloaded", timeout: PAGE_NAVIGATION_TIMEOUT });
             const html = await browserPage.content();
-            const topics = extractTopicsFromHtml(html);
-            console.log(`[PAGINATOR] Page ${page} — ${topics.length} topics found:`, topics);
-            return topics;
+            return extractTopicsFromHtml(html);
         } finally {
-            await cleanupBrowser(browser);
+            await browserPage.close();
         }
     }
 }

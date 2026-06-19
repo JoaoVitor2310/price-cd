@@ -1,4 +1,4 @@
-import { initializeBrowser, cleanupBrowser } from "@/lib/puppeteer-browser.js";
+import { getSuppliersSession } from "@/lib/puppeteer-browser.js";
 import type { CommentPoster } from "@/application/suppliers/ports/comment-poster.port.js";
 import type { ProfitableGameResult } from "@/application/suppliers/ports/profitability-checker.port.js";
 import { PAGE_NAVIGATION_TIMEOUT, ELEMENT_WAIT_TIMEOUT } from "@/infrastructure/suppliers/steamtrades.constants.js";
@@ -26,12 +26,16 @@ export function buildCommentText(games: ProfitableGameResult[]): string {
  * Implementação de `CommentPoster` via Puppeteer.
  * Injeta o cookie `PHPSESSID` antes de navegar para autenticar no SteamTrades
  * sem precisar de um fluxo de login interativo a cada execução.
+ *
+ * Reutiliza o browser da sessão compartilhada de suppliers — o cookie é definido
+ * no contexto do browser e persiste para todas as páginas da mesma sessão.
  */
 export class PuppeteerCommentPoster implements CommentPoster {
     constructor(private readonly phpSessionId: string) {}
 
     async post(tradeUrl: string, games: ProfitableGameResult[]): Promise<void> {
-        const { browser, page } = await initializeBrowser();
+        const { browser } = await getSuppliersSession();
+        const page = await browser.newPage();
 
         try {
             await page.browserContext().setCookie({
@@ -52,9 +56,9 @@ export class PuppeteerCommentPoster implements CommentPoster {
             await page.click(".btn_action.white.js_submit");
             await page.waitForNetworkIdle({ idleTime: 1000, timeout: ELEMENT_WAIT_TIMEOUT }).catch(() => {});
 
-            console.log(`✅ [SUPPLIERS] Comentário postado em ${tradeUrl}`);
+            console.log(`✅ [SUPPLIERS] Comment posted at ${tradeUrl}`);
         } finally {
-            await cleanupBrowser(browser);
+            await page.close();
         }
     }
 }
