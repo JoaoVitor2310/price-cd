@@ -1,7 +1,6 @@
 import type { TradePaginator } from "@/application/suppliers/ports/trade-paginator.port.js";
 import type { TopicScraper } from "@/application/suppliers/ports/topic-scraper.port.js";
 import type { CommentPoster } from "@/application/suppliers/ports/comment-poster.port.js";
-import type { SupplierRepository } from "@/application/suppliers/ports/supplier-repository.port.js";
 import type { ProfitabilityChecker, GamePriceInput } from "@/application/suppliers/ports/profitability-checker.port.js";
 import type { GameSearcher } from "@/application/lists/ports/list-run.ports.js";
 import { formatResult } from "@/domain/suppliers/profitability.js";
@@ -14,7 +13,6 @@ export type FindNewSuppliersInput = {
     paginator: TradePaginator;
     scraper: TopicScraper;
     commentPoster: CommentPoster;
-    repository: SupplierRepository;
     profitabilityChecker: ProfitabilityChecker;
     gameSearcher: GameSearcher;
 };
@@ -33,13 +31,13 @@ export type FindNewSuppliersResult = {
  * 2. Verifica se já foi comentado recentemente — pula para não spam.
  * 3. Extrai os jogos da seção `.have` e busca preços via GameSearcher.
  * 4. Envia os preços ao Sistema Estoque para calcular rentabilidade em keys TF2.
- * 5. Se houver jogos rentáveis, posta comentário e registra no banco.
+ * 5. Se houver jogos rentáveis, posta comentário.
  *
  * Para antecipadamente quando 5 tópicos inativos são encontrados em sequência.
  */
 export class FindNewSuppliersUseCase {
     async execute(input: FindNewSuppliersInput): Promise<FindNewSuppliersResult> {
-        const { paginator, scraper, commentPoster, repository, profitabilityChecker, gameSearcher } = input;
+        const { paginator, scraper, commentPoster, profitabilityChecker, gameSearcher } = input;
 
         let pagesVisited = 0;
         let topicsProcessed = 0;
@@ -51,7 +49,6 @@ export class FindNewSuppliersUseCase {
             pagesVisited++;
 
             const topics = await paginator.getTopicsFromPage(page);
-            return;
 
             if (topics.length === 0) {
                 console.log(`⚠️ [SUPPLIERS] Page ${page} has no topics. Stopping.`);
@@ -59,16 +56,12 @@ export class FindNewSuppliersUseCase {
             }
 
             for (const { code, url } of topics) {
-                let supplierId: number | undefined;
                 try {
                     const topic = await scraper.scrape(url);
 
                     if (topic.isInactive) {
                         consecutiveInactive++;
                         console.log(`💤 [SUPPLIERS] Topic ${code} is inactive (${consecutiveInactive}/${MAX_CONSECUTIVE_INACTIVE} consecutive).`);
-
-                        supplierId = repository.upsertSupplier(topic.steamId || `unknown-${code}`);
-                        repository.saveTopic({ supplier_id: supplierId, code, status: "inactive", result: null });
                         topicsProcessed++;
 
                         if (consecutiveInactive >= MAX_CONSECUTIVE_INACTIVE) {
@@ -85,26 +78,24 @@ export class FindNewSuppliersUseCase {
                         continue;
                     }
 
-                    supplierId = repository.upsertSupplier(topic.steamId);
-
                     if (topic.hasRecentComment) {
-                        repository.saveTopic({ supplier_id: supplierId, code, status: "skipped_user", result: null });
                         topicsProcessed++;
                         console.log(`⏭️ [SUPPLIERS] Already commented recently on topic ${code}. Skipping.`);
                         continue;
                     }
 
                     if (topic.games.length === 0) {
-                        repository.saveTopic({ supplier_id: supplierId, code, status: "no_games", result: null });
                         topicsProcessed++;
                         console.log(`⚠️ [SUPPLIERS] Topic ${code} has no games in .have section.`);
                         continue;
                     }
 
-                    console.log(`🔍 [SUPPLIERS] Searching prices for ${topic.games.length} game(s) in topic ${code}...`);
+                    // TODO: remove slice — testing only (limits to first 3 games)
+                    const gameNames = topic.games.slice(0, 3);
+                    console.log(`🔍 [SUPPLIERS] Searching prices for ${gameNames.length} game(s) in topic ${code}...`);
 
                     const searchResult = await gameSearcher.search({
-                        gameNames: topic.games,
+                        gameNames,
                         minPopularity: MIN_POPULARITY,
                         checkGamivoOffer: true,
                     });
@@ -113,13 +104,12 @@ export class FindNewSuppliersUseCase {
                         .filter((g) => g.GamivoPrice != null)
                         .map((g) => ({
                             name: g.name,
-                            priceEur: parseFloat(String(g.GamivoPrice).replace(",", ".")),
+                            price_euro: g.GamivoPrice as number,
                             popularity: g.popularity,
                             region: g.region ?? null,
                         }));
 
                     if (gamesWithPrice.length === 0) {
-                        repository.saveTopic({ supplier_id: supplierId, code, status: "not_profitable", result: null });
                         topicsProcessed++;
                         console.log(`💸 [SUPPLIERS] No prices found for games in topic ${code}.`);
                         continue;
@@ -128,27 +118,25 @@ export class FindNewSuppliersUseCase {
                     const profitableGames = await profitabilityChecker.evaluate(gamesWithPrice);
 
                     if (profitableGames.length === 0) {
-                        repository.saveTopic({ supplier_id: supplierId, code, status: "not_profitable", result: null });
                         topicsProcessed++;
                         console.log(`💸 [SUPPLIERS] No profitable games in topic ${code} according to Sistema Estoque.`);
                         continue;
                     }
 
                     const result = formatResult(profitableGames);
+                    console.log(`✅ [SUPPLIERS] Profitable games found in topic ${code}:\n${result}`);
+
+                    // TODO: remove break — testing only (stops after first profitable topic)
+                    break outer;
 
                     await commentPoster.post(url, profitableGames);
 
-                    repository.saveTopic({ supplier_id: supplierId, code, status: "commented", result });
                     topicsProcessed++;
                     suppliersCommented++;
-
                     console.log(`✅ [SUPPLIERS] Commented on ${code} with ${profitableGames.length} profitable game(s).`);
                 } catch (err) {
                     const message = err instanceof Error ? err.message : String(err);
                     console.error(`❌ [SUPPLIERS] Failed to process topic ${code}: ${message}`);
-                    if (supplierId !== undefined) {
-                        repository.saveTopic({ supplier_id: supplierId, code, status: "failed", result: message });
-                    }
                     topicsProcessed++;
                 }
             }

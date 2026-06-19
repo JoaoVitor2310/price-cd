@@ -6,6 +6,7 @@ import { HttpProfitabilityChecker } from "@/infrastructure/suppliers/http-profit
 import { SearchGamesUseCase } from "@/application/games/search-games.use-case.js";
 import { SteamChartsPopularityFetcher } from "@/infrastructure/games/steam-charts-popularity-fetcher.js";
 import { AllKeyShopPriceFetcher } from "@/infrastructure/games/allkeyshop-price-fetcher.js";
+import { cleanupSuppliersSession } from "@/lib/puppeteer-browser.js";
 import type { GameSearcher } from "@/application/lists/ports/list-run.ports.js";
 import type { GameAnalysisResult, SearchGamesRequest } from "@/application/games/game.types.js";
 import type { FindNewSuppliersResult } from "@/application/suppliers/find-new-suppliers.use-case.js";
@@ -34,33 +35,42 @@ class GameSearcherAdapter implements GameSearcher {
  * Valida as variáveis de ambiente obrigatórias antes de instanciar qualquer coisa,
  * falhando rápido em caso de configuração incompleta.
  *
- * @throws {Error} se `STEAMTRADES_SESSION` ou `SISTEMA_ESTOQUE_PROFITABILITY_URL` não estiverem definidos.
+ * O browser de suppliers é compartilhado entre paginator, scraper e poster durante
+ * todo o `run()` — apenas uma `page` é aberta e fechada por operação, e o processo
+ * Chrome é encerrado no `finally`, independente de sucesso ou erro.
+ *
+ * @throws {Error} se `STEAMTRADES_SESSION` ou `SISTEMA_ESTOQUE_URL` não estiverem definidos.
  */
 export function createFindNewSuppliersRunner() {
     const session = process.env.STEAMTRADES_SESSION?.trim();
-    if (!session) throw new Error("STEAMTRADES_SESSION não definido no .env");
+    if (!session) throw new Error("STEAMTRADES_SESSION is not defined in .env");
 
-    const profitabilityApiUrl = process.env.SISTEMA_ESTOQUE_PROFITABILITY_URL?.trim();
-    if (!profitabilityApiUrl) throw new Error("SISTEMA_ESTOQUE_PROFITABILITY_URL não definido no .env");
+    const profitabilityApiUrl = process.env.SISTEMA_ESTOQUE_URL?.trim();
+    if (!profitabilityApiUrl) throw new Error("SISTEMA_ESTOQUE_URL is not defined in .env");
+
+    const externalSecret = process.env.EXTERNAL_SECRET?.trim();
+    if (!externalSecret) throw new Error("EXTERNAL_SECRET is not defined in .env");
 
     const useCase = new FindNewSuppliersUseCase();
-    const repository = new SqliteSupplierRepository();
     const paginator = new PuppeteerTradePaginator();
     const scraper = new PuppeteerTopicScraper();
     const commentPoster = new PuppeteerCommentPoster(session);
-    const profitabilityChecker = new HttpProfitabilityChecker(profitabilityApiUrl);
+    const profitabilityChecker = new HttpProfitabilityChecker(profitabilityApiUrl, externalSecret);
     const gameSearcher = new GameSearcherAdapter();
 
     return {
-        run(): Promise<FindNewSuppliersResult> {
-            return useCase.execute({
-                paginator,
-                scraper,
-                commentPoster,
-                repository,
-                profitabilityChecker,
-                gameSearcher,
-            });
+        async run(): Promise<FindNewSuppliersResult> {
+            try {
+                return await useCase.execute({
+                    paginator,
+                    scraper,
+                    commentPoster,
+                    profitabilityChecker,
+                    gameSearcher,
+                });
+            } finally {
+                await cleanupSuppliersSession();
+            }
         },
     };
 }
