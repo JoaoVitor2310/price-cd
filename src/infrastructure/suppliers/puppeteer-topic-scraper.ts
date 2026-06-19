@@ -1,5 +1,5 @@
 import * as cheerio from "cheerio";
-import { initializeBrowser, cleanupBrowser } from "@/lib/puppeteer-browser.js";
+import { getSuppliersSession } from "@/lib/puppeteer-browser.js";
 import type { TopicScraper, TopicData } from "@/application/suppliers/ports/topic-scraper.port.js";
 import { PAGE_NAVIGATION_TIMEOUT } from "@/infrastructure/suppliers/steamtrades.constants.js";
 
@@ -50,18 +50,20 @@ function extractTopicData(html: string): TopicData {
 
 /**
  * Implementação de `TopicScraper` via Puppeteer.
- * Abre e fecha um browser por chamada para evitar acúmulo de memória durante a paginação.
+ * Reutiliza o browser da sessão compartilhada de suppliers — abre e fecha apenas
+ * uma `page` por chamada, sem inicializar um novo processo Chrome a cada tópico.
  */
 export class PuppeteerTopicScraper implements TopicScraper {
     async scrape(url: string): Promise<TopicData> {
-        const { browser, page } = await initializeBrowser();
+        const { browser } = await getSuppliersSession();
+        const page = await browser.newPage();
 
         try {
             await page.goto(url, { waitUntil: "domcontentloaded", timeout: PAGE_NAVIGATION_TIMEOUT });
             const html = await page.content();
             return extractTopicData(html);
         } finally {
-            await cleanupBrowser(browser);
+            await page.close();
         }
     }
 }

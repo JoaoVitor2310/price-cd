@@ -112,3 +112,34 @@ export const enqueueWithBrowser = <T>(task: () => Promise<T>): Promise<T> => {
 	);
 	return result;
 };
+
+// ---------------------------------------------------------------------------
+// Suppliers-scoped session (isolated from AllKeyShop shared session)
+// One Chrome process for the entire findNewSuppliers run.
+// Adapters open/close individual pages; the factory owns the browser lifecycle.
+// ---------------------------------------------------------------------------
+
+let _suppliersSession: SharedSession | null = null;
+
+/**
+ * Returns the suppliers browser session, initializing it on first call.
+ * All three adapters (paginator, scraper, poster) share this single process.
+ */
+export const getSuppliersSession = async (): Promise<SharedSession> => {
+	if (!_suppliersSession) {
+		_suppliersSession = await initializeBrowser();
+	}
+	return _suppliersSession;
+};
+
+/**
+ * Closes the suppliers browser and resets the session.
+ * Should be called in the `finally` block of the suppliers run.
+ * Safe to call even if the session was never initialized.
+ */
+export const cleanupSuppliersSession = async (): Promise<void> => {
+	if (_suppliersSession) {
+		await cleanupBrowser(_suppliersSession.browser).catch(() => {});
+		_suppliersSession = null;
+	}
+};
