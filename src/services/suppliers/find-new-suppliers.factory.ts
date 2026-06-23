@@ -6,7 +6,7 @@ import { HttpProfitabilityChecker } from "@/infrastructure/suppliers/http-profit
 import { SearchGamesUseCase } from "@/application/games/search-games.use-case.js";
 import { SteamChartsPopularityFetcher } from "@/infrastructure/games/steam-charts-popularity-fetcher.js";
 import { AllKeyShopPriceFetcher } from "@/infrastructure/games/allkeyshop-price-fetcher.js";
-import { cleanupSuppliersSession } from "@/lib/puppeteer-browser.js";
+import { getSuppliersSession, cleanupSuppliersSession } from "@/lib/puppeteer-browser.js";
 import type { GameSearcher } from "@/application/lists/ports/list-run.ports.js";
 import type { GameAnalysisResult, SearchGamesRequest } from "@/application/games/game.types.js";
 import type { FindNewSuppliersResult } from "@/application/suppliers/find-new-suppliers.use-case.js";
@@ -54,13 +54,26 @@ export function createFindNewSuppliersRunner() {
     const useCase = new FindNewSuppliersUseCase();
     const paginator = new PuppeteerTradePaginator();
     const scraper = new PuppeteerTopicScraper();
-    const commentPoster = new PuppeteerCommentPoster(session);
+    const commentPoster = new PuppeteerCommentPoster();
     const profitabilityChecker = new HttpProfitabilityChecker(profitabilityApiUrl, externalSecret);
     const gameSearcher = new GameSearcherAdapter();
 
     return {
         async run(): Promise<FindNewSuppliersResult> {
             try {
+                // Inject auth cookie before any navigation — same pattern as PuppeteerSteamTradesBumper.
+                // The server always responds with set-cookie, so the cookie must be set first
+                // to prevent unauthenticated page visits from overwriting it.
+                const browserSession = await getSuppliersSession();
+                await browserSession.page.browserContext().setCookie({
+                    name: "PHPSESSID",
+                    value: session,
+                    domain: "www.steamtrades.com",
+                    path: "/",
+                    httpOnly: true,
+                    secure: false,
+                });
+
                 return await useCase.execute({
                     paginator,
                     scraper,

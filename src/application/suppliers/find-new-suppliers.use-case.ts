@@ -1,7 +1,7 @@
 import type { TradePaginator } from "@/application/suppliers/ports/trade-paginator.port.js";
 import type { TopicScraper } from "@/application/suppliers/ports/topic-scraper.port.js";
 import type { CommentPoster } from "@/application/suppliers/ports/comment-poster.port.js";
-import type { ProfitabilityChecker, GamePriceInput } from "@/application/suppliers/ports/profitability-checker.port.js";
+import type { ProfitabilityChecker, GamePriceInput, SupplierInput } from "@/application/suppliers/ports/profitability-checker.port.js";
 import type { GameSearcher } from "@/application/lists/ports/list-run.ports.js";
 import { formatResult } from "@/domain/suppliers/profitability.js";
 
@@ -115,7 +115,15 @@ export class FindNewSuppliersUseCase {
                         continue;
                     }
 
-                    const profitableGames = await profitabilityChecker.evaluate(gamesWithPrice);
+                    const supplier: SupplierInput = {
+                        steam_id: topic.steamId,
+                        url: `https://steamcommunity.com/profiles/${topic.steamId}`,
+                    };
+
+                    console.log('supplier');
+                    console.log(supplier);
+
+                    const { profitable: profitableGames, is_added } = await profitabilityChecker.evaluate(supplier, gamesWithPrice);
 
                     if (profitableGames.length === 0) {
                         topicsProcessed++;
@@ -124,13 +132,13 @@ export class FindNewSuppliersUseCase {
                     }
 
                     const result = formatResult(profitableGames);
-                    console.log(`✅ [SUPPLIERS] Profitable games found in topic ${code}:\n${result}`);
+                    console.log(`✅ [SUPPLIERS] Profitable games found in topic ${code} (is_added=${is_added}):\n${result}`);
 
+                    
+                    await commentPoster.post(url, profitableGames);
                     // TODO: remove break — testing only (stops after first profitable topic)
                     break outer;
-
-                    await commentPoster.post(url, profitableGames);
-
+                    
                     topicsProcessed++;
                     suppliersCommented++;
                     console.log(`✅ [SUPPLIERS] Commented on ${code} with ${profitableGames.length} profitable game(s).`);

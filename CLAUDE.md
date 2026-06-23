@@ -156,6 +156,13 @@ Operações longas de scraping (potencialmente minutos para listas grandes) mant
 
 11. **Escrever testes unitários** — especialmente para `clear-string.ts`, `bestOfferPrice`, `detectOfferTooLow` e `worthyByPopularity`, que são funções puras com lógica crítica.
 
+15. **Notificação de sessão expirada no fluxo `findNewSuppliers`** — o `PuppeteerCommentPoster` já detecta quando está deslogado (check `a[href*="/login"]`) e lança erro com mensagem clara. Falta reagir a esse erro enviando um alerta (email ou webhook). Estrutura sugerida:
+    - Porta `AlertNotifier` em `src/application/suppliers/ports/alert-notifier.port.ts`
+    - Implementação concreta `EmailAlertNotifier` em `src/infrastructure/suppliers/` usando `nodemailer` (já está nas dependências)
+    - Use case captura o erro de autenticação especificamente e chama `alertNotifier.send()`
+    - Sessão do SteamTrades expira em 14 dias (`Max-Age=1209600` no `set-cookie`)
+    - Implementar após concluir o fluxo de `findNewSuppliers`
+
 12. **Corrigir o `router.ts`** — montar `search-id-steam.route.ts` via `router.use` corretamente.
 
 13. **Padronizar tratamento de `checkGamivoOffer`** — garantir que seja sempre booleano após parse do schema em todos os endpoints.

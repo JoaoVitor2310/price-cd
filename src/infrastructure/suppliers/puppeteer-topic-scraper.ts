@@ -3,7 +3,7 @@ import { getSuppliersSession } from "@/lib/puppeteer-browser.js";
 import type { TopicScraper, TopicData } from "@/application/suppliers/ports/topic-scraper.port.js";
 import { PAGE_NAVIGATION_TIMEOUT } from "@/infrastructure/suppliers/steamtrades.constants.js";
 
-const STEAM_ID_REGEX = /\/user\/([^\/?#]+)/i;
+const STEAM_ID_REGEX = /\/user\/(\d+)/i;
 
 /**
  * Extrai os dados relevantes do HTML de um tópico individual.
@@ -14,10 +14,9 @@ function extractTopicData(html: string): TopicData {
 
     const isInactive = $(".notification.yellow").length > 0;
 
-    const authorName = $(".author_name").first().text().trim();
-
-    const userHref = $('a[href*="/user/"]').first().attr("href") ?? "";
-    const steamIdMatch = userHref.match(STEAM_ID_REGEX);
+    const authorLink = $("a.author_name").first();
+    const authorName = authorLink.text().trim();
+    const steamIdMatch = (authorLink.attr("href") ?? "").match(STEAM_ID_REGEX);
     const steamId = steamIdMatch?.[1] ?? "";
 
     const games = $(".have")
@@ -55,16 +54,10 @@ function extractTopicData(html: string): TopicData {
  */
 export class PuppeteerTopicScraper implements TopicScraper {
     async scrape(url: string): Promise<TopicData> {
-        const { browser } = await getSuppliersSession();
-        const page = await browser.newPage();
-
-        try {
-            await page.goto(url, { waitUntil: "domcontentloaded", timeout: PAGE_NAVIGATION_TIMEOUT });
-            const html = await page.content();
-            return extractTopicData(html);
-        } finally {
-            await page.close();
-        }
+        const { page } = await getSuppliersSession();
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: PAGE_NAVIGATION_TIMEOUT });
+        const html = await page.content();
+        return extractTopicData(html);
     }
 }
 
