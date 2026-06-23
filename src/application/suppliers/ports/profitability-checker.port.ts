@@ -1,3 +1,9 @@
+/** Dados do fornecedor enviados ao Sistema Estoque para identificação e registro. */
+export type SupplierInput = {
+    steam_id: string;
+    url: string;
+};
+
 /** Jogo com preço já descoberto pelo price researcher, pronto para avaliação de rentabilidade. */
 export type GamePriceInput = {
     name: string;
@@ -18,10 +24,12 @@ export type ProfitableGameResult = {
     tf2_price: number;
 };
 
+export type ProspectResult = {
+    profitable: ProfitableGameResult[];
+    /** Se o fornecedor já está adicionado como contato no Sistema Estoque. */
+    is_added: boolean;
+};
+
 export interface ProfitabilityChecker {
-    /**
-     * Envia os jogos com preço para o Sistema Estoque e recebe de volta
-     * apenas os que são rentáveis (keys > 0), com o valor em keys calculado lá.
-     */
-    evaluate(games: GamePriceInput[]): Promise<ProfitableGameResult[]>;
+    evaluate(supplier: SupplierInput, games: GamePriceInput[]): Promise<ProspectResult>;
 }
