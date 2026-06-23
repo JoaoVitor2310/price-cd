@@ -7,7 +7,7 @@ export function formatResult(games: ProfitableGameResult[]): string {
         .map((g) =>
             formatGameResultLine({
                 name: g.name,
-                price: g.price_euro.toFixed(2).replace(".", ","),
+                price: g.price_euro.toFixed(2),
                 popularity: g.popularity,
                 region: g.region,
             })

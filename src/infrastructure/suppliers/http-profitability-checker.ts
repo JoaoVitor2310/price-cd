@@ -1,11 +1,12 @@
 import axios from "axios";
 import type {
+    SupplierInput,
     GamePriceInput,
     ProfitabilityChecker,
-    ProfitableGameResult,
+    ProspectResult,
 } from "@/application/suppliers/ports/profitability-checker.port.js";
 
-const PROFITABILITY_ENDPOINT = "/suppliers/evaluate";
+const PROFITABILITY_ENDPOINT = "/suppliers/prospect";
 
 /**
  * Implementação de `ProfitabilityChecker` via HTTP.
@@ -18,19 +19,19 @@ export class HttpProfitabilityChecker implements ProfitabilityChecker {
         private readonly bearerToken: string,
     ) {}
 
-    async evaluate(games: GamePriceInput[]): Promise<ProfitableGameResult[]> {
+    async evaluate(supplier: SupplierInput, games: GamePriceInput[]): Promise<ProspectResult> {
         const url = `${this.baseUrl}${PROFITABILITY_ENDPOINT}`;
 
         try {
-            const response = await axios.post<{ profitable: ProfitableGameResult[] }>(
+            const response = await axios.post<ProspectResult>(
                 url,
-                { games },
+                { supplier, games },
                 {
                     timeout: 10_000,
                     headers: { Authorization: `Bearer ${this.bearerToken}` },
                 }
             );
-            return response.data.profitable;
+            return response.data;
         } catch (err) {
             if (axios.isAxiosError(err)) {
                 console.error(`❌ [PROFITABILITY] HTTP ${err.response?.status ?? "no response"} — POST ${url}`);
