@@ -32,17 +32,11 @@ function extractTopicsFromHtml(html: string): Array<{ code: string; url: string 
  */
 export class PuppeteerTradePaginator implements TradePaginator {
     async getTopicsFromPage(pageNumber: number): Promise<Array<{ code: string; url: string }>> {
-        const { browser } = await getSuppliersSession();
-        const browserPage = await browser.newPage();
-
-        try {
-            const url = buildPageUrl(pageNumber);
-            await browserPage.goto(url, { waitUntil: "domcontentloaded", timeout: PAGE_NAVIGATION_TIMEOUT });
-            const html = await browserPage.content();
-            return extractTopicsFromHtml(html);
-        } finally {
-            await browserPage.close();
-        }
+        const { page } = await getSuppliersSession();
+        const url = buildPageUrl(pageNumber);
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: PAGE_NAVIGATION_TIMEOUT });
+        const html = await page.content();
+        return extractTopicsFromHtml(html);
     }
 }
 
