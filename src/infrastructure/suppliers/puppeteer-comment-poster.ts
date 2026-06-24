@@ -8,18 +8,33 @@ const INTROS = [
     "Hey! I'm interested in:",
     "Hello! Looking for:",
     "Hi there! Interested in these:",
+    "Hey! I'd like to pick up:",
+    "Hi! Looking to buy:",
+    "Hello! I'm looking for:",
+    "Hey there! Would love to grab:",
 ];
 
+const OUTROS_NOT_ADDED = [
+    "Add me on Steam or message me directly if we're already friends 🙂",
+    "Feel free to add me! If we're already friends, just send me a message on Steam.",
+    "Add me if you're interested! Already friends? Just drop me a message on Steam chat.",
+    "Send me a friend request or message me on Steam if we're already connected 🙂",
+    "Add me on Steam to discuss — or if we're already friends, feel free to message me directly!",
+];
+
+function pick<T>(arr: T[]): T {
+    return arr[Math.floor(Math.random() * arr.length)];
+}
+
 /**
- * Monta o texto do comentário com intro aleatória + lista de jogos + "Add me 🙂".
+ * Monta o texto do comentário com intro e outro aleatórios + lista de jogos.
  * Exportada separadamente para facilitar testes sem Puppeteer.
  */
 export function buildCommentText(games: ProfitableGameResult[]): string {
-    const intro = INTROS[Math.floor(Math.random() * INTROS.length)];
     const lines = games
-        .map((g) => `${g.name} --- ${g.tf2_price.toFixed(2).replace(".", ",")}x TF2`)
+        .map((g) => `${g.name} --- ${g.tf2_price.toFixed(2)}x TF2`)
         .join("\n");
-    return `${intro}\n\n${lines}\n\nAdd me 🙂`;
+    return `${pick(INTROS)}\n\n${lines}\n\n${pick(OUTROS_NOT_ADDED)}`;
 }
 
 /**
@@ -33,11 +48,9 @@ export class PuppeteerCommentPoster implements CommentPoster {
 
         await page.goto(tradeUrl, { waitUntil: "domcontentloaded", timeout: PAGE_NAVIGATION_TIMEOUT });
 
-        const title = await page.title();
-        console.log(`🔍 [COMMENT] After goto — URL: ${page.url()} | Title: "${title}"`);
-
         const isLoggedIn = await page.$('a[href*="/login"]').then((el) => !el);
         if (!isLoggedIn) {
+            const title = await page.title();
             throw new Error(`Not authenticated on SteamTrades (page: "${title}"). STEAMTRADES_SESSION may be expired.`);
         }
 
