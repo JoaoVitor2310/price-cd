@@ -90,8 +90,7 @@ export class FindNewSuppliersUseCase {
                         continue;
                     }
 
-                    // TODO: remove slice — testing only (limits to first 3 games)
-                    const gameNames = topic.games.slice(0, 3);
+                    const gameNames = topic.games;
                     console.log(`🔍 [SUPPLIERS] Searching prices for ${gameNames.length} game(s) in topic ${code}...`);
 
                     const searchResult = await gameSearcher.search({
@@ -120,9 +119,6 @@ export class FindNewSuppliersUseCase {
                         url: `https://steamcommunity.com/profiles/${topic.steamId}`,
                     };
 
-                    console.log('supplier');
-                    console.log(supplier);
-
                     const { profitable: profitableGames, is_added } = await profitabilityChecker.evaluate(supplier, gamesWithPrice);
 
                     if (profitableGames.length === 0) {
@@ -134,11 +130,7 @@ export class FindNewSuppliersUseCase {
                     const result = formatResult(profitableGames);
                     console.log(`✅ [SUPPLIERS] Profitable games found in topic ${code} (is_added=${is_added}):\n${result}`);
 
-                    
                     await commentPoster.post(url, profitableGames);
-                    // TODO: remove break — testing only (stops after first profitable topic)
-                    break outer;
-                    
                     topicsProcessed++;
                     suppliersCommented++;
                     console.log(`✅ [SUPPLIERS] Commented on ${code} with ${profitableGames.length} profitable game(s).`);
