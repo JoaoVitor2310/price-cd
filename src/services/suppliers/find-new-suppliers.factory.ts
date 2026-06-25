@@ -51,6 +51,8 @@ export function createFindNewSuppliersRunner() {
     const externalSecret = process.env.EXTERNAL_SECRET?.trim();
     if (!externalSecret) throw new Error("EXTERNAL_SECRET is not defined in .env");
 
+    const ignoredSteamId = process.env.USER_TO_IGNORE?.trim() ?? null;
+
     const useCase = new FindNewSuppliersUseCase();
     const paginator = new PuppeteerTradePaginator();
     const scraper = new PuppeteerTopicScraper();
@@ -80,6 +82,7 @@ export function createFindNewSuppliersRunner() {
                     commentPoster,
                     profitabilityChecker,
                     gameSearcher,
+                    ignoredSteamId,
                 });
             } finally {
                 await cleanupSuppliersSession();

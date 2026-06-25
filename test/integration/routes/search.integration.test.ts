@@ -112,7 +112,7 @@ describe("POST /api/games/search", () => {
 			.post("/api/games/search")
 			.send({ ...validBody, gameNames: ["Half-Life", "Half-Life", "Portal"] });
 
-		const calledWith = mockPopularityFetch.mock.calls[0][0] as string[];
+		const calledWith = (mockPopularityFetch.mock.calls[0] as unknown[])[0] as string[];
 		expect(calledWith).toHaveLength(2);
 		expect(new Set(calledWith).size).toBe(2);
 	});

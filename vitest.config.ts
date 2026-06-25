@@ -10,5 +10,8 @@ export default defineConfig({
 	test: {
 		globals: true,
 		include: ["test/unit/**/*.test.ts", "test/integration/**/*.test.ts"],
+		typecheck: {
+			tsconfig: "./tsconfig.test.json",
+		},
 	},
 });
