@@ -15,6 +15,7 @@ export type FindNewSuppliersInput = {
     commentPoster: CommentPoster;
     profitabilityChecker: ProfitabilityChecker;
     gameSearcher: GameSearcher;
+    ignoredSteamId: string | null;
 };
 
 export type FindNewSuppliersResult = {
@@ -37,7 +38,7 @@ export type FindNewSuppliersResult = {
  */
 export class FindNewSuppliersUseCase {
     async execute(input: FindNewSuppliersInput): Promise<FindNewSuppliersResult> {
-        const { paginator, scraper, commentPoster, profitabilityChecker, gameSearcher } = input;
+        const { paginator, scraper, commentPoster, profitabilityChecker, gameSearcher, ignoredSteamId } = input;
 
         let pagesVisited = 0;
         let topicsProcessed = 0;
@@ -75,6 +76,11 @@ export class FindNewSuppliersUseCase {
 
                     if (!topic.steamId) {
                         console.warn(`⚠️ [SUPPLIERS] Steam ID not found in topic ${code}. Skipping.`);
+                        continue;
+                    }
+
+                    if (ignoredSteamId && topic.steamId === ignoredSteamId) {
+                        console.log(`🚫 [SUPPLIERS] Steam ID ${topic.steamId} is in the ignore list. Skipping topic ${code}.`);
                         continue;
                     }
 
