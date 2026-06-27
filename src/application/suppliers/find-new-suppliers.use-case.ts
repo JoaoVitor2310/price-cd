@@ -115,7 +115,6 @@ export class FindNewSuppliersUseCase {
 
                     const supplier: SupplierInput = {
                         steam_id: topic.steamId,
-                        url: `https://steamcommunity.com/profiles/${topic.steamId}`,
                         list_code: code,
                     };
 
