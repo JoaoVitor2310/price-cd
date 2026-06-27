@@ -4,7 +4,7 @@ import type {
 	RunListsRunner,
 } from "@/application/lists/ports/list-run.ports.js";
 import { createLimitedConcurrencySchedulerFromEnv } from "@/infrastructure/background/limited-concurrency.scheduler.js";
-import { AxiosRunListsCallbackPoster } from "@/infrastructure/http/axios-run-lists-callback-poster.js";
+import { FetchRunListsCallbackPoster } from "@/infrastructure/http/fetch-run-lists-callback-poster.js";
 import type { VipListRequest } from "@/schemas/list.schema.js";
 import {
 	runListsService,
@@ -38,6 +38,6 @@ export const enqueueRunListsService = async (vipListRequest: VipListRequest) => 
 		request: vipListRequest,
 		scheduler: getSharedRunListsScheduler(),
 		runner: new RunListsServiceRunner(),
-		callbackPoster: new AxiosRunListsCallbackPoster(),
+		callbackPoster: new FetchRunListsCallbackPoster(),
 	});
 };

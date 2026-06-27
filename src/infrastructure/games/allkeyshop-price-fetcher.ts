@@ -1,5 +1,3 @@
-// biome-ignore assist/source/organizeImports: <explanation>
-import axios, { type AxiosResponse } from "axios";
 import * as cheerio from "cheerio";
 import dotenv from "dotenv";
 import { clearString, clearEdition, hasEdition, getRegion, removeRegion, clearQuantity } from "@/helpers/clear-string.js";
@@ -139,40 +137,39 @@ export const bestOfferPrice = (data: GameData, region: string, popularity: numbe
     return bestOffer;
 };
 
-export async function fetchWithRetry<T = any>(
+export async function fetchWithRetry(
     url: string,
     maxRetries: number = 3,
     baseDelay: number = 5000
-): Promise<AxiosResponse<T>> {
+): Promise<string> {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        let response: Response;
         try {
-            const response = await axios.get<T>(url);
-            return response;
-        } catch (error: any) {
-            if (axios.isAxiosError(error) && error.response) {
-                const { status, headers } = error.response;
+            response = await fetch(url);
+        } catch (error) {
+            console.error(`❌ [ERROR] Unknown error while fetching page:`, error);
+            throw error;
+        }
 
-                if (status === 429) {
-                    const retryAfterHeader = headers["retry-after"];
-                    const retryAfterSeconds = retryAfterHeader
-                        ? parseInt(retryAfterHeader, 10)
-                        : Math.pow(2, attempt - 1) * (baseDelay / 1000);
+        if (response.ok) {
+            return response.text();
+        }
 
-                    console.log(
-                        `⚠️ [INFO] Too many requests(fetch). Attempt ${attempt}/${maxRetries}. Retrying in ${retryAfterSeconds}s...`
-                    );
+        if (response.status === 429) {
+            const retryAfterHeader = response.headers.get("retry-after");
+            const retryAfterSeconds = retryAfterHeader
+                ? parseInt(retryAfterHeader, 10)
+                : Math.pow(2, attempt - 1) * (baseDelay / 1000);
 
-                    await delay(retryAfterSeconds * 1000);
-                } else {
-                    console.error(
-                        `⚠️ [INFO] Service Unavailable. Attempt ${attempt}/${maxRetries}. Retrying in 1.5s...`
-                    );
-                    await delay(1500);
-                }
-            } else {
-                console.error(`❌ [ERROR] Unknown error while fetching page:`, error);
-                throw error;
-            }
+            console.log(
+                `⚠️ [INFO] Too many requests(fetch). Attempt ${attempt}/${maxRetries}. Retrying in ${retryAfterSeconds}s...`
+            );
+            await delay(retryAfterSeconds * 1000);
+        } else {
+            console.error(
+                `⚠️ [INFO] Service Unavailable. Attempt ${attempt}/${maxRetries}. Retrying in 1.5s...`
+            );
+            await delay(1500);
         }
     }
 
@@ -235,7 +232,7 @@ const searchAllKeyShop = async (
         try {
             for (const [index, game] of gamesToSearch.entries()) {
                 console.log(`🔍 [INFO] Searching AllKeyShop ${index + 1} for: ${game.name}`);
-                
+
                 let searchString = game.name;
                 searchString = clearQuantity(searchString);
                 searchString = new URLSearchParams({ search_name: searchString }).toString();
@@ -296,21 +293,16 @@ const searchAllKeyShop = async (
                     continue;
                 }
 
-                let responseGamePage: AxiosResponse;
-
                 const gamePageUrl = gamePage.startsWith("http") ? gamePage : `${ALLKEYSHOP_BASE_URL}${gamePage}`;
 
+                let gamePageHtml: string;
                 try {
-                    responseGamePage = await fetchWithRetry(gamePageUrl);
+                    gamePageHtml = await fetchWithRetry(gamePageUrl);
                 } catch (_error) {
                     continue;
                 }
 
-                if (responseGamePage.status !== 200) {
-                    continue;
-                }
-
-                const gamePageData = scrapGamePage(responseGamePage.data);
+                const gamePageData = scrapGamePage(gamePageHtml);
                 if (!gamePageData) continue;
 
                 let region = getRegion(game.name);

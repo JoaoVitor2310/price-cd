@@ -1,4 +1,3 @@
-import axios, { type AxiosResponse } from "axios";
 import * as cheerio from "cheerio";
 import { clearDLC, clearEdition, clearQuantity, clearString } from "@/helpers/clear-string.js";
 import {
@@ -22,21 +21,16 @@ const processGame = async (
 		gameStringClean = clearQuantity(gameStringClean);
 		const params = new URLSearchParams({ q: gameStringClean });
 
-		let response: AxiosResponse;
+		let searchHtml: string;
 		try {
-			response = await axios.get(
-				`${STEAM_CHARTS_SEARCH_URL}?${params.toString()}`,
-			);
+			const searchRes = await fetch(`${STEAM_CHARTS_SEARCH_URL}?${params.toString()}`);
+			if (!searchRes.ok) {
+				console.error(`❌ [ERROR] Failed to search SteamCharts for "${gameString}"`);
+				return null;
+			}
+			searchHtml = await searchRes.text();
 		} catch (error) {
-			console.error(
-				`❌ [ERROR] Failed to search SteamCharts for "${gameString}"`);
-			return null;
-		}
-
-		if (!response || !response.data) {
-			console.error(
-				`❌ [ERROR] Invalid response from SteamCharts for "${gameString}"`,
-			);
+			console.error(`❌ [ERROR] Failed to search SteamCharts for "${gameString}"`);
 			return null;
 		}
 
@@ -44,7 +38,7 @@ const processGame = async (
 		gameStringClean = clearString(gameStringClean);
 		gameStringClean = gameStringClean.toLowerCase().trim();
 
-		const $search = cheerio.load(response.data);
+		const $search = cheerio.load(searchHtml);
 		const links: { href: string; text: string }[] = [];
 
 		$search("a").each((_, element) => {
@@ -75,24 +69,22 @@ const processGame = async (
 			return null;
 		}
 
+		let detailsHtml: string;
 		try {
-			response = await axios.get(`${STEAM_CHARTS_BASE_URL}${id_steam}`);
+			const detailsRes = await fetch(`${STEAM_CHARTS_BASE_URL}${id_steam}`);
+			if (!detailsRes.ok) {
+				console.error(`❌ [ERROR] Failed to fetch game details for "${gameString}"`);
+				return null;
+			}
+			detailsHtml = await detailsRes.text();
 		} catch (error) {
-			console.error(
-				`❌ [ERROR] Failed to fetch game details for "${gameString}"`);
-			return null;
-		}
-
-		if (!response || !response.data) {
-			console.error(
-				`❌ [ERROR] Invalid game details response for "${gameString}"`,
-			);
+			console.error(`❌ [ERROR] Failed to fetch game details for "${gameString}"`);
 			return null;
 		}
 
 		id_steam = id_steam.replace("/app/", "");
 
-		const $details = cheerio.load(response.data);
+		const $details = cheerio.load(detailsHtml);
 
 		let popularity24hText: string | null = null;
 		$details("#app-heading .app-stat").each((_, el) => {
