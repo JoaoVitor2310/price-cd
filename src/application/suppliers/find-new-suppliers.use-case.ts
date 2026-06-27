@@ -29,10 +29,9 @@ export type FindNewSuppliersResult = {
  *
  * Para cada tópico encontrado:
  * 1. Verifica se está inativo (`.notification.yellow`) — pula e incrementa o contador de inatividade.
- * 2. Verifica se já foi comentado recentemente — pula para não spam.
- * 3. Extrai os jogos da seção `.have` e busca preços via GameSearcher.
- * 4. Envia os preços ao Sistema Estoque para calcular rentabilidade em keys TF2.
- * 5. Se houver jogos rentáveis, posta comentário.
+ * 2. Extrai os jogos da seção `.have` e busca preços via GameSearcher.
+ * 3. Envia os dados ao Sistema Estoque para avaliação de rentabilidade e decisão de comentar.
+ * 4. Se `should_comment === true`, posta comentário.
  *
  * Para antecipadamente quando 5 tópicos inativos são encontrados em sequência.
  */
@@ -84,12 +83,6 @@ export class FindNewSuppliersUseCase {
                         continue;
                     }
 
-                    if (topic.hasRecentComment) {
-                        topicsProcessed++;
-                        console.log(`⏭️ [SUPPLIERS] Already commented recently on topic ${code}. Skipping.`);
-                        continue;
-                    }
-
                     if (topic.games.length === 0) {
                         topicsProcessed++;
                         console.log(`⚠️ [SUPPLIERS] Topic ${code} has no games in .have section.`);
@@ -123,18 +116,22 @@ export class FindNewSuppliersUseCase {
                     const supplier: SupplierInput = {
                         steam_id: topic.steamId,
                         url: `https://steamcommunity.com/profiles/${topic.steamId}`,
+                        list_code: code,
                     };
 
-                    const { profitable: profitableGames, is_added } = await profitabilityChecker.evaluate(supplier, gamesWithPrice);
+                    const { profitable: profitableGames, is_added, should_comment, last_commented_at, games_changed } =
+                        await profitabilityChecker.evaluate(supplier, gamesWithPrice);
 
-                    if (profitableGames.length === 0) {
+                    console.log(`📊 [SUPPLIERS] Topic ${code}: should_comment=${should_comment}, games_changed=${games_changed}, last_commented_at=${last_commented_at ?? "never"}`);
+
+                    if (!should_comment) {
                         topicsProcessed++;
-                        console.log(`💸 [SUPPLIERS] No profitable games in topic ${code} according to Sistema Estoque.`);
+                        console.log(`⏭️ [SUPPLIERS] Sistema Estoque decided not to comment on topic ${code}.`);
                         continue;
                     }
 
-                    const result = formatResult(profitableGames);
-                    console.log(`✅ [SUPPLIERS] Profitable games found in topic ${code} (is_added=${is_added}):\n${result}`);
+                    const formatted = formatResult(profitableGames);
+                    console.log(`✅ [SUPPLIERS] Commenting on topic ${code} (is_added=${is_added}):\n${formatted}`);
 
                     await commentPoster.post(url, profitableGames);
                     topicsProcessed++;

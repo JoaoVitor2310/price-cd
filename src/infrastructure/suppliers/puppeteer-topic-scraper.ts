@@ -6,15 +6,15 @@ import { PAGE_NAVIGATION_TIMEOUT } from "@/infrastructure/suppliers/steamtrades.
 const STEAM_ID_REGEX = /\/user\/(\d+)/i;
 
 /**
- * Extrai os dados relevantes do HTML de um tópico individual.
+ * Extrai os dados do tópico a partir do HTML da página principal.
  * Exportada separadamente para permitir testes unitários sem Puppeteer.
  */
-function extractTopicData(html: string): TopicData {
+export function extractTopicData(html: string): TopicData {
     const $ = cheerio.load(html);
 
     const isInactive = $(".notification.yellow").length > 0;
 
-    const authorLink = $("a.author_name").first();
+    const authorLink = $(".comment_inner").first().find("a.author_name");
     const authorName = authorLink.text().trim();
     const steamIdMatch = (authorLink.attr("href") ?? "").match(STEAM_ID_REGEX);
     const steamId = steamIdMatch?.[1] ?? "";
@@ -25,40 +25,18 @@ function extractTopicData(html: string): TopicData {
         .map((line) => line.trim())
         .filter(Boolean);
 
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-
-    // Each comment lives inside .comment_outer → .comment_inner.
-    // The timestamp is in <span data-timestamp="unix_seconds"> inside .action_list.
-    const hasRecentComment = $(".comment_outer")
-        .toArray()
-        .some((el) => {
-            const commentEl = $(el);
-            const bodyText = commentEl.find(".comment_body").text();
-            if (!bodyText.includes("Interested")) return false;
-
-            const raw = commentEl.find("span[data-timestamp]").attr("data-timestamp");
-            if (!raw) return true; // no timestamp found — assume recent to avoid re-commenting
-
-            const commentDate = new Date(Number(raw) * 1000);
-            return !Number.isNaN(commentDate.getTime()) && commentDate >= sixMonthsAgo;
-        });
-
-    return { authorName, steamId, games, isInactive, hasRecentComment };
+    return { authorName, steamId, games, isInactive };
 }
 
 /**
  * Implementação de `TopicScraper` via Puppeteer.
- * Reutiliza o browser da sessão compartilhada de suppliers — abre e fecha apenas
- * uma `page` por chamada, sem inicializar um novo processo Chrome a cada tópico.
+ * Faz uma única navegação por tópico — extrai metadados (autor, jogos, status).
+ * A decisão de comentar (histórico + mudança de jogos) é delegada ao Sistema Estoque via `ProfitabilityChecker`.
  */
 export class PuppeteerTopicScraper implements TopicScraper {
     async scrape(url: string): Promise<TopicData> {
         const { page } = await getSuppliersSession();
         await page.goto(url, { waitUntil: "domcontentloaded", timeout: PAGE_NAVIGATION_TIMEOUT });
-        const html = await page.content();
-        return extractTopicData(html);
+        return extractTopicData(await page.content());
     }
 }
-
-export { extractTopicData };
