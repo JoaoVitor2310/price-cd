@@ -10,8 +10,7 @@ const PROFITABILITY_ENDPOINT = "/suppliers/prospect";
 
 /**
  * Implementação de `ProfitabilityChecker` via HTTP.
- * Delega o cálculo de rentabilidade em keys TF2 ao Sistema Estoque,
- * que conhece as taxas de Marketplaces, a cotação EUR/BRL e a margem de lucro atual.
+ * Delega ao Sistema Estoque: cálculo de rentabilidade em keys TF2 e decisão de comentar (`should_comment`).
  */
 export class HttpProfitabilityChecker implements ProfitabilityChecker {
     constructor(
@@ -23,13 +22,14 @@ export class HttpProfitabilityChecker implements ProfitabilityChecker {
         const url = `${this.baseUrl}${PROFITABILITY_ENDPOINT}`;
 
         try {
+            const { list_code, ...supplierFields } = supplier;
             const response = await axios.post<ProspectResult>(
                 url,
-                { supplier, games },
+                { supplier: supplierFields, list_code, games },
                 {
                     timeout: 10_000,
                     headers: { Authorization: `Bearer ${this.bearerToken}` },
-                }
+                },
             );
             return response.data;
         } catch (err) {

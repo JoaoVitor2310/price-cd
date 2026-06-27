@@ -2,6 +2,8 @@
 export type SupplierInput = {
     steam_id: string;
     url: string;
+    /** Código do tópico no SteamTrades (ex.: `G0eXM`). Usado pelo Sistema Estoque para rastrear histórico por tópico. */
+    list_code: string;
 };
 
 /** Jogo com preço já descoberto pelo price researcher, pronto para avaliação de rentabilidade. */
@@ -28,6 +30,12 @@ export type ProspectResult = {
     profitable: ProfitableGameResult[];
     /** Se o fornecedor já está adicionado como contato no Sistema Estoque. */
     is_added: boolean;
+    /** `true` se o price-cd deve postar comentário no tópico. Decisão tomada pelo Sistema Estoque. */
+    should_comment: boolean;
+    /** ISO 8601 do último comentário registrado para este `list_code`. `null` se nunca comentamos. Usado para logging. */
+    last_commented_at: string | null;
+    /** `true` se a lista de jogos mudou desde o último comentário registrado. Usado para logging. */
+    games_changed: boolean;
 };
 
 export interface ProfitabilityChecker {
