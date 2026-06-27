@@ -1,7 +1,6 @@
 /** Dados do fornecedor enviados ao Sistema Estoque para identificação e registro. */
 export type SupplierInput = {
     steam_id: string;
-    url: string;
     /** Código do tópico no SteamTrades (ex.: `G0eXM`). Usado pelo Sistema Estoque para rastrear histórico por tópico. */
     list_code: string;
 };

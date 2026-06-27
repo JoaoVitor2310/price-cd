@@ -22,10 +22,9 @@ export class HttpProfitabilityChecker implements ProfitabilityChecker {
         const url = `${this.baseUrl}${PROFITABILITY_ENDPOINT}`;
 
         try {
-            const { list_code, ...supplierFields } = supplier;
             const response = await axios.post<ProspectResult>(
                 url,
-                { supplier: supplierFields, list_code, games },
+                { supplier_steam_id: supplier.steam_id, list_code: supplier.list_code, games },
                 {
                     timeout: 10_000,
                     headers: { Authorization: `Bearer ${this.bearerToken}` },

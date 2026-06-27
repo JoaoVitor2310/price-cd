@@ -1,5 +1,9 @@
 # Orquestra o container: build, portas, variáveis e recursos (sem precisar lembrar flags longas do docker run).
 
+networks:
+  sistema-estoque-cd:
+    external: true
+
 services:
   price-researcher-dev:
     build:
@@ -24,6 +28,9 @@ services:
       - ./public:/app/public
 
     shm_size: 1gb
+
+    networks:
+      - sistema-estoque-cd
 
   price-researcher:
     build: .
