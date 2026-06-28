@@ -17,6 +17,8 @@
 **🟢 Live demo → [price.carcadeals.com](https://price.carcadeals.com)**<br/>
 <sub>No token required — paste any game names and see the pipeline run (limited to 10 games in demo mode).</sub>
 
+![Price Researcher Dashboard](Dashboard.png)
+
 </div>
 
 ---
