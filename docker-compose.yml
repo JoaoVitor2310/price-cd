@@ -32,6 +32,9 @@ services:
     networks:
       - sistema-estoque-cd
 
+    networks:
+      - sistema-estoque-cd
+
   price-researcher:
     build: .
 
