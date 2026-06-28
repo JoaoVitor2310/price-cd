@@ -32,9 +32,6 @@ services:
     networks:
       - sistema-estoque-cd
 
-    networks:
-      - sistema-estoque-cd
-
   price-researcher:
     build: .
 
@@ -62,3 +59,6 @@ services:
     # Memória compartilhada (/dev/shm) maior que o padrão (~64MB). Chromium usa muito shm para GPU/texturas;
     # sem isso o browser pode crashar ou ficar instável no Docker.
     shm_size: 1gb
+
+    networks:
+      - sistema-estoque-cd
