@@ -5,6 +5,7 @@
 **Automated game price & popularity intelligence for resellers**
 
 [![CI](https://github.com/JoaoVitor2310/price-researcher/actions/workflows/ci.yml/badge.svg)](https://github.com/JoaoVitor2310/price-researcher/actions/workflows/ci.yml)
+[![Deploy](https://github.com/JoaoVitor2310/price-researcher/actions/workflows/deploy.yml/badge.svg)](https://github.com/JoaoVitor2310/price-researcher/actions/workflows/deploy.yml)
 ![Node](https://img.shields.io/badge/Node.js-22-339933?logo=nodedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
 ![Vitest](https://img.shields.io/badge/Tested%20with-Vitest-6E9F18?logo=vitest&logoColor=white)
@@ -13,25 +14,29 @@
 > **Personal project** built for real production use at **CarcaDeals**, a game key reseller.<br/>
 > Replaced a fully manual process, cutting research time from hours to minutes.
 
+**🟢 Live demo → [price.carcadeals.com](https://price.carcadeals.com)**<br/>
+<sub>No token required — paste any game names and see the pipeline run (limited to 10 games in demo mode).</sub>
+
 </div>
 
 ---
 
 ## The Problem
 
-A supplier sends a list of 200+ game titles with asking prices. The buyer needs to cross-reference each game against marketplaces to decide what's worth purchasing — a process that previously took **hours of manual copy-pasting** across multiple sites.
+A supplier sends a list of 200+ game titles. The buyer needs to cross-reference each title against marketplaces to decide what's worth purchasing — a process that previously took **hours of manual copy-pasting** across multiple sites, with no signal for whether a game would actually sell.
 
 ## The Solution
 
 Price Researcher fully automates that workflow:
 
-1. Accepts a plain `.txt` file (one game per line + a minimum popularity threshold)
-2. Fetches the **24h peak player count** from SteamCharts for each game
-3. Filters out unpopular games (low demand = hard to resell)
-4. Scrapes **AllKeyShop** for the best current price on each qualifying game
-5. Returns a `.txt` file pre-formatted to paste directly into the buyer's spreadsheet
+1. Receives a list of game names + a minimum popularity threshold
+2. Fetches the **24h peak player count** from SteamCharts for each game — in parallel batches
+3. Filters out games below the popularity threshold (low demand = hard to resell)
+4. Filters out known free-to-play titles that have no resale value
+5. Scrapes **AllKeyShop** for the best current market price on each qualifying game
+6. In authenticated mode, pushes the results directly into the inventory system — zero manual steps
 
-A second async flow accepts a **Steam ID**, crawls the user's trade lists on SteamTrades, extracts game names, and runs the same analysis pipeline — fully hands-off.
+A second async flow accepts a **Steam ID**, crawls the user's trade lists on SteamTrades, extracts game names, and runs the same pipeline automatically.
 
 ---
 
@@ -42,7 +47,23 @@ A second async flow accepts a **Steam ID**, crawls the user's trade lists on Ste
 | 2–4 hours of manual research per list | ~5 minutes end-to-end |
 | Human error in copy-pasting prices | Zero manual steps |
 | No popularity signal → bad purchases | Games pre-filtered by real demand data |
+| Results copied manually to inventory | Direct integration — results pushed automatically |
 | No SteamTrades integration | Full trade list automation via Steam ID |
+
+---
+
+## Two-Mode Design
+
+The API supports two modes controlled by a bearer token:
+
+| | Demo mode | Authenticated mode |
+|---|---|---|
+| Token | Not provided | Valid `INTERNAL_SECRET` |
+| Game limit | 10 | Unlimited |
+| Output | JSON returned in the UI | Pushed to inventory system |
+| Use case | Try it out | Production pipeline |
+
+This allows the tool to be publicly accessible for demonstration while keeping the full pipeline secure. Auth lives in the controller (presentation layer) — the use case is auth-agnostic and only knows whether a `GameTradeImporter` was injected.
 
 ---
 
@@ -52,10 +73,12 @@ A second async flow accepts a **Steam ID**, crawls the user's trade lists on Ste
 - **Anti-bot scraping** — Puppeteer Real Browser + stealth plugin to bypass Cloudflare and similar protections on AllKeyShop and SteamTrades
 - **Multi-strategy concurrency** — SteamCharts runs in parallel batches of 50; AllKeyShop is strictly sequential (one browser page); SteamTrades uses a serialized promise gate to avoid rate limits
 - **Rate limit resilience** — `fetchWithRetry` honours `Retry-After` headers on HTTP 429 with exponential backoff (3 attempts, 5 s base delay); `gotoWithRetry` handles Puppeteer timeouts the same way
+- **Inventory integration** — `HttpGameTradeImporter` implements the `GameTradeImporter` port using native `fetch` with a 15 s `AbortController` timeout, posting structured results to the inventory system over a private bearer-authenticated API
+- **Domain-level exclusion list** — `filterExcludedGames` is a pure domain function applied after the popularity filter; free-to-play games are excluded before the price fetcher is ever called
 - **Async background jobs** — `LimitedConcurrencyScheduler` queues list-processing jobs in-process with configurable concurrency; on completion it POSTs a callback to any URL the caller provides
 - **Game name normalisation** — `clear-string.ts` normalises roman numerals, K-suffixed numbers, edition keywords, DLC tags, regional tags and special characters to maximise match accuracy across different naming conventions
-- **Full test suite** — 102 tests (unit + integration) with zero real network or browser calls; integration layer tests the full HTTP pipeline via supertest with vitest mocks at the infrastructure boundary
-- **CI/CD** — GitHub Actions runs the full test suite on every pull request; merging to `main` is blocked on failure
+- **Full test suite** — 159 tests (unit + integration) with zero real network or browser calls; integration layer tests the full HTTP pipeline via supertest with vitest mocks at the infrastructure boundary
+- **CI/CD** — GitHub Actions runs the full test suite on every pull request; merging to `main` triggers an automatic deploy to the VPS via SSH, rebuilding the Docker image in-place
 
 ---
 
@@ -67,12 +90,12 @@ A second async flow accepts a **Steam ID**, crawls the user's trade lists on Ste
 | HTTP Server | Express 5 |
 | Validation | Zod 4 |
 | Scraping | Puppeteer Real Browser + stealth/adblocker plugins |
-| HTTP Client | Axios |
+| HTTP Client | Native fetch (Node.js 22) |
 | HTML Parsing | Cheerio |
-| File Upload | Multer |
 | Testing | Vitest + Supertest |
-| Linting | Biome |
-| Containerisation | Docker + Xvfb (headless Chromium in Linux) |
+| Linting / Formatting | Biome |
+| Containerisation | Docker + Xvfb (headless Chromium in Linux containers) |
+| CI/CD | GitHub Actions |
 
 ---
 
@@ -81,16 +104,20 @@ A second async flow accepts a **Steam ID**, crawls the user's trade lists on Ste
 ```
 src/
 ├── routes/            # Thin HTTP routing (method + path only)
-├── controllers/       # Request parsing, Zod validation, response shaping
+├── controllers/       # Request parsing, Zod validation, auth, response shaping
 ├── schemas/           # Zod schemas + parse helpers
 ├── application/       # Use cases + port interfaces (dependency inversion)
-│   ├── games/         #   SearchGamesUseCase
+│   └── games/         #   SearchGamesUseCase, ResearchGamesUseCase
+│   │   └── ports/     #   PopularityFetcher, PriceFetcher, GameTradeImporter
 │   └── lists/         #   RunListsUseCase, EnqueueRunListsUseCase
-├── domain/            # Pure domain entities (ListTopic, worthyByPopularity)
-├── infrastructure/    # Concrete adapters (SteamCharts, AllKeyShop, SteamTrades)
+├── domain/            # Pure business rules (no Node, no HTTP)
+│   └── games/         #   worthyByPopularity, filterExcludedGames
+│   └── lists/         #   ListTopic entity
+├── infrastructure/    # Concrete adapters implementing port interfaces
+│   ├── games/         #   HttpGameTradeImporter
 │   ├── background/    #   LimitedConcurrencyScheduler
 │   ├── http/          #   AxiosRunListsCallbackPoster
-│   └── lists/         #   FetchListTopic, FormatListResult
+│   └── lists/         #   FetchListTopic (Puppeteer), FormatListResult
 ├── services/          # Application service orchestration
 ├── helpers/           # Pure string-transformation utilities (clear-string.ts)
 ├── lib/               # Shared infrastructure (Puppeteer factory, Disposable)
@@ -115,7 +142,7 @@ npm run dev
 
 **With Docker:**
 ```bash
-docker-compose up --build
+docker compose up price-researcher-dev
 ```
 
 **Run tests:**
@@ -129,25 +156,42 @@ npm test
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/api/games/search` | Search prices for a JSON list of game names |
-| `POST` | `/api/games/upload` | Upload a `.txt` file and receive a formatted result file |
+| `POST` | `/api/games/research` | Research prices for a list of game names (demo or authenticated) |
+| `POST` | `/api/games/search` | Search prices and return full analysis JSON |
 | `POST` | `/api/games/search-id-steam` | Resolve Steam IDs for a list of games |
 | `POST` | `/api/lists/run` | Async: crawl a Steam user's trade lists and run full analysis |
 
 <details>
-<summary><strong>POST /api/games/upload — input format</strong></summary>
+<summary><strong>POST /api/games/research — request body</strong></summary>
 
-Upload a `text/plain` file via the `fileToUpload` field:
-
+```json
+{
+  "content": "100\nHalf-Life\nPortal 2\nHades",
+  "checkGamivoOffer": true,
+  "internal_secret": "optional-token",
+  "steam_id": "optional-supplier-steam-id",
+  "list_code": "optional-list-identifier"
+}
 ```
-100
-Half-Life
-Portal 2
-Hades
+
+The `content` field follows a simple format: **line 1** is the minimum 24h peak player count; every subsequent line is a game name.
+
+**Demo mode response** (no token or wrong token):
+```json
+{
+  "success": true,
+  "demo": true,
+  "games": [
+    { "name": "Half-Life", "price_euro": 1.23, "popularity": 542, "region": "global" }
+  ]
+}
 ```
 
-Line 1 is the **minimum 24h peak player count**. Every subsequent line is a game name.
-The response is a `.txt` file ready to paste into a spreadsheet.
+**Authenticated mode response:**
+```json
+{ "success": true }
+```
+Results are pushed directly to the inventory system.
 
 </details>
 
@@ -167,23 +211,11 @@ Returns `202 Accepted` immediately. When analysis completes, POSTs to `callback_
 ```json
 {
   "status": "completed",
-  "result": "<tab-separated game data>"
+  "result": "<structured game data>"
 }
 ```
 
 </details>
-
----
-
-## Input / Output Examples
-
-**Input file**
-
-![Input example](file_example.png)
-
-**Output file** (paste-ready for spreadsheet)
-
-![Output example](result_example.png)
 
 ---
 

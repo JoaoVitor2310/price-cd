@@ -56,7 +56,7 @@ src/
 ├── domain/lists/          # Entidades de domínio (ListTopic)
 ├── infrastructure/        # Implementações concretas das portas
 │   ├── background/        # Schedulers
-│   ├── http/              # Axios callback poster
+│   ├── http/              # HTTP callback poster (native fetch)
 │   └── lists/             # SteamTrades fetcher + formatador de resultado
 ├── lib/                   # Utilidades compartilhadas (puppeteer factory, dispose)
 ├── helpers/               # Funções puras de transformação de string + constantes
@@ -73,9 +73,8 @@ Segue uma arquitetura hexagonal leve: o subdomínio `lists` tem interfaces de po
 |---|---|
 | Node.js 22 + TypeScript 5 | Runtime e linguagem |
 | Express 5 | HTTP server |
-| Multer | Upload de arquivos `.txt` (máx 1 MB) |
 | Zod 4 | Validação de input (body e conteúdo do arquivo) |
-| Axios | HTTP client (SteamCharts, AllKeyShop, callback posts) |
+| Native fetch (Node 22) | HTTP client (callback posts, integração com Sistema Estoque) |
 | Cheerio | Parse HTML via seletores jQuery-like |
 | Puppeteer Real Browser | Automação Chromium com bypass de anti-bot |
 | puppeteer-extra-plugin-stealth | Esconde fingerprint do Puppeteer |
