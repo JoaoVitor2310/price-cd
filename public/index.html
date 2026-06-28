@@ -1,278 +1,813 @@
 <!DOCTYPE html>
-<html lang="pt-br">
-  <head>
-    <link rel="icon" type="image/x-icon" href="/search.svg" />
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Price Researcher</title>
-  </head>
-
-  <body>
-    <div class="all">
-      <!-- <div id="header"> -->
-      <h1>Price Researcher</h1>
-      <h3>
-        Envie um arquivo .txt (bloco de notas) SOMENTE com o nome do jogo em
-        cada linha, evite também colocar espaços em branco no início e no final.
-      </h3>
-      <p>
-        <strong class="red">Atenção: </strong>Tente enviar o jogo escrito da
-        melhor forma possível, cada caractere pode afetar o resultado final.
-      </p>
-      <p>
-        <strong>OBS: </strong>O price não é perfeito, pode haver jogos que
-        valham a pena conferir o resultado, como os seguintes casos:
-      </p>
-      <ul>
-        <li>Se tiver uma boa popularidade e não achar o preço do jogo.</li>
-        <li>Se achar em uma plataforma e não achar em outra.</li>
-        <li>Se tiver um caractere diferente.</li>
-      </ul>
-
-      <h3>Exemplo de arquivo a ser enviado</h3>
-      <div class="row">
-        <img src="ArquivoExemplo.PNG" alt="Exemplo de arquivo a ser enviado" />
-        <div class="column">
-          <p>
-            <strong>Primeira linha: </strong> Popularidade mínima em 24h para
-            considerar. Caso o jogo tenha menos <br />
-            do que esse valor de popularidade, só vai anotar o preço se o valor
-            dele for menor do que €2.00
-          </p>
-          <p>
-            <strong>Linhas seguintes: </strong> Nome dos jogos, um por linha.
-          </p>
-        </div>
-      </div>
-      <!-- </div> -->
-      <div id="body">
-        <h3>Envio de arquivo</h3>
-        <!-- <h4>O price só busca por jogos "GLOBAL"</h4> -->
-        <p>
-          <strong class="red">Atenção: </strong> O price pode demorar a
-          responder, mas é importante que você NÃO fique enviando arquivos toda
-          hora,<br />isso pode comprometer o servidor e deixá-lo fora do ar. Se
-          for enviar mais de 10 jogos, é aconselhável que <br />
-          deixe ele em segundo plano e espere o navegador enviar a resposta(a
-          janela irá piscar em laranja).
-        </p>
-        <form id="uploadForm">
-          <label for="checkGamivoOffer">Retornar somente se houver oferta na Gamivo</label>
-          <input type="checkbox" id="checkGamivoOffer" name="checkGamivoOffer" checked style="margin-bottom: 10px;">
-          <div id="dropArea">
-            Arraste e solte aqui ou clique para selecionar o arquivo
-          </div>
-          <input type="file" name="fileToUpload" id="fileToUpload" />
-          <br /><br />
-          <input
-            type="button"
-            value="Enviar Arquivo"
-            onclick="uploadFile()"
-            id="uploadButton"
-          />
-        </form>
-        <div id="loadingIndicator" style="display: none">
-          Carregando...
-          <!-- Você pode personalizar a mensagem de carregamento conforme necessário -->
-          <div class="loader"></div>
-          <!-- Adicione uma animação de carregamento (a mesma usada anteriormente) -->
-        </div>
-      </div>
-      <div id="bottom">
-        <h3>Exemplo de arquivo de resposta</h3>
-        <p>
-          <strong>Ordem das respostas: </strong> G2A / GAMIVO / KINGUIN /
-          POPULARIDADE.
-        </p>
-        <img
-          src="RespostaExemplo.PNG"
-          alt="Exemplo de resposta a ser recebida."
-        />
-        <p>
-          <strong>Linhas: </strong> Cada linha é de um jogo, na mesma ordem que
-          foi enviado e pronto para ser colado na planilha.
-        </p>
-        <h2>Legenda:</h2>
-        <p>
-          <strong>F: </strong> Jogo que não foi possível achar na plataforma,
-          provavelmente por ter algum caractere diferenciado.
-        </p>
-        <p>
-          <strong>N: </strong> Jogo que possui pico de jogadores menor do que o
-          pedido nas últimas 24h na steam e custa mais de 2 euros.
-        </p>
-        <p><strong>O: </strong> Jogo que está fora de estoque.</p>
-        <p>
-          <strong>NaN: </strong> Jogo foi encontrado mas não possui estoque,
-          conferir.
-        </p>
-        <p>
-          <strong>999 de popularidade: </strong> 999 de popularidade acontece
-          quando envia 0 de popularidade mínima e o price irá desconsiderar a
-          pesquisa de popularidade.
-        </p>
-      </div>
-    </div>
-  </body>
-  <script>
-    const dropArea = document.getElementById("dropArea");
-    const fileInput = document.getElementById("fileToUpload");
-
-    dropArea.addEventListener("click", () => fileInput.click());
-
-    dropArea.addEventListener("dragover", (event) => {
-      event.preventDefault();
-      dropArea.classList.add("highlight");
-    });
-
-    dropArea.addEventListener("dragleave", () => {
-      dropArea.classList.remove("highlight");
-    });
-
-    dropArea.addEventListener("drop", (event) => {
-      event.preventDefault();
-      dropArea.classList.remove("highlight");
-      if (event.dataTransfer.files.length > 0) {
-        fileInput.files = event.dataTransfer.files;
-        dropArea.innerHTML = `<strong>${fileInput.files[0].name}</strong>`;
-      }
-    });
-
-    async function uploadFile() {
-      const fileInput = document.getElementById("fileToUpload");
-      const file = fileInput.files[0];
-
-      if (!file) {
-        alert("Por favor, envie o arquivo com o nome dos jogos(1 por linha).");
-        return;
-      }
-
-      document.getElementById("uploadButton").disabled = true; // Desabilita o botão para evitar spam de request e obrigar a esperar
-      document.getElementById("loadingIndicator").style.display = "block"; // Mostra o indicador de carregamento
-
-      const formData = new FormData();
-      formData.append("fileToUpload", file);
-      formData.append("checkGamivoOffer", document.getElementById("checkGamivoOffer").checked ? "true" : "false");
-
-      try {
-        const response = await fetch("/api/games/upload", {
-          method: "POST",
-          body: formData,
-        });
-
-        document.getElementById("loadingIndicator").style.display = "none";
-
-        if (response.error) {
-          console.error("Erro:", error);
-          alert(
-            "O arquivo possui algum erro de digitação, confira se enviou 1 jogo por linha e sem espaço em branco no início ou no final."
-          );
-        }
-
-        // const responseData = await response.text(); // DEBUG
-        // console.log(responseData);
-        // return;
-
-        const blob = await response.blob(); // Recebe o arquivo modificado como Blob
-
-        // Cria um URL temporário para o Blob
-        const url = window.URL.createObjectURL(blob);
-
-        // Cria um link <a> para download
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "resultado-price-researcher.txt"; // Define o nome do arquivo
-        document.body.appendChild(a);
-
-        // Aciona o clique no link para iniciar o download
-        a.click();
-
-        // Remove o link do corpo do documento
-        document.body.removeChild(a);
-
-        // Revoga o URL temporário
-        window.URL.revokeObjectURL(url);
-      } catch (error) {
-        console.error("Erro:", error);
-        alert("Ocorreu um erro, tente novamente.");
-        document.getElementById("loadingIndicator").style.display = "none"; // Ocultar o indicador de carregamento em caso de erro
-      } finally {
-        // Garantir que o botão seja habilitado novamente mesmo em caso de erro
-        document.getElementById("uploadButton").disabled = false;
-      }
-    }
-
-    document.getElementById("uploadForm").addEventListener("submit", function (event) {
-        event.preventDefault(); // Isso impede o envio do formulário padrão
-      });
-  </script>
-
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Price Researcher — CarcaDeals</title>
+  <link rel="icon" type="image/x-icon" href="/search.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
-    #dropArea {
-      width: 100%;
-      max-width: 400px;
-      height: 150px;
-      border: 2px dashed #007bff;
-      border-radius: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      color: #007bff;
-      font-family: Arial, sans-serif;
-      cursor: pointer;
-    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    #dropArea.highlight {
-      background-color: #f0f8ff;
-    }
-
-    input[type="file"] {
-      display: none;
-    }
-
-    * {
-      font-family: sans-serif;
+    :root {
+      --ink:        #0f172a;
+      --ink-2:      #1e293b;
+      --muted:      #64748b;
+      --muted-2:    #94a3b8;
+      --border:     #e2e8f0;
+      --surface:    #f8fafc;
+      --white:      #ffffff;
+      --accent:     #6366f1;
+      --accent-dk:  #4f46e5;
+      --accent-lt:  #eff0fe;
+      --accent-ring:rgba(99,102,241,.12);
+      --success-bg: #ecfdf5;
+      --success-tx: #065f46;
+      --success-bd: #6ee7b7;
+      --warn-bg:    #fffbeb;
+      --warn-tx:    #92400e;
+      --warn-bd:    #fcd34d;
+      --err-bg:     #fef2f2;
+      --err-tx:     #991b1b;
+      --err-bd:     #fca5a5;
     }
 
     body {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      background-color: #e2d926;
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--surface);
+      color: var(--ink);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
     }
 
-    .all {
-      padding: 10px;
-      background-color: whitesmoke;
-      min-width: 1285px;
+    /* ── NAV ──────────────────────────────────────────── */
+    nav {
+      background: #0f172a;
+      padding: 0 clamp(1rem, 5vw, 3rem);
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      border-bottom: 1px solid rgba(255,255,255,.06);
+    }
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+    }
+    .nav-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+    .nav-name {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,.9);
+    }
+    .nav-pill {
+      font-size: 11px;
+      font-weight: 500;
+      padding: 3px 10px;
+      background: rgba(99,102,241,.18);
+      color: #a5b4fc;
+      border: 1px solid rgba(99,102,241,.3);
+      border-radius: 100px;
+    }
+
+    /* ── HERO ─────────────────────────────────────────── */
+    .hero {
+      background: #0f172a;
+      padding: clamp(56px, 10vw, 96px) clamp(1rem, 5vw, 3rem);
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 70% 55% at 50% -10%, rgba(99,102,241,.22) 0%, transparent 65%);
+      pointer-events: none;
+    }
+    .hero-eyebrow {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: #818cf8;
+      margin-bottom: 20px;
+    }
+    .hero h1 {
+      font-size: clamp(38px, 7vw, 64px);
+      font-weight: 700;
+      color: #f8fafc;
+      line-height: 1.08;
+      letter-spacing: -.03em;
+      margin-bottom: 20px;
+    }
+    .hero h1 em {
+      font-style: normal;
+      color: var(--accent);
+    }
+    .hero-sub {
+      font-size: clamp(15px, 2vw, 18px);
+      color: #94a3b8;
+      max-width: 540px;
+      margin: 0 auto 48px;
+    }
+    .hero-stats {
+      display: inline-flex;
+      border: 1px solid rgba(255,255,255,.1);
       border-radius: 10px;
-      display: flex;
-      flex-direction: column;
+      overflow: hidden;
+      margin-bottom: 40px;
+    }
+    .hero-stat {
+      padding: 14px 28px;
+      border-right: 1px solid rgba(255,255,255,.08);
+      text-align: center;
+    }
+    .hero-stat:last-child { border-right: none; }
+    .hero-stat-value {
+      display: block;
+      font-size: 22px;
+      font-weight: 700;
+      color: #f8fafc;
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+    .hero-stat-label {
+      font-size: 12px;
+      color: #64748b;
+    }
+    .hero-cta {
+      display: inline-flex;
       align-items: center;
+      gap: 8px;
+      background: var(--accent);
+      color: #fff;
+      padding: 13px 28px;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: background .15s;
     }
+    .hero-cta:hover { background: var(--accent-dk); }
+    .hero-cta svg { transition: transform .15s; }
+    .hero-cta:hover svg { transform: translateX(3px); }
 
-    #header h1 {
-      text-align: center;
+    /* ── PIPELINE ──────────────────────────────────────── */
+    .pipeline-bar {
+      background: #0f172a;
+      border-top: 1px solid rgba(255,255,255,.06);
+      padding: 20px clamp(1rem, 5vw, 3rem);
     }
-
-    .red {
-      color: red;
-    }
-
-    .all h3,
-    h4 {
-      text-align: center;
-    }
-
-    .row {
+    .pipeline {
+      max-width: 960px;
+      margin: 0 auto;
       display: flex;
-      flex-direction: row;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+      flex-wrap: wrap;
+      row-gap: 8px;
+    }
+    .p-node {
+      background: rgba(255,255,255,.05);
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 7px;
+      padding: 8px 16px;
+      font-size: 13px;
+      color: #cbd5e1;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .p-arrow {
+      color: #334155;
+      padding: 0 10px;
+      font-size: 18px;
+      font-weight: 300;
     }
 
-    .column {
+    /* ── SECTIONS ──────────────────────────────────────── */
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 clamp(1rem, 5vw, 3rem);
+    }
+    .section {
+      padding: clamp(48px, 8vw, 80px) 0;
+    }
+    .eyebrow {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 10px;
+    }
+    .section-title {
+      font-size: clamp(24px, 4vw, 36px);
+      font-weight: 700;
+      color: var(--ink);
+      letter-spacing: -.02em;
+      margin-bottom: 8px;
+    }
+    .section-sub {
+      font-size: 16px;
+      color: var(--muted);
+      margin-bottom: 44px;
+    }
+
+    /* ── HOW IT WORKS ──────────────────────────────────── */
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .step {
+      background: var(--white);
+      padding: 28px 24px 32px;
+    }
+    .step-num {
+      width: 34px; height: 34px;
+      border-radius: 50%;
+      background: var(--accent-lt);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--accent-dk);
+      margin-bottom: 18px;
+    }
+    .step h3 {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--ink);
+      margin-bottom: 8px;
+    }
+    .step p {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.65;
+    }
+
+    /* ── ARCH ──────────────────────────────────────────── */
+    .arch-wrap {
+      background: #0f172a;
+      border-top: 1px solid rgba(255,255,255,.04);
+    }
+    .arch-wrap .eyebrow { color: #818cf8; }
+    .arch-wrap .section-title { color: #f8fafc; }
+    .arch-wrap .section-sub  { color: #64748b; }
+    .arch-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .arch-card {
+      background: rgba(255,255,255,.04);
+      border: 1px solid rgba(255,255,255,.09);
+      border-radius: 12px;
+      padding: 24px;
+    }
+    .arch-card-title {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: #475569;
+      margin-bottom: 18px;
+    }
+    .arch-row {
       display: flex;
-      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255,255,255,.05);
+    }
+    .arch-row:last-child { border-bottom: none; }
+    .arch-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      flex-shrink: 0;
+    }
+    .arch-label {
+      font-size: 13px;
+      color: #cbd5e1;
+      flex: 1;
+    }
+    .tag {
+      font-size: 11px;
+      font-weight: 500;
+      padding: 2px 8px;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+    .tag-blue { background: rgba(99,102,241,.18); color: #a5b4fc; }
+    .tag-green { background: rgba(16,185,129,.15); color: #6ee7b7; }
+
+    /* ── TECH STACK ────────────────────────────────────── */
+    .tech-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .tech-pill {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 14px;
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--ink-2);
+    }
+    .tech-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    /* ── TOOL ──────────────────────────────────────────── */
+    .tool-wrap {
+      background: var(--white);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    .tool-grid {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 56px;
+      align-items: start;
+    }
+    .tool-info h2 {
+      font-size: 26px;
+      font-weight: 700;
+      color: var(--ink);
+      letter-spacing: -.02em;
+      margin-bottom: 10px;
+    }
+    .tool-info p {
+      font-size: 14px;
+      color: var(--muted);
+      margin-bottom: 24px;
+    }
+    .format-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .format-card-head {
+      padding: 10px 16px;
+      background: var(--border);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .format-card pre {
+      padding: 14px 16px;
+      font-family: inherit;
+      font-size: 13px;
+      color: var(--accent);
+      line-height: 1.9;
+    }
+    .format-card-foot {
+      padding: 10px 16px;
+      border-top: 1px solid var(--border);
+      font-size: 12px;
+      color: var(--muted-2);
+    }
+
+    /* form elements */
+    .fg { margin-bottom: 18px; }
+    .fl {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 6px;
+    }
+    .fl span { font-weight: 400; color: var(--muted-2); }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    input[type="text"],
+    input[type="number"] {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+      color: var(--ink);
+      background: var(--surface);
+      font-family: inherit;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    input[type="text"]:focus,
+    input[type="number"]:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-ring);
+      background: var(--white);
+    }
+    textarea {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 13px;
+      color: var(--ink);
+      background: var(--surface);
+      font-family: 'JetBrains Mono', 'Courier New', monospace;
+      line-height: 1.9;
+      resize: vertical;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-ring);
+      background: var(--white);
+    }
+    .chk-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 0 18px;
+    }
+    .chk-row input[type="checkbox"] {
+      width: 17px; height: 17px;
+      accent-color: var(--accent);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .chk-row label {
+      font-size: 14px;
+      color: #374151;
+      cursor: pointer;
+    }
+    .submit-btn {
+      width: 100%;
+      padding: 12px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background .15s;
+    }
+    .submit-btn:hover { background: var(--accent-dk); }
+    .submit-btn:disabled { background: #a5b4fc; cursor: not-allowed; }
+    #loadingIndicator {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 0 0;
+      font-size: 14px;
+      color: var(--muted);
+    }
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #resultMessage {
+      display: none;
+      margin-top: 14px;
+      padding: 13px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    .result-success { background: var(--success-bg); color: var(--success-tx); border: 1px solid var(--success-bd); }
+    .result-warning { background: var(--warn-bg);    color: var(--warn-tx);    border: 1px solid var(--warn-bd);    }
+    .result-error   { background: var(--err-bg);     color: var(--err-tx);     border: 1px solid var(--err-bd);     }
+
+    /* ── FOOTER ────────────────────────────────────────── */
+    footer {
+      background: #0f172a;
+      padding: 28px clamp(1rem, 5vw, 3rem);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      border-top: 1px solid rgba(255,255,255,.06);
+    }
+    footer p { font-size: 13px; color: #475569; }
+    footer a { color: #6366f1; text-decoration: none; }
+    footer a:hover { color: #818cf8; }
+
+    /* ── RESPONSIVE ────────────────────────────────────── */
+    html, body { overflow-x: hidden; }
+
+    @media (max-width: 900px) {
+      .steps    { grid-template-columns: 1fr 1fr; }
+      .arch-grid { grid-template-columns: 1fr; }
+      .tool-grid { grid-template-columns: 1fr; gap: 32px; }
+    }
+
+    @media (max-width: 768px) {
+      /* pipeline: esconde setas, nodes quebram naturalmente em grid 2×2 */
+      .p-arrow  { display: none; }
+      .pipeline { gap: 8px; }
+      .p-node   { flex: 1 1 calc(50% - 4px); text-align: center; white-space: normal; }
+      /* hero stats um pouco mais compactos em tablet */
+      .hero-stat { padding: 12px 16px; }
+      .hero-stat-value { font-size: 20px; }
+    }
+
+    @media (max-width: 560px) {
+      .steps    { grid-template-columns: 1fr; }
+      .two-col  { grid-template-columns: 1fr; }
+      /* hero stats: pilha vertical */
+      .hero-stats { flex-direction: column; border-radius: 10px; }
+      .hero-stat  { border-right: none; border-bottom: 1px solid rgba(255,255,255,.08); }
+      .hero-stat:last-child { border-bottom: none; }
+      /* pipeline: 1 coluna */
+      .p-node { flex: 1 1 100%; }
+      /* arch rows: permite tag quebrar linha */
+      .arch-row   { flex-wrap: wrap; row-gap: 4px; }
+      .arch-label { flex: 1 1 100%; }
+      .tag        { margin-left: 0; }
+      /* nav: nome menor */
+      .nav-name { font-size: 12px; }
     }
   </style>
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav>
+    <a class="nav-brand" href="/">
+      <div class="nav-dot"></div>
+      <span class="nav-name">CarcaDeals</span>
+    </a>
+    <span class="nav-pill">Internal tool</span>
+  </nav>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-eyebrow">CarcaDeals · Price intelligence</div>
+    <h1>Price <em>Researcher</em></h1>
+    <p class="hero-sub">Automated game price and popularity intelligence. Filters by player count, fetches the best game price, and stores results directly in the inventory system.</p>
+    <div class="hero-stats">
+      <div class="hero-stat">
+        <span class="hero-stat-value">2</span>
+        <span class="hero-stat-label">Data sources</span>
+      </div>
+      <div class="hero-stat">
+        <span class="hero-stat-value">50×</span>
+        <span class="hero-stat-label">Games / batch</span>
+      </div>
+      <div class="hero-stat">
+        <span class="hero-stat-value">REST</span>
+        <span class="hero-stat-label">API integration</span>
+      </div>
+      <div class="hero-stat">
+        <span class="hero-stat-value">Auto</span>
+        <span class="hero-stat-label">Supplier scan</span>
+      </div>
+    </div>
+    <a href="#tool" class="hero-cta">
+      Open tool
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+    </a>
+  </section>
+
+  <!-- PIPELINE BAR -->
+  <div class="pipeline-bar">
+    <div class="pipeline">
+      <div class="p-node">Game list / SteamTrades</div>
+      <div class="p-arrow">→</div>
+      <div class="p-node">Price Researcher (Node.js)</div>
+      <div class="p-arrow">→</div>
+      <div class="p-node">SteamCharts + Gamivo</div>
+      <div class="p-arrow">→</div>
+      <div class="p-node">Sistema Estoque (Laravel)</div>
+    </div>
+  </div>
+
+  <!-- HOW IT WORKS -->
+  <div style="background: var(--surface);">
+    <div class="wrap">
+      <div class="section">
+        <div class="eyebrow">How it works</div>
+        <h2 class="section-title">From game names to inventory</h2>
+        <p class="section-sub">Four automated steps turn a raw list of game titles into structured, priced data ready for sourcing decisions.</p>
+        <div class="steps">
+          <div class="step">
+            <div class="step-num">1</div>
+            <h3>Paste game names</h3>
+            <p>Set a minimum popularity threshold, then list one game name per line.</p>
+          </div>
+          <div class="step">
+            <div class="step-num">2</div>
+            <h3>Popularity filter</h3>
+            <p>SteamCharts is scraped in parallel batches of 50 to get the 24-hour player peak. Games below the threshold are dropped.</p>
+          </div>
+          <div class="step">
+            <div class="step-num">3</div>
+            <h3>Price research</h3>
+            <p>Puppeteer with anti-bot bypass navigates Gamivo and AllKeyShop to find the best available price per game.</p>
+          </div>
+          <div class="step">
+            <div class="step-num">4</div>
+            <h3>Stored in inventory</h3>
+            <p>Results are pushed to Sistema Estoque via a secure REST API, ready for the team to review and act on.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ARCHITECTURE -->
+  <div class="arch-wrap">
+    <div class="wrap">
+      <div class="section">
+        <div class="eyebrow">Architecture</div>
+        <h2 class="section-title">Part of a larger ecosystem</h2>
+        <p class="section-sub">Price Researcher runs two independent flows. Both integrate with Sistema Estoque through the same authenticated REST contract.</p>
+        <div class="arch-grid">
+          <div class="arch-card">
+            <div class="arch-card-title">Game list flow</div>
+            <div class="arch-row"><div class="arch-dot"></div><span class="arch-label">Receive game list via JSON body</span><span class="tag tag-blue">POST /games/upload</span></div>
+            <div class="arch-row"><div class="arch-dot"></div><span class="arch-label">Scrape SteamCharts in parallel</span><span class="tag tag-blue">50 / batch</span></div>
+            <div class="arch-row"><div class="arch-dot"></div><span class="arch-label">Fetch prices via Puppeteer</span><span class="tag tag-blue">sequential</span></div>
+            <div class="arch-row"><div class="arch-dot"></div><span class="arch-label">Forward results to inventory</span><span class="tag tag-green">REST API</span></div>
+          </div>
+          <div class="arch-card">
+            <div class="arch-card-title">Suppliers discovery flow</div>
+            <div class="arch-row"><div class="arch-dot"></div><span class="arch-label">Scan SteamTrades listing pages</span><span class="tag tag-blue">Puppeteer</span></div>
+            <div class="arch-row"><div class="arch-dot"></div><span class="arch-label">Extract games from each topic</span><span class="tag tag-blue">Cheerio</span></div>
+            <div class="arch-row"><div class="arch-dot"></div><span class="arch-label">Evaluate profitability via API</span><span class="tag tag-green">Sistema Estoque</span></div>
+            <div class="arch-row"><div class="arch-dot"></div><span class="arch-label">Auto-comment on promising topics</span><span class="tag tag-green">automated</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TECH STACK -->
+  <div style="background: var(--surface);">
+    <div class="wrap">
+      <div class="section" style="padding-bottom: 56px;">
+        <div class="eyebrow">Tech stack</div>
+        <h2 class="section-title" style="margin-bottom: 28px;">Built with</h2>
+        <div class="tech-grid">
+          <span class="tech-pill"><span class="tech-dot" style="background:#68a063"></span>Node.js 22</span>
+          <span class="tech-pill"><span class="tech-dot" style="background:#3178c6"></span>TypeScript 5</span>
+          <span class="tech-pill"><span class="tech-dot" style="background:#000"></span>Express 5</span>
+          <span class="tech-pill"><span class="tech-dot" style="background:#40b5a4"></span>Puppeteer Real Browser</span>
+          <span class="tech-pill"><span class="tech-dot" style="background:#e34c26"></span>Cheerio</span>
+          <span class="tech-pill"><span class="tech-dot" style="background:#6366f1"></span>Zod 4</span>
+          <span class="tech-pill"><span class="tech-dot" style="background:#ff7e17"></span>Vitest</span>
+          <span class="tech-pill"><span class="tech-dot" style="background:#1a1a1a"></span>Biome</span>
+          <span class="tech-pill"><span class="tech-dot" style="background:#0db7ed"></span>Docker</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOOL -->
+  <div class="tool-wrap" id="tool">
+    <div class="wrap">
+      <div class="section">
+        <div class="tool-grid">
+          <div class="tool-info">
+            <div class="eyebrow">Research tool</div>
+            <h2>Search game prices</h2>
+            <p>Paste a list of games with a minimum popularity threshold. The system filters by 24-hour Steam peak, finds the best Gamivo price, and sends the results to inventory.</p>
+            <div class="format-card">
+              <div class="format-card-head">Game list format</div>
+              <pre>Half-Life
+Portal 2
+Counter-Strike 2</pre>
+              <div class="format-card-foot">One game title per line. The minimum popularity threshold is set separately above.</div>
+            </div>
+          </div>
+          <div>
+            <form id="uploadForm" onsubmit="return false">
+              <div class="two-col">
+                <div class="fg">
+                  <label class="fl" for="steamId">Steam ID <span>(optional)</span></label>
+                  <input type="text" id="steamId" placeholder="76561198xxxxxxxxx" />
+                </div>
+                <div class="fg">
+                  <label class="fl" for="listCode">List code <span>(optional)</span></label>
+                  <input type="text" id="listCode" placeholder="G0eXM" />
+                </div>
+              </div>
+              <div class="fg">
+                <label class="fl" for="minPopularity">Minimum popularity <span>(24h peak players)</span></label>
+                <input type="number" id="minPopularity" value="30" min="0" step="1" />
+              </div>
+              <div class="fg">
+                <label class="fl" for="gamesList">Game list</label>
+                <textarea id="gamesList" rows="12" placeholder="Half-Life&#10;Portal 2&#10;Counter-Strike 2"></textarea>
+              </div>
+              <div class="chk-row">
+                <input type="checkbox" id="checkGamivoOffer" checked />
+                <label for="checkGamivoOffer">Only include games with a Gamivo offer</label>
+              </div>
+              <button type="button" class="submit-btn" id="uploadButton" onclick="submitGames()">Search prices</button>
+            </form>
+            <div id="loadingIndicator">
+              <div class="spinner"></div>
+              Processing — this may take several minutes for large lists…
+            </div>
+            <div id="resultMessage"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <footer>
+    <p>Price Researcher · CarcaDeals internal platform</p>
+    <p>Built by <a href="https://www.linkedin.com/in/jo%C3%A3o-vitor-matos-gouveia-14b71437/" target="_blank" rel="noopener">João Vitor Gouveia</a></p>
+  </footer>
+
+  <script>
+    async function submitGames() {
+      const minPop  = document.getElementById("minPopularity").value.trim();
+      const games   = document.getElementById("gamesList").value.trim();
+      if (!games) {
+        alert("Paste the game list before submitting.");
+        return;
+      }
+      const content = `${minPop || "0"}\n${games}`;
+      const btn     = document.getElementById("uploadButton");
+      const loading = document.getElementById("loadingIndicator");
+      const result  = document.getElementById("resultMessage");
+
+      btn.disabled = true;
+      loading.style.display = "flex";
+      result.style.display  = "none";
+
+      try {
+        const response = await fetch("/api/games/research", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content,
+            checkGamivoOffer: document.getElementById("checkGamivoOffer").checked,
+            steam_id:  document.getElementById("steamId").value.trim()  || undefined,
+            list_code: document.getElementById("listCode").value.trim() || undefined,
+          }),
+        });
+
+        loading.style.display = "none";
+        const data = await response.json();
+        result.style.display = "block";
+
+        if (!response.ok || !data.success) {
+          result.className   = "result-error";
+          result.textContent = data.details || "An error occurred. Please try again.";
+          return;
+        }
+        result.className   = "result-success";
+        result.textContent = "Trade created successfully.";
+      } catch {
+        loading.style.display = "none";
+        result.style.display  = "block";
+        result.className      = "result-error";
+        result.textContent    = "Connection error. Please try again.";
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    document.querySelector('a[href="#tool"]')?.addEventListener("click", e => {
+      e.preventDefault();
+      document.getElementById("tool").scrollIntoView({ behavior: "smooth" });
+    });
+  </script>
+</body>
 </html>
