@@ -410,7 +410,8 @@
     .fl span { font-weight: 400; color: var(--muted-2); }
     .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
     input[type="text"],
-    input[type="number"] {
+    input[type="number"],
+    input[type="password"] {
       width: 100%;
       padding: 10px 14px;
       border: 1px solid var(--border);
@@ -507,6 +508,93 @@
     .result-success { background: var(--success-bg); color: var(--success-tx); border: 1px solid var(--success-bd); }
     .result-warning { background: var(--warn-bg);    color: var(--warn-tx);    border: 1px solid var(--warn-bd);    }
     .result-error   { background: var(--err-bg);     color: var(--err-tx);     border: 1px solid var(--err-bd);     }
+
+    /* ── MODE BANNER ───────────────────────────────────── */
+    #modeBanner {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin-top: 10px;
+      padding: 11px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.55;
+      transition: background .2s, border-color .2s, color .2s;
+    }
+    #modeBanner.demo {
+      background: var(--warn-bg);
+      border: 1px solid var(--warn-bd);
+      color: var(--warn-tx);
+    }
+    #modeBanner.auth {
+      background: var(--success-bg);
+      border: 1px solid var(--success-bd);
+      color: var(--success-tx);
+    }
+    #modeBanner .mode-icon { font-size: 15px; flex-shrink: 0; margin-top: 1px; }
+    #modeBanner strong { font-weight: 600; }
+
+    /* ── DEMO RESULTS ──────────────────────────────────── */
+    #demoResults {
+      display: none;
+      margin-top: 40px;
+      padding-top: 32px;
+      border-top: 1px solid var(--border);
+    }
+    .demo-results-eyebrow {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+    .demo-results-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--ink);
+      letter-spacing: -.02em;
+      margin-bottom: 4px;
+    }
+    .demo-results-sub {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 20px;
+    }
+    .demo-table-wrap {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .demo-table-wrap table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    .demo-table-wrap thead th {
+      background: var(--surface);
+      padding: 10px 16px;
+      text-align: left;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .07em;
+      text-transform: uppercase;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+    }
+    .demo-table-wrap tbody tr { border-bottom: 1px solid var(--border); }
+    .demo-table-wrap tbody tr:last-child { border-bottom: none; }
+    .demo-table-wrap tbody tr:hover { background: var(--surface); }
+    .demo-table-wrap tbody td { padding: 11px 16px; color: var(--ink-2); }
+    .demo-table-wrap .td-price { color: var(--accent-dk); font-weight: 600; font-variant-numeric: tabular-nums; }
+    .demo-table-wrap .td-pop  { color: var(--muted); font-variant-numeric: tabular-nums; }
+    .demo-table-wrap .td-reg  { color: var(--muted); font-size: 12px; }
+    .demo-empty {
+      text-align: center;
+      padding: 32px;
+      color: var(--muted);
+      font-size: 14px;
+    }
 
     /* ── FOOTER ────────────────────────────────────────── */
     footer {
@@ -713,6 +801,14 @@ Counter-Strike 2</pre>
           </div>
           <div>
             <form id="uploadForm" onsubmit="return false">
+              <div class="fg">
+                <label class="fl" for="internalSecret">Internal token <span>(optional)</span></label>
+                <input type="password" id="internalSecret" placeholder="Leave blank for demo mode" autocomplete="off" oninput="updateModeBanner()" />
+                <div id="modeBanner" class="demo">
+                  <span class="mode-icon">⚠️</span>
+                  <span><strong>Demo mode</strong> — no token provided. Only the first 10 games will be processed and the results will be shown below. Nothing is sent to inventory.</span>
+                </div>
+              </div>
               <div class="two-col">
                 <div class="fg">
                   <label class="fl" for="steamId">Steam ID <span>(optional)</span></label>
@@ -744,6 +840,27 @@ Counter-Strike 2</pre>
             <div id="resultMessage"></div>
           </div>
         </div>
+
+        <!-- Demo results — full width below the form grid -->
+        <div id="demoResults">
+          <div class="demo-results-eyebrow">Demo results</div>
+          <h3 class="demo-results-title">Research output</h3>
+          <p class="demo-results-sub">Showing up to 10 games. Provide a valid token to run the full pipeline and send results to inventory.</p>
+          <div class="demo-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Game</th>
+                  <th>Price (€)</th>
+                  <th>Popularity</th>
+                  <th>Region</th>
+                </tr>
+              </thead>
+              <tbody id="demoTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+
       </div>
     </div>
   </div>
@@ -755,6 +872,21 @@ Counter-Strike 2</pre>
   </footer>
 
   <script>
+    function updateModeBanner() {
+      const hasToken = document.getElementById("internalSecret").value.trim().length > 0;
+      const banner   = document.getElementById("modeBanner");
+      const span     = banner.querySelector("span:last-child");
+      if (hasToken) {
+        banner.className  = "auth";
+        banner.querySelector(".mode-icon").textContent = "✓";
+        span.innerHTML = "<strong>Token provided</strong> — if the token is correct, the full game list will be processed and results sent to inventory. Otherwise the request will be rejected.";
+      } else {
+        banner.className  = "demo";
+        banner.querySelector(".mode-icon").textContent = "⚠️";
+        span.innerHTML = "<strong>Demo mode</strong> — no token provided. Only the first 10 games will be processed and the results will be shown below. Nothing is sent to inventory.";
+      }
+    }
+
     async function submitGames() {
       const minPop  = document.getElementById("minPopularity").value.trim();
       const games   = document.getElementById("gamesList").value.trim();
@@ -763,13 +895,15 @@ Counter-Strike 2</pre>
         return;
       }
       const content = `${minPop || "0"}\n${games}`;
-      const btn     = document.getElementById("uploadButton");
-      const loading = document.getElementById("loadingIndicator");
-      const result  = document.getElementById("resultMessage");
+      const btn         = document.getElementById("uploadButton");
+      const loading     = document.getElementById("loadingIndicator");
+      const result      = document.getElementById("resultMessage");
+      const demoResults = document.getElementById("demoResults");
 
-      btn.disabled = true;
+      btn.disabled          = true;
       loading.style.display = "flex";
       result.style.display  = "none";
+      demoResults.style.display = "none";
 
       try {
         const response = await fetch("/api/games/research", {
@@ -778,30 +912,63 @@ Counter-Strike 2</pre>
           body: JSON.stringify({
             content,
             checkGamivoOffer: document.getElementById("checkGamivoOffer").checked,
-            steam_id:  document.getElementById("steamId").value.trim()  || undefined,
-            list_code: document.getElementById("listCode").value.trim() || undefined,
+            steam_id:         document.getElementById("steamId").value.trim()         || undefined,
+            list_code:        document.getElementById("listCode").value.trim()        || undefined,
+            internal_secret:  document.getElementById("internalSecret").value.trim() || undefined,
           }),
         });
 
         loading.style.display = "none";
         const data = await response.json();
-        result.style.display = "block";
 
         if (!response.ok || !data.success) {
           result.className   = "result-error";
           result.textContent = data.details || "An error occurred. Please try again.";
+          result.style.display = "block";
           return;
         }
-        result.className   = "result-success";
-        result.textContent = "Trade created successfully.";
+
+        if (data.demo) {
+          result.className   = "result-warning";
+          result.textContent = "Demo mode — showing results for up to 10 games. Provide a valid token to send results to inventory.";
+          result.style.display = "block";
+          renderDemoTable(data.games ?? []);
+          demoResults.style.display = "block";
+          demoResults.scrollIntoView({ behavior: "smooth", block: "start" });
+        } else {
+          result.className   = "result-success";
+          result.textContent = "Trade created successfully.";
+          result.style.display = "block";
+        }
       } catch {
         loading.style.display = "none";
-        result.style.display  = "block";
         result.className      = "result-error";
         result.textContent    = "Connection error. Please try again.";
+        result.style.display  = "block";
       } finally {
         btn.disabled = false;
       }
+    }
+
+    function renderDemoTable(games) {
+      const tbody = document.getElementById("demoTableBody");
+      if (games.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" class="demo-empty">No games passed the popularity and price filters.</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = games.map(g => `
+        <tr>
+          <td>${escHtml(g.name)}</td>
+          <td class="td-price">€${Number(g.price_euro).toFixed(2)}</td>
+          <td class="td-pop">${Number(g.popularity).toLocaleString()}</td>
+          <td class="td-reg">${escHtml(g.region ?? "—")}</td>
+        </tr>`).join("");
+    }
+
+    function escHtml(str) {
+      return String(str)
+        .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+        .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
     }
 
     document.querySelector('a[href="#tool"]')?.addEventListener("click", e => {

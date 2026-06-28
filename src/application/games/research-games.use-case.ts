@@ -1,6 +1,8 @@
 import type { PopularityFetcher, PriceFetcher } from "@/application/games/ports/game-search.ports.js";
-import type { GameTradeImporter } from "@/application/games/ports/game-trade-importer.port.js";
+import type { GameTradeImporter, GameTradeInput } from "@/application/games/ports/game-trade-importer.port.js";
 import { worthyByPopularity } from "@/domain/games/worthy-by-popularity.js";
+
+const DEMO_GAME_LIMIT = 10;
 
 export type ResearchGamesInput = {
 	gameNames: string[];
@@ -10,23 +12,28 @@ export type ResearchGamesInput = {
 	listCode?: string;
 	popularityFetcher: PopularityFetcher;
 	priceFetcher: PriceFetcher;
-	tradeImporter: GameTradeImporter;
+	tradeImporter?: GameTradeImporter;
 };
 
 export class ResearchGamesUseCase {
-	async execute(input: ResearchGamesInput): Promise<void> {
-		const { gameNames, minPopularity, checkGamivoOffer, supplierSteamId, listCode,
+	// Returns null when results were sent to inventory (authenticated).
+	// Returns the priced games list when in demo mode.
+	async execute(input: ResearchGamesInput): Promise<GameTradeInput[] | null> {
+		const { minPopularity, checkGamivoOffer, supplierSteamId, listCode,
 			popularityFetcher, priceFetcher, tradeImporter } = input;
 
-		const uniqueNames = [...new Set(gameNames)];
+		const isDemo = !tradeImporter;
+		let uniqueNames = [...new Set(input.gameNames)];
+		if (isDemo) uniqueNames = uniqueNames.slice(0, DEMO_GAME_LIMIT);
+
 		const foundGames = await popularityFetcher.fetch(uniqueNames, minPopularity);
 		const worthyGames = worthyByPopularity(foundGames, minPopularity);
 
-		if (worthyGames.length === 0) return;
+		if (worthyGames.length === 0) return isDemo ? [] : null;
 
 		const gamesWithPrices = await priceFetcher.fetch(worthyGames, checkGamivoOffer);
 
-		const pricedGames = gamesWithPrices
+		const pricedGames: GameTradeInput[] = gamesWithPrices
 			.filter((g) => g.GamivoPrice != null)
 			.map((g) => ({
 				name: g.name,
@@ -35,11 +42,15 @@ export class ResearchGamesUseCase {
 				region: g.region ?? null,
 			}));
 
-		if (pricedGames.length === 0) return;
+		if (isDemo) return pricedGames;
 
-		await tradeImporter.import(pricedGames, {
-			supplier_steam_id: supplierSteamId,
-			list_code: listCode,
-		});
+		if (pricedGames.length > 0) {
+			await tradeImporter.import(pricedGames, {
+				supplier_steam_id: supplierSteamId,
+				list_code: listCode,
+			});
+		}
+
+		return null;
 	}
 }
