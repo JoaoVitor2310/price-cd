@@ -22,11 +22,18 @@ function getTradeImporter(): HttpGameTradeImporter {
 	return _tradeImporter;
 }
 
+function isAuthenticated(token: string | undefined): boolean {
+	const internalSecret = process.env.INTERNAL_SECRET?.trim();
+	return !!internalSecret && token === internalSecret;
+}
+
 export const researchGames = async (req: Request, res: Response) => {
 	try {
-		const { gameNames, minPopularity, checkGamivoOffer, steam_id, list_code } = researchGamesBodySchema.parse(req.body);
+		const { gameNames, minPopularity, checkGamivoOffer, steam_id, list_code, internal_secret } = researchGamesBodySchema.parse(req.body);
 
-		await researchGamesUseCase.execute({
+		const authenticated = isAuthenticated(internal_secret);
+
+		const result = await researchGamesUseCase.execute({
 			gameNames,
 			minPopularity,
 			checkGamivoOffer,
@@ -34,10 +41,15 @@ export const researchGames = async (req: Request, res: Response) => {
 			listCode: list_code,
 			popularityFetcher,
 			priceFetcher,
-			tradeImporter: getTradeImporter(),
+			tradeImporter: authenticated ? getTradeImporter() : undefined,
 		});
 
-		res.status(200).json({ success: true });
+		if (authenticated) {
+			res.status(200).json({ success: true });
+			return;
+		}
+
+		res.status(200).json({ success: true, demo: true, games: result });
 	} catch (error) {
 		if (error instanceof ZodError) {
 			const errorMessage = error.issues.map((issue) => issue.message).join(", ");
