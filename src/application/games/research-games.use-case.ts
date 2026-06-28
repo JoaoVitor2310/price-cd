@@ -1,6 +1,7 @@
 import type { PopularityFetcher, PriceFetcher } from "@/application/games/ports/game-search.ports.js";
 import type { GameTradeImporter, GameTradeInput } from "@/application/games/ports/game-trade-importer.port.js";
 import { worthyByPopularity } from "@/domain/games/worthy-by-popularity.js";
+import { filterExcludedGames } from "@/domain/games/excluded-games.js";
 
 const DEMO_GAME_LIMIT = 10;
 
@@ -27,7 +28,7 @@ export class ResearchGamesUseCase {
 		if (isDemo) uniqueNames = uniqueNames.slice(0, DEMO_GAME_LIMIT);
 
 		const foundGames = await popularityFetcher.fetch(uniqueNames, minPopularity);
-		const worthyGames = worthyByPopularity(foundGames, minPopularity);
+		const worthyGames = filterExcludedGames(worthyByPopularity(foundGames, minPopularity));
 
 		if (worthyGames.length === 0) return isDemo ? [] : null;
 
