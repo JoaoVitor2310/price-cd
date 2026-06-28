@@ -1,6 +1,7 @@
 import type { PopularityFetcher, PriceFetcher } from "@/application/games/ports/game-search.ports.js";
 import type { FoundGames, GameAnalysisResult } from "@/application/games/game.types.js";
 import { worthyByPopularity } from "@/domain/games/worthy-by-popularity.js";
+import { filterExcludedGames } from "@/domain/games/excluded-games.js";
 
 export type SearchGamesInput = {
 	gameNames: string[];
@@ -32,7 +33,7 @@ export class SearchGamesUseCase {
 
 		const foundGames: FoundGames[] = await popularityFetcher.fetch(gameNames, minPopularity);
 
-		const worthyGames = worthyByPopularity(foundGames, minPopularity);
+		const worthyGames = filterExcludedGames(worthyByPopularity(foundGames, minPopularity));
 
 		const gamesWithPrices =
 			worthyGames.length === 0
