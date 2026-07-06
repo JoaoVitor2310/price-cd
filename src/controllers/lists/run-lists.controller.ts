@@ -1,13 +1,13 @@
 import type { Request, Response } from "express";
 import { ZodError } from "zod";
 // import { writeGameAnalysisToFile } from "@/services/create-download.service.js";
-import { vipListRequestSchema, type VipListRequest } from "@/schemas/list.schema.js";
+import { enqueueRunListSchema, type SupplierListRequest } from "@/schemas/list.schema.js";
 import { enqueueRunListsService } from "@/services/lists/enqueue-run-lists.service.js";
 
 export class RunListsController {
 	async run(req: Request, res: Response): Promise<void> {
 		try {
-			const validatedRequest: VipListRequest = vipListRequestSchema.parse(req.body);
+			const validatedRequest: SupplierListRequest = enqueueRunListSchema.parse(req.body);
 
 			await enqueueRunListsService(validatedRequest);
 

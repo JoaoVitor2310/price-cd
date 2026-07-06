@@ -27,8 +27,7 @@ describe("POST /api/lists/run", () => {
 
 	it("returns 202 queued on valid request", async () => {
 		const res = await request(app).post("/api/lists/run").send({
-			id_steam: "76561198000000000",
-			callback_url: "https://example.com/callback",
+			steam_id: "76561198000000000",
 			checkGamivoOffer: true,
 		});
 
@@ -38,16 +37,14 @@ describe("POST /api/lists/run", () => {
 
 	it("calls enqueueRunListsService with the validated request", async () => {
 		await request(app).post("/api/lists/run").send({
-			id_steam: "76561198000000000",
-			callback_url: "https://example.com/callback",
+			steam_id: "76561198000000000",
 			checkGamivoOffer: false,
 		});
 
 		expect(mockEnqueueRunListsService).toHaveBeenCalledOnce();
 		expect(mockEnqueueRunListsService).toHaveBeenCalledWith(
 			expect.objectContaining({
-				id_steam: "76561198000000000",
-				callback_url: "https://example.com/callback",
+				steam_id: "76561198000000000",
 				checkGamivoOffer: false,
 			}),
 		);
@@ -55,8 +52,7 @@ describe("POST /api/lists/run", () => {
 
 	it("uses checkGamivoOffer=true as default when omitted", async () => {
 		const res = await request(app).post("/api/lists/run").send({
-			id_steam: "76561198000000000",
-			callback_url: "https://example.com/callback",
+			steam_id: "76561198000000000",
 		});
 
 		expect(res.status).toBe(202);
@@ -65,29 +61,8 @@ describe("POST /api/lists/run", () => {
 		);
 	});
 
-	it("returns 400 when id_steam is missing", async () => {
-		const res = await request(app).post("/api/lists/run").send({
-			callback_url: "https://example.com/callback",
-		});
-
-		expect(res.status).toBe(400);
-		expect(res.body.success).toBe(false);
-	});
-
-	it("returns 400 when callback_url is missing", async () => {
-		const res = await request(app).post("/api/lists/run").send({
-			id_steam: "76561198000000000",
-		});
-
-		expect(res.status).toBe(400);
-		expect(res.body.success).toBe(false);
-	});
-
-	it("returns 400 when callback_url is not a valid URL", async () => {
-		const res = await request(app).post("/api/lists/run").send({
-			id_steam: "76561198000000000",
-			callback_url: "not-a-url",
-		});
+	it("returns 400 when steam_id is missing", async () => {
+		const res = await request(app).post("/api/lists/run").send({});
 
 		expect(res.status).toBe(400);
 		expect(res.body.success).toBe(false);
@@ -95,8 +70,7 @@ describe("POST /api/lists/run", () => {
 
 	it("returns 400 when extra fields are sent (strict schema)", async () => {
 		const res = await request(app).post("/api/lists/run").send({
-			id_steam: "76561198000000000",
-			callback_url: "https://example.com/callback",
+			steam_id: "76561198000000000",
 			unknownField: "x",
 		});
 
@@ -108,8 +82,7 @@ describe("POST /api/lists/run", () => {
 		mockEnqueueRunListsService.mockRejectedValueOnce(new Error("Queue failure"));
 
 		const res = await request(app).post("/api/lists/run").send({
-			id_steam: "76561198000000000",
-			callback_url: "https://example.com/callback",
+			steam_id: "76561198000000000",
 		});
 
 		expect(res.status).toBe(500);

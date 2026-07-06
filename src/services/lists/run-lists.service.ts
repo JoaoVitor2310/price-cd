@@ -1,22 +1,26 @@
-import type { VipListRequest } from "@/schemas/list.schema.js";
+import type { SupplierListRequest } from "@/schemas/list.schema.js";
 import { RunListsUseCase } from "@/application/lists/run-lists.use-case.js";
 import type { GameSearcher } from "@/application/lists/ports/list-run.ports.js";
 import { fetchListTopic } from "@/infrastructure/lists/fetch-list-topic.js";
-import { formatList } from "@/infrastructure/lists/format-list-result.js";
 import { SearchGamesUseCase } from "@/application/games/search-games.use-case.js";
 import { SteamChartsPopularityFetcher } from "@/infrastructure/games/steam-charts-popularity-fetcher.js";
 import { AllKeyShopPriceFetcher } from "@/infrastructure/games/allkeyshop-price-fetcher.js";
+import { HttpGameTradeImporter } from "@/infrastructure/games/http-game-trade-importer.js";
 import type { GameAnalysisResult, SearchGamesRequest } from "@/application/games/game.types.js";
-
-export type RunListsServiceResult = {
-	status: "completed" | "failed";
-	result: string;
-};
 
 const runListsUseCase = new RunListsUseCase();
 const searchGamesUseCase = new SearchGamesUseCase();
 const popularityFetcher = new SteamChartsPopularityFetcher();
 const priceFetcher = new AllKeyShopPriceFetcher();
+
+function getTradeImporter(): HttpGameTradeImporter {
+	const baseUrl = process.env.SISTEMA_ESTOQUE_URL;
+	const token = process.env.EXTERNAL_SECRET;
+	if (!baseUrl || !token) {
+		throw new Error("SISTEMA_ESTOQUE_URL and EXTERNAL_SECRET must be set for lists flow");
+	}
+	return new HttpGameTradeImporter(baseUrl, token);
+}
 
 class GameSearcherAdapter implements GameSearcher {
 	async search(request: SearchGamesRequest): Promise<GameAnalysisResult> {
@@ -30,23 +34,12 @@ class GameSearcherAdapter implements GameSearcher {
 
 const gameSearcher = new GameSearcherAdapter();
 
-/**
- * Camada de "aplicação" exposta ao Express: compõe portas
- * e delega ao caso de uso.
- */
-export const runListsService = async (
-	vipListRequest: VipListRequest,
-): Promise<RunListsServiceResult> => {
-	const listResult = await runListsUseCase.execute({
-		vipListRequest,
+export const runListsService = async (supplierListRequest: SupplierListRequest): Promise<void> => {
+	await runListsUseCase.execute({
+		supplierListRequest,
 		fetcher: fetchListTopic(),
-		checkGamivoOffer: vipListRequest.checkGamivoOffer,
-		formatter: formatList(),
+		checkGamivoOffer: supplierListRequest.checkGamivoOffer,
 		gameSearcher,
+		tradeImporter: getTradeImporter(),
 	});
-
-	return {
-		status: listResult.status,
-		result: listResult.result,
-	};
 };
