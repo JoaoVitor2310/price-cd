@@ -1,11 +1,8 @@
 import * as z from "zod";
 
-
-
-export const vipListRequestSchema = z.strictObject({
-  id_steam: z.string().min(1, { message: "id_steam is required" }),
-  callback_url: z.string().url({ message: "callback_url must be a valid URL" }),
+export const enqueueRunListSchema = z.strictObject({
+  steam_id: z.string().min(1, { message: "steam_id is required" }),
   checkGamivoOffer: z.boolean().default(true),
 });
 
-export type VipListRequest = z.infer<typeof vipListRequestSchema>;
+export type SupplierListRequest = z.infer<typeof enqueueRunListSchema>;

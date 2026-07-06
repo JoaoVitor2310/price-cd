@@ -1,6 +1,5 @@
-import type { VipListRequest } from "@/schemas/list.schema.js";
+import type { SupplierListRequest } from "@/schemas/list.schema.js";
 import type { ListTopic } from "@/domain/lists/list-topic.js";
-import type { RunListsServiceResult } from "@/services/lists/run-lists.service.js";
 import type { GameAnalysisResult, SearchGamesRequest } from "@/application/games/game.types.js";
 
 /**
@@ -16,27 +15,6 @@ export interface InactiveListNotifier {
 	notify(inactiveLists: string[]): Promise<void>;
 }
 
-export interface ListResultFormatter {
-	formatListResult(gamePrices: GameAnalysisResult, id_steam: string): string;
-}
-
-export type RunListsCallbackStatus = "completed" | "failed";
-
-export type RunListsCallbackPayload = {
-	status: RunListsCallbackStatus;
-	result: string;
-};
-
-/**
- * Porta para postar o callback (infra: HTTP client).
- */
-export interface RunListsCallbackPoster {
-	postCallback(
-		callbackUrl: string,
-		payload: RunListsCallbackPayload,
-	): Promise<void>;
-}
-
 /**
  * Porta para agendar execução em background no mesmo processo.
  * (infra simples: setImmediate; futuro: fila/worker)
@@ -47,10 +25,9 @@ export interface BackgroundScheduler {
 
 /**
  * Porta para executar o fluxo principal das listas.
- * (adapter: chama runListsService ou RunListsUseCase com portas)
  */
 export interface RunListsRunner {
-	run(vipListRequest: VipListRequest): Promise<RunListsServiceResult>;
+	run(supplierListRequest: SupplierListRequest): Promise<void>;
 }
 
 /**
