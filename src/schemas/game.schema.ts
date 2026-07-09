@@ -82,12 +82,14 @@ export const researchGamesBodySchema = z
 		steam_id: z.string().optional(),
 		list_code: z.string().optional(),
 		internal_secret: z.string().optional(),
+		title: z.string().optional(),
 	})
 	.transform((val) => ({
 		...parseGameListContent(val.content, val.checkGamivoOffer),
 		steam_id: val.steam_id,
 		list_code: val.list_code,
 		internal_secret: val.internal_secret,
+		title: val.title,
 	}));
 
 export type ResearchGamesBody = z.infer<typeof researchGamesBodySchema>;

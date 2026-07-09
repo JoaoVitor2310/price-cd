@@ -11,6 +11,7 @@ export type ResearchGamesInput = {
 	checkGamivoOffer: boolean;
 	supplierSteamId?: string;
 	listCode?: string;
+	title?: string;
 	popularityFetcher: PopularityFetcher;
 	priceFetcher: PriceFetcher;
 	tradeImporter?: GameTradeImporter;
@@ -20,7 +21,7 @@ export class ResearchGamesUseCase {
 	// Returns null when results were sent to inventory (authenticated).
 	// Returns the priced games list when in demo mode.
 	async execute(input: ResearchGamesInput): Promise<GameTradeInput[] | null> {
-		const { minPopularity, checkGamivoOffer, supplierSteamId, listCode,
+		const { minPopularity, checkGamivoOffer, supplierSteamId, listCode, title,
 			popularityFetcher, priceFetcher, tradeImporter } = input;
 
 		const isDemo = !tradeImporter;
@@ -49,6 +50,7 @@ export class ResearchGamesUseCase {
 			await tradeImporter.import(pricedGames, {
 				supplier_steam_id: supplierSteamId,
 				list_code: listCode,
+				title,
 			});
 		}
 

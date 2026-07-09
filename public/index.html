@@ -809,14 +809,18 @@ Counter-Strike 2</pre>
                   <span><strong>Demo mode</strong> — no token provided. Only the first 10 games will be processed and the results will be shown below. Nothing is sent to inventory.</span>
                 </div>
               </div>
+              <div class="fg">
+                <label class="fl" for="title">Title <span>(optional — filled automatically by supplier name in the inventory system if blank)</span></label>
+                <input type="text" id="title" />
+              </div>
               <div class="two-col">
                 <div class="fg">
                   <label class="fl" for="steamId">Steam ID <span>(optional)</span></label>
-                  <input type="text" id="steamId" placeholder="76561198xxxxxxxxx" />
+                  <input type="text" id="steamId" />
                 </div>
                 <div class="fg">
                   <label class="fl" for="listCode">List code <span>(optional)</span></label>
-                  <input type="text" id="listCode" placeholder="G0eXM" />
+                  <input type="text" id="listCode" />
                 </div>
               </div>
               <div class="fg">
@@ -912,6 +916,7 @@ Counter-Strike 2</pre>
           body: JSON.stringify({
             content,
             checkGamivoOffer: document.getElementById("checkGamivoOffer").checked,
+            title:            document.getElementById("title").value.trim()           || undefined,
             steam_id:         document.getElementById("steamId").value.trim()         || undefined,
             list_code:        document.getElementById("listCode").value.trim()        || undefined,
             internal_secret:  document.getElementById("internalSecret").value.trim() || undefined,

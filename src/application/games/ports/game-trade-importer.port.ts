@@ -8,6 +8,7 @@ export type GameTradeInput = {
 export type GameTradeOptions = {
     supplier_steam_id?: string;
     list_code?: string;
+    title?: string;
 };
 
 export interface GameTradeImporter {
