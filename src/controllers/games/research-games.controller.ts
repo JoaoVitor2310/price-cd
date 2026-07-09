@@ -29,7 +29,7 @@ function isAuthenticated(token: string | undefined): boolean {
 
 export const researchGames = async (req: Request, res: Response) => {
 	try {
-		const { gameNames, minPopularity, checkGamivoOffer, steam_id, list_code, internal_secret } = researchGamesBodySchema.parse(req.body);
+		const { gameNames, minPopularity, checkGamivoOffer, steam_id, list_code, internal_secret, title } = researchGamesBodySchema.parse(req.body);
 
 		const authenticated = isAuthenticated(internal_secret);
 
@@ -39,6 +39,7 @@ export const researchGames = async (req: Request, res: Response) => {
 			checkGamivoOffer,
 			supplierSteamId: steam_id,
 			listCode: list_code,
+			title,
 			popularityFetcher,
 			priceFetcher,
 			tradeImporter: authenticated ? getTradeImporter() : undefined,

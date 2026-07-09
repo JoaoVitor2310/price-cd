@@ -17,6 +17,7 @@ export class HttpGameTradeImporter implements GameTradeImporter {
         const payload: Record<string, unknown> = { games };
         if (options?.supplier_steam_id) payload.supplier_steam_id = options.supplier_steam_id;
         if (options?.list_code) payload.list_code = options.list_code;
+        if (options?.title) payload.title = options.title;
 
         try {
             const response = await fetch(url, {
