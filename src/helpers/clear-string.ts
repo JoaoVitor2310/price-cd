@@ -26,7 +26,7 @@ export const clearString = (stringToSearch: string): string => {
 	stringToSearch = stringToSearch.replace(/’\s*/g, "");
 
 	// Remove "the" (case-insensitive) e qualquer espaço subsequente
-	stringToSearch = stringToSearch.replace(/the\s*/gi, "");
+	stringToSearch = stringToSearch.replace(/\bthe\b\s*/gi, "");
 
 	// Remove todas as vírgulas
 	stringToSearch = stringToSearch.replace(/,/g, "");

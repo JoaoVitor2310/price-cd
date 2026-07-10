@@ -56,6 +56,10 @@ describe("clearString", () => {
 		expect(clearString("The Witcher")).toBe("witcher");
 	});
 
+	it("does not remove 'the' inside words like Theft", () => {
+		expect(clearString("Grand Theft Auto V")).toBe("grand theft auto 5");
+	});
+
 	it("removes commas", () => {
 		expect(clearString("Hello, World")).toBe("hello world");
 	});
