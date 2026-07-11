@@ -8,6 +8,7 @@ import { formatResult } from "@/domain/suppliers/profitability.js";
 const MAX_PAGES = 100;
 const MAX_CONSECUTIVE_INACTIVE = 5;
 const MIN_POPULARITY = 30;
+const MAX_GAMES_PER_SUPPLIER = 50;
 
 export type FindNewSuppliersInput = {
     paginator: TradePaginator;
@@ -89,8 +90,8 @@ export class FindNewSuppliersUseCase {
                         continue;
                     }
 
-                    const gameNames = topic.games;
-                    console.log(`🔍 [SUPPLIERS] Searching prices for ${gameNames.length} game(s) in topic ${code}...`);
+                    const gameNames = topic.games.slice(0, MAX_GAMES_PER_SUPPLIER);
+                    console.log(`🔍 [SUPPLIERS] Searching prices for ${gameNames.length}/${topic.games.length} game(s) in topic ${code}...`);
 
                     const searchResult = await gameSearcher.search({
                         gameNames,
