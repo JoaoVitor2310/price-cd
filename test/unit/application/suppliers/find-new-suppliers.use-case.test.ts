@@ -174,6 +174,34 @@ describe("FindNewSuppliersUseCase", () => {
         expect(input.commentPoster.post).not.toHaveBeenCalled();
     });
 
+    // --- game cap ---
+
+    it("passes at most 50 games to gameSearcher even when the topic has more", async () => {
+        const manyGames = Array.from({ length: 120 }, (_, i) => `Game ${i + 1}`);
+        const input = makeInput({
+            scraper: { scrape: vi.fn().mockResolvedValue(makeTopic({ games: manyGames })) },
+        });
+
+        await useCase.execute(input);
+
+        const calledWith = input.gameSearcher.search.mock.calls[0][0].gameNames;
+        expect(calledWith).toHaveLength(50);
+        expect(calledWith[0]).toBe("Game 1");
+        expect(calledWith[49]).toBe("Game 50");
+    });
+
+    it("passes all games when the topic has 50 or fewer", async () => {
+        const games = Array.from({ length: 30 }, (_, i) => `Game ${i + 1}`);
+        const input = makeInput({
+            scraper: { scrape: vi.fn().mockResolvedValue(makeTopic({ games })) },
+        });
+
+        await useCase.execute(input);
+
+        const calledWith = input.gameSearcher.search.mock.calls[0][0].gameNames;
+        expect(calledWith).toHaveLength(30);
+    });
+
     // --- pagination ---
 
     it("stops pagination after MAX_CONSECUTIVE_INACTIVE inactive topics", async () => {
