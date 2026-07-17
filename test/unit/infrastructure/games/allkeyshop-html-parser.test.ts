@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
 	scrapSearchResults,
 	scrapGamePage,
-} from "@/infrastructure/games/allkeyshop-price-fetcher.js";
+	extractGamivoSlug,
+} from "@/infrastructure/games/allkeyshop-html-parser.js";
 
 // ---------------------------------------------------------------------------
 // scrapSearchResults
@@ -137,5 +138,32 @@ describe("scrapGamePage", () => {
 		const result = scrapGamePage(html);
 		expect(result?.prices[0].originalPrice).toBe(4.99);
 		expect(result?.merchants["1"].name).toBe("GAMIVO");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// extractGamivoSlug
+// ---------------------------------------------------------------------------
+
+describe("extractGamivoSlug", () => {
+	it("extracts the slug from a real redirection page button", () => {
+		const html = `
+			<a id="go-to-store-link" class="btn" href="https://www.gamivo.com/product/monster-prom-2-monster-camp/s0W78745gDfp6zPLOcrCWVAYm14cEpOf4rUNayrTMV0?glv=kiwhuamu&amp;utm_campaign=allkeyshop">Go to store</a>
+		`;
+		expect(extractGamivoSlug(html)).toBe("monster-prom-2-monster-camp");
+	});
+
+	it("extracts the slug when followed directly by a query string", () => {
+		const html = `<a href="https://www.gamivo.com/product/some-game-slug?utm_source=aks">Go</a>`;
+		expect(extractGamivoSlug(html)).toBe("some-game-slug");
+	});
+
+	it("returns null when there is no gamivo.com/product link in the HTML", () => {
+		const html = `<a href="https://www.g2a.com/product/other-game">Go</a>`;
+		expect(extractGamivoSlug(html)).toBeNull();
+	});
+
+	it("returns null for empty HTML", () => {
+		expect(extractGamivoSlug("")).toBeNull();
 	});
 });

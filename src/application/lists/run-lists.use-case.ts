@@ -61,6 +61,8 @@ export class RunListsUseCase {
 				price_euro: g.GamivoPrice as number,
 				popularity: g.popularity,
 				region: g.region ?? null,
+				id_steam: g.id_steam ?? null,
+				gamivo_id: g.gamivo_id ?? null,
 			}));
 
 		if (pricedGames.length > 0) {

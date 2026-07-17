@@ -3,6 +3,8 @@ export type GameTradeInput = {
     price_euro: number;
     popularity: number;
     region: string | null;
+    id_steam: string | null;
+    gamivo_id: string | null;
 };
 
 export type GameTradeOptions = {

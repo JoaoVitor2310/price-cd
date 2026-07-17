@@ -5,6 +5,7 @@ export type FoundGames = {
 	id_steam?: string;
 	popularity: number;
 	region?: string;
+	gamivo_id?: string;
 	GamivoPrice?: number;
 	G2APrice?: number;
 	KinguinPrice?: number;
