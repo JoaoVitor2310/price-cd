@@ -1,16 +1,26 @@
 import * as cheerio from "cheerio";
 import dotenv from "dotenv";
 import { clearString, clearEdition, hasEdition, getRegion, removeRegion, clearQuantity } from "@/helpers/clear-string.js";
-import { ALLKEYSHOP_BASE_URL, ALLKEYSHOP_SEARCH_FILTERS, ALLKEYSHOP_SEARCH_URL } from "@/helpers/constants.js";
+import { ALLKEYSHOP_BASE_URL, ALLKEYSHOP_SEARCH_FILTERS, ALLKEYSHOP_SEARCH_URL, GAMIVO_API_PRODUCT_BY_SLUG_URL } from "@/helpers/constants.js";
 import { enqueueWithBrowser, getSharedSession, invalidateSharedSession } from "@/lib/puppeteer-browser.js";
+import { bestOfferPrice, findGamivoOffer, GAMIVO_MERCHANT_NAME } from "@/domain/games/pricing-rules.js";
+import type { OfferPrice } from "@/domain/games/pricing-rules.js";
+import { scrapSearchResults, scrapGamePage, extractGamivoSlug } from "@/infrastructure/games/allkeyshop-html-parser.js";
+import type { SearchResult } from "@/infrastructure/games/allkeyshop-html-parser.js";
 import type { PriceFetcher } from "@/application/games/ports/game-search.ports.js";
 import type { FoundGames } from "@/application/games/game.types.js";
-import type { GameData, Price } from "@/infrastructure/games/allkeyshop.types.js";
-import { delay } from "@/helpers/utils.js";
-import { TimeoutError } from "puppeteer";
-import { PageWithCursor } from "puppeteer-real-browser";
+import type { Merchants, Price, Regions } from "@/infrastructure/games/allkeyshop.types.js";
+import { fetchWithRetry } from "@/lib/fetch-with-retry.js";
+import { gotoWithRetry } from "@/lib/puppeteer-goto-with-retry.js";
 
 dotenv.config();
+
+// ---------------------------------------------------------------------------
+// Private (module-internal only — not exported, not reachable from outside
+// this file, equivalent to a PHP `private` method)
+// ---------------------------------------------------------------------------
+
+const ALLKEYSHOP_REDIRECTION_URL = "https://www.allkeyshop.com/redirection/offer/eur";
 
 const REGION_FILTER_DICTIONARY: Record<string, string> = {
     global: "STEAM GLOBAL",
@@ -18,203 +28,96 @@ const REGION_FILTER_DICTIONARY: Record<string, string> = {
     row: "STEAM ROW",
 } as const;
 
-const GAMIVO_MERCHANT_NAME = "GAMIVO";
-const MIN_POPULARITY_FOR_GAMIVO_REQUIREMENT = 100;
-
-
-export const scrapSearchResults = (html: string): { link: string; name: string; price: string }[] => {
-    const $ = cheerio.load(html);
-
-    const links = $('a.absolute').map((_, el) => $(el).attr('href') || '').get();
-    const names = $('p.text-md.text-white').map((_, el) => $(el).text().trim()).get();
-    const prices = $('a.price-skew span').map((_, el) => $(el).text().trim()).get();
-
-    const length = Math.min(links.length, names.length, prices.length);
-
-    const searchResults: { link: string; name: string; price: string }[] = [];
-    for (let i = 0; i < length; i++) {
-        searchResults.push({
-            link: links[i],
-            name: names[i],
-            price: prices[i].toString().replace("€", "").replace(".", ","),
-        });
-    }
-
-    return searchResults;
+const findRegionKey = (regions: Regions, region: string): string | null => {
+    const filterName = REGION_FILTER_DICTIONARY[region];
+    return Object.keys(regions).find(
+        key => regions[key].filter_name.toUpperCase() === filterName?.toUpperCase()
+    ) ?? null;
 };
 
-export const scrapGamePage = (html: string): GameData | null => {
-    const $ = cheerio.load(html);
-
-    const scriptContent = $('script#aks-offers-js-extra').html();
-
-    if (!scriptContent) return null;
-
-    const match = scriptContent.match(/var\s+gamePageTrans\s*=\s*(\{[\s\S]*?\});/);
-
-    if (!match) return null;
-
-    try {
-        const jsonString = match[1];
-        const json = JSON.parse(jsonString);
-        return json;
-    } catch (err) {
-        console.error('Erro ao fazer parse do JSON:', err);
-        return null;
-    }
+const findGamivoMerchantKey = (merchants: Merchants): string | null => {
+    return Object.keys(merchants).find(key => merchants[key].name === GAMIVO_MERCHANT_NAME) ?? null;
 };
 
-export const detectOfferTooLow = (regionPrices: Price[]) => {
-    if (regionPrices.length === 0) return null;
+const normalizeForMatching = (name: string): string => {
+    let clean = clearEdition(name);
+    clean = clearString(clean);
+    clean = clearQuantity(clean);
+    return clean.toLowerCase().trim();
+};
 
-    let bestOffer: Price | null = null;
-    let secondBestOffer: Price | null = null;
+// ---------------------------------------------------------------------------
+// Exported only so tests can reach them directly — not part of this module's
+// real public surface. The only thing other files in the app import from
+// here is `AllKeyShopPriceFetcher`, at the bottom of this file.
+// ---------------------------------------------------------------------------
 
-    for (const offer of regionPrices) {
-        if (!bestOffer || offer.originalPrice < bestOffer.originalPrice) {
-            secondBestOffer = bestOffer;
-            bestOffer = offer;
-        } else if (!secondBestOffer || offer.originalPrice < secondBestOffer.originalPrice) {
-            secondBestOffer = offer;
+type NormalizedOffer = Omit<Price, "merchant"> & OfferPrice;
+
+export const toOfferPrices = (prices: Price[], regionKey: string, gamivoMerchantKey: string | null): NormalizedOffer[] => {
+    return prices
+        .filter(p => String(p.region) === regionKey)
+        .map(p => ({
+            ...p,
+            merchant: gamivoMerchantKey != null && Number(p.merchant) === Number(gamivoMerchantKey)
+                ? GAMIVO_MERCHANT_NAME
+                : String(p.merchant),
+        }));
+};
+
+export const matchSearchResult = (gameName: string, searchResults: SearchResult[]): { link: string; name: string } | null => {
+    const gameNameClean = normalizeForMatching(gameName);
+    const gameNameKeywords = hasEdition(gameName);
+
+    for (const searchResult of searchResults) {
+        const searchResultKeywords = hasEdition(searchResult.name);
+
+        const editionMismatch =
+            ![...gameNameKeywords].every((keyword) => searchResultKeywords.has(keyword)) ||
+            ![...searchResultKeywords].every((keyword) => gameNameKeywords.has(keyword));
+
+        if (editionMismatch) continue;
+
+        if (normalizeForMatching(searchResult.name) === gameNameClean) {
+            return { link: searchResult.link, name: searchResult.name };
         }
     }
 
-    if (!bestOffer) return null;
-
-    const bestPrice = bestOffer.originalPrice;
-
-    if (!secondBestOffer) return bestPrice;
-
-    const secondBestOfferPrice = secondBestOffer.originalPrice;
-    const difference = secondBestOfferPrice - bestPrice;
-
-    const percentualDifference =
-        secondBestOfferPrice > 1
-            ? 0.1 * secondBestOfferPrice
-            : 0.05 * secondBestOfferPrice;
-
-    if (difference >= percentualDifference) {
-        return secondBestOfferPrice;
-    }
-
-    return bestPrice;
+    return null;
 };
 
-export const bestOfferPrice = (data: GameData, region: string, popularity: number, checkGamivoOffer: boolean): number | null => {
-    const { prices, regions, merchants } = data;
-
-    const filterName = REGION_FILTER_DICTIONARY[region];
-
-    const regionKey = Object.keys(regions).find(
-        key => regions[key].filter_name.toUpperCase() === filterName.toUpperCase()
-    );
-
-    if (!regionKey) {
-        console.log(`⚠️ [INFO] Region not found.`);
+export const fetchGamivoSlug = async (offerId: number): Promise<string | null> => {
+    try {
+        const html = await fetchWithRetry(`${ALLKEYSHOP_REDIRECTION_URL}/${offerId}?locale=en&merchant=218`);
+        return extractGamivoSlug(html);
+    } catch {
         return null;
     }
+};
 
-    const regionPrices = prices.filter(p => String(p.region) === regionKey);
+export const fetchGamivoIdBySlug = async (slug: string): Promise<string | null> => {
+    try {
+        const response = await fetch(`${GAMIVO_API_PRODUCT_BY_SLUG_URL}/${slug}`, {
+            headers: { Authorization: `Bearer ${process.env.API_KEY_GAMIVO}` },
+        });
 
-    if (regionPrices.length === 0) {
-        console.log(`⚠️ [INFO] No prices found for the region.`);
-        return null;
-    }
-
-    const bestOffer = detectOfferTooLow(regionPrices);
-    if (bestOffer == null) return null;
-
-    if (checkGamivoOffer) {
-        const gamivoMerchantCode = Object.keys(merchants).find(key => merchants[key].name === GAMIVO_MERCHANT_NAME);
-
-        const hasGamivoOffer = regionPrices.some(p => Number(p.merchant) === Number(gamivoMerchantCode));
-        if (!hasGamivoOffer && popularity < MIN_POPULARITY_FOR_GAMIVO_REQUIREMENT) {
-            console.log(`⚠️ [INFO] Gamivo offer not found.`);
+        if (!response.ok) {
+            console.error(`❌ [ERROR] Gamivo API returned ${response.status} for slug "${slug}"`);
             return null;
         }
-    }
 
-    return bestOffer;
+        const data = await response.json();
+        return data?.id != null ? String(data.id) : null;
+    } catch (error) {
+        console.error(`❌ [ERROR] Failed to fetch Gamivo id for slug "${slug}":`, error);
+        return null;
+    }
 };
 
-export async function fetchWithRetry(
-    url: string,
-    maxRetries: number = 3,
-    baseDelay: number = 5000
-): Promise<string> {
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        let response: Response;
-        try {
-            response = await fetch(url);
-        } catch (error) {
-            console.error(`❌ [ERROR] Unknown error while fetching page:`, error);
-            throw error;
-        }
-
-        if (response.ok) {
-            return response.text();
-        }
-
-        if (response.status === 429) {
-            const retryAfterHeader = response.headers.get("retry-after");
-            const retryAfterSeconds = retryAfterHeader
-                ? parseInt(retryAfterHeader, 10)
-                : Math.pow(2, attempt - 1) * (baseDelay / 1000);
-
-            console.log(
-                `⚠️ [INFO] Too many requests(fetch). Attempt ${attempt}/${maxRetries}. Retrying in ${retryAfterSeconds}s...`
-            );
-            await delay(retryAfterSeconds * 1000);
-        } else {
-            console.error(
-                `⚠️ [INFO] Service Unavailable. Attempt ${attempt}/${maxRetries}. Retrying in 1.5s...`
-            );
-            await delay(1500);
-        }
-    }
-
-    throw new Error(`❌ [ERROR] Failed after ${maxRetries} attempts: ${url}`);
-}
-
-async function gotoWithRetry(page: PageWithCursor, url: string, maxRetries = 3): Promise<boolean> {
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-            const response = await page.goto(url, {
-                waitUntil: "domcontentloaded",
-                timeout: 20000,
-            });
-
-            const status = response?.status();
-
-            if (status === 429) {
-                const retryAfterHeader = response?.headers()['retry-after'];
-                const retryAfterSeconds = retryAfterHeader ? parseInt(retryAfterHeader, 10) : 5;
-
-                console.warn(`⚠️ [INFO] Too many requests(puppeteer). Attempt ${attempt}/${maxRetries}. Retrying in ${retryAfterSeconds}s...`);
-
-                await delay(retryAfterSeconds * 1000);
-                continue;
-            }
-
-            return true;
-        } catch (error) {
-            if (error instanceof TimeoutError) {
-                console.warn(
-                    `⚠️ [INFO] Timeout trying to navigate to ${url}. Attempt ${attempt}/${maxRetries}`
-                );
-                if (attempt < maxRetries) {
-                    await delay(3000);
-                    continue;
-                }
-            }
-
-            console.error(`❌ [ERROR] Failed to navigate to ${url}, error:`, error);
-            return false;
-        }
-    }
-
-    return false;
-}
+// ---------------------------------------------------------------------------
+// Public API — the orchestration and the adapter that other modules
+// (controllers, services) actually import and depend on.
+// ---------------------------------------------------------------------------
 
 const searchAllKeyShop = async (
     gamesToSearch: FoundGames[],
@@ -256,44 +159,14 @@ const searchAllKeyShop = async (
 
                 const htmlSearchPage = await page.content();
                 const searchResults = scrapSearchResults(htmlSearchPage);
-                const gameString = game.name;
 
-                let gamePage: string = "";
-                let foundName: string = "";
-
-                let gameStringClean = clearEdition(gameString);
-                gameStringClean = clearString(gameStringClean);
-                gameStringClean = clearQuantity(gameStringClean);
-                gameStringClean = gameStringClean.toLowerCase().trim();
-
-                for (const searchResult of searchResults) {
-                    let searchResultClean = clearEdition(searchResult.name);
-                    searchResultClean = clearString(searchResultClean);
-                    searchResultClean = clearQuantity(searchResultClean);
-                    searchResultClean = searchResultClean.toLowerCase().trim();
-
-                    const gameStringKeywords = hasEdition(gameString);
-                    const searchResultKeywords = hasEdition(searchResult.name);
-
-                    const editionMismatch =
-                        ![...gameStringKeywords].every((keyword) => searchResultKeywords.has(keyword)) ||
-                        ![...searchResultKeywords].every((keyword) => gameStringKeywords.has(keyword));
-
-                    if (editionMismatch) continue;
-
-                    if (searchResultClean === gameStringClean) {
-                        gamePage = searchResult.link;
-                        foundName = searchResult.name;
-                        break;
-                    }
-                }
-
-                if (gamePage === "") {
+                const match = matchSearchResult(game.name, searchResults);
+                if (!match) {
                     console.log(`⚠️ [INFO] Game not found. Skipping to the next game.`);
                     continue;
                 }
 
-                const gamePageUrl = gamePage.startsWith("http") ? gamePage : `${ALLKEYSHOP_BASE_URL}${gamePage}`;
+                const gamePageUrl = match.link.startsWith("http") ? match.link : `${ALLKEYSHOP_BASE_URL}${match.link}`;
 
                 let gamePageHtml: string;
                 try {
@@ -305,20 +178,41 @@ const searchAllKeyShop = async (
                 const gamePageData = scrapGamePage(gamePageHtml);
                 if (!gamePageData) continue;
 
-                let region = getRegion(game.name);
+                const region = getRegion(game.name);
 
-                const price = bestOfferPrice(gamePageData, region, game.popularity, checkGamivoOffer);
+                const regionKey = findRegionKey(gamePageData.regions, region);
+                if (!regionKey) {
+                    console.log(`⚠️ [INFO] Region not found.`);
+                    continue;
+                }
+
+                const gamivoMerchantKey = findGamivoMerchantKey(gamePageData.merchants);
+                const offers = toOfferPrices(gamePageData.prices, regionKey, gamivoMerchantKey);
+
+                const price = bestOfferPrice(offers, game.popularity, checkGamivoOffer);
                 if (!price) continue;
 
-                region = region == "global" ? "" : region.toUpperCase();
+                let gamivo_id: string | undefined;
+
+                const gamivoOffer = findGamivoOffer(offers);
+                if (gamivoOffer) {
+                    const gamivo_slug = await fetchGamivoSlug(gamivoOffer.id);
+                    if (gamivo_slug) {
+                        gamivo_id = await fetchGamivoIdBySlug(gamivo_slug) ?? undefined;
+                    }
+                }
+
+                const displayRegion = region === "global" ? "" : region.toUpperCase();
                 game.name = removeRegion(game.name);
 
                 foundGames.push({
                     id: game.id,
                     name: game.name,
-                    foundName: foundName,
+                    foundName: match.name,
                     popularity: game.popularity,
-                    region,
+                    region: displayRegion,
+                    id_steam: game.id_steam,
+                    gamivo_id,
                     GamivoPrice: price,
                 });
 

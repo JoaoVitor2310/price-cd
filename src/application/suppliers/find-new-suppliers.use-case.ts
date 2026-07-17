@@ -106,6 +106,7 @@ export class FindNewSuppliersUseCase {
                             price_euro: g.GamivoPrice as number,
                             popularity: g.popularity,
                             region: g.region ?? null,
+                            gamivo_id: g.gamivo_id ?? null,
                         }));
 
                     if (gamesWithPrice.length === 0) {

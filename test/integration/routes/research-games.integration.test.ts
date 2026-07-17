@@ -99,6 +99,35 @@ describe("POST /api/games/research — authenticated mode", () => {
 		expect(body.games[1]).toMatchObject({ name: "Portal", price_euro: 3.0, popularity: 800, region: "eu" });
 	});
 
+	it("forwards id_steam and gamivo_id from the priced game to Sistema Estoque", async () => {
+		const game = makeGame({ id_steam: "70", gamivo_id: "144601" });
+		mockPopularityFetch.mockResolvedValueOnce([game]);
+		mockPriceFetch.mockResolvedValueOnce([game]);
+
+		await request(app)
+			.post("/api/games/research")
+			.send({ content: makeContent(0, "Half-Life"), checkGamivoOffer: false, internal_secret: INTERNAL_SECRET });
+
+		const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+		const body = JSON.parse(init.body as string);
+		expect(body.games[0]).toMatchObject({ id_steam: "70", gamivo_id: "144601" });
+	});
+
+	it("sends null for id_steam and gamivo_id when the priced game does not have them", async () => {
+		const game = makeGame({ id_steam: undefined, gamivo_id: undefined });
+		mockPopularityFetch.mockResolvedValueOnce([game]);
+		mockPriceFetch.mockResolvedValueOnce([game]);
+
+		await request(app)
+			.post("/api/games/research")
+			.send({ content: makeContent(0, "Half-Life"), checkGamivoOffer: false, internal_secret: INTERNAL_SECRET });
+
+		const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+		const body = JSON.parse(init.body as string);
+		expect(body.games[0].id_steam).toBeNull();
+		expect(body.games[0].gamivo_id).toBeNull();
+	});
+
 	it("forwards optional steam_id and list_code to Sistema Estoque when provided", async () => {
 		const game = makeGame();
 		mockPopularityFetch.mockResolvedValueOnce([game]);

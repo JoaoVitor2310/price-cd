@@ -14,6 +14,8 @@ export type GamePriceInput = {
     popularity: number;
     /** Região da oferta: "global", "eu", "row", ou null se não identificado. */
     region: string | null;
+    /** ID do produto na Gamivo, ou null se não identificado. */
+    gamivo_id: string | null;
 };
 
 export type ProfitableGameResult = {

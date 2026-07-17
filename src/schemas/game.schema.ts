@@ -1,16 +1,5 @@
 import * as z from "zod";
 
-export const gameSchema = z.strictObject({
-	id: z.number(),
-	name: z.string().min(1, { message: "Game name is required" }),
-	popularity: z
-		.number()
-		.min(0, { message: "Popularity must be 0 or greater" }),
-	id_steam: z.string().optional(),
-	region: z.string().optional(),
-	GamivoPrice: z.string().optional(),
-});
-
 export const fileContentSchema = z.strictObject({
 	minPopularity: z
 		.number()
@@ -49,7 +38,6 @@ export const fileContentIdSteamResponseSchema = z.strictObject({
 		.min(1, { message: "At least one game is required" }),
 });
 
-export type Game = z.infer<typeof gameSchema>;
 export type FileContent = z.infer<typeof fileContentSchema>;
 export type GameIdSteam = z.infer<typeof gameIdSteamSchema>;
 export type GameIdSteamResponse = z.infer<typeof gameIdSteamResponseSchema>;

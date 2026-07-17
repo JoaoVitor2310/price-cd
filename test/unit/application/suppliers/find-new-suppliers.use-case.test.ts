@@ -30,9 +30,9 @@ function makeProspectResult(overrides: Partial<ProspectResult> = {}): ProspectRe
     };
 }
 
-function makeGameResult(): GameAnalysisResult {
+function makeGameResult(gameOverrides: Partial<GameAnalysisResult["games"][number]> = {}): GameAnalysisResult {
     return {
-        games: [{ id: 0, name: "Half-Life", popularity: 100, GamivoPrice: 1.5 }],
+        games: [{ id: 0, name: "Half-Life", popularity: 100, GamivoPrice: 1.5, ...gameOverrides }],
         summary: { totalRequested: 1, foundGames: 1, worthyByPopularity: 1, foundPrices: 1, processingTimeSeconds: 0 },
     };
 }
@@ -93,6 +93,28 @@ describe("FindNewSuppliersUseCase", () => {
             expect.objectContaining({ list_code: "ABC" }),
             expect.any(Array),
         );
+    });
+
+    it("forwards gamivo_id from the priced game to evaluate", async () => {
+        const input = makeInput({
+            gameSearcher: { search: vi.fn().mockResolvedValue(makeGameResult({ gamivo_id: "144601" })) },
+        });
+
+        await useCase.execute(input);
+
+        expect(input.profitabilityChecker.evaluate).toHaveBeenCalledWith(
+            expect.any(Object),
+            [expect.objectContaining({ gamivo_id: "144601" })],
+        );
+    });
+
+    it("sends null for gamivo_id when the priced game does not have it", async () => {
+        const input = makeInput();
+
+        await useCase.execute(input);
+
+        const [, games] = (input.profitabilityChecker.evaluate as ReturnType<typeof vi.fn>).mock.calls[0];
+        expect(games[0].gamivo_id).toBeNull();
     });
 
     // --- ignoredSteamId ---
