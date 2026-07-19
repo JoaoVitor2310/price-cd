@@ -189,7 +189,7 @@ const searchAllKeyShop = async (
                 const gamivoMerchantKey = findGamivoMerchantKey(gamePageData.merchants);
                 const offers = toOfferPrices(gamePageData.prices, regionKey, gamivoMerchantKey);
 
-                const price = bestOfferPrice(offers, game.popularity, checkGamivoOffer);
+                const price = bestOfferPrice(offers, checkGamivoOffer);
                 if (!price) continue;
 
                 let gamivo_id: string | undefined;
