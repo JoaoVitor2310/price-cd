@@ -168,19 +168,46 @@ describe("hasEdition", () => {
 		expect(hasEdition("The Witcher 3").size).toBe(0);
 	});
 
-	it("detects 'edition'", () => {
-		const result = hasEdition("Game Edition");
-		expect(result.size).toBeGreaterThan(0);
-	});
-
-	it("detects both 'GOTY' and 'edition'", () => {
-		const result = hasEdition("Game GOTY Edition");
-		expect(result.size).toBe(2);
+	it("ignores a bare 'edition' word (not an edition tier on its own)", () => {
+		expect(hasEdition("Game Edition").size).toBe(0);
 	});
 
 	it("detects 'deluxe'", () => {
 		const result = hasEdition("Game Deluxe");
 		expect(result.size).toBe(1);
+		expect(result.has("deluxe")).toBe(true);
+	});
+
+	it("collapses 'GOTY' + bare 'edition' to a single 'goty' category", () => {
+		const result = hasEdition("Game GOTY Edition");
+		expect(result.size).toBe(1);
+		expect(result.has("goty")).toBe(true);
+	});
+
+	it("unifies all GOTY spellings to the same 'goty' category", () => {
+		const goty = hasEdition("Game GOTY");
+		const long = hasEdition("Game Game of the Year");
+		const dotted = hasEdition("Game G.O.T.Y");
+		for (const set of [goty, long, dotted]) {
+			expect(set.size).toBe(1);
+			expect(set.has("goty")).toBe(true);
+		}
+	});
+
+	it("treats 'Deluxe' and 'Deluxe Edition' as the same set", () => {
+		const withWord = hasEdition("Game Deluxe Edition");
+		const withoutWord = hasEdition("Game Deluxe");
+		expect([...withWord]).toEqual([...withoutWord]);
+	});
+
+	it("tracks 'day one' as a category", () => {
+		const result = hasEdition("Game Day One Edition");
+		expect(result.size).toBe(1);
+		expect(result.has("day one")).toBe(true);
+	});
+
+	it("ignores 'standard' (it is the base version, not a distinct tier)", () => {
+		expect(hasEdition("Game Standard Edition").size).toBe(0);
 	});
 
 	it("symmetric match: same set for two equivalent names", () => {
@@ -190,7 +217,14 @@ describe("hasEdition", () => {
 		expect([...b].every((k) => a.has(k))).toBe(true);
 	});
 
-	it("asymmetric match: names with different editions do not match", () => {
+	it("asymmetric match: a premium tier does not match a different tier", () => {
+		const a = hasEdition("Game Deluxe Edition");
+		const b = hasEdition("Game Complete Edition");
+		const allMatch = [...a].every((k) => b.has(k)) && [...b].every((k) => a.has(k));
+		expect(allMatch).toBe(false);
+	});
+
+	it("asymmetric match: a premium tier does not match the base version (standard)", () => {
 		const a = hasEdition("Game Deluxe Edition");
 		const b = hasEdition("Game Standard Edition");
 		const allMatch = [...a].every((k) => b.has(k)) && [...b].every((k) => a.has(k));

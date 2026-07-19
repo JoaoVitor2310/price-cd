@@ -89,44 +89,63 @@ export const clearRomanNumber = (stringToSearch: string): string => {
 };
 
 
+/**
+ * Categorias canônicas de edição. Cada categoria mapeia para um ou mais padrões
+ * que são SINÔNIMOS entre si (ex.: "GOTY", "Game of the Year" e "G.O.T.Y" são a
+ * MESMA edição). Fonte única de verdade para `clearEdition` (remove todas) e
+ * `hasEdition` (reporta quais categorias estão presentes) — assim as duas nunca
+ * divergem.
+ *
+ * Os padrões NÃO usam a flag `g` de propósito: `hasEdition` chama `.test()`, que
+ * é stateful com `g` (mantém `lastIndex`); o flag global é adicionado apenas na
+ * hora de remover, dentro de `stripAll`.
+ */
+type EditionTier = { category: string; patterns: RegExp[] };
+
+const EDITION_TIERS: EditionTier[] = [
+	{ category: "definitive", patterns: [/\bdefinitive\b/i] },
+	{ category: "goty", patterns: [/\bgame of the year\b/i, /\bgoty\b/i, /\bg\.o\.t\.y\b/i] },
+	{ category: "deluxe", patterns: [/\bdeluxe\b/i] },
+	{ category: "premium", patterns: [/\bpremium\b/i] },
+	{ category: "bundle", patterns: [/\bbundle\b/i] },
+	{ category: "special", patterns: [/\bspecial\b/i] },
+	{ category: "complete", patterns: [/\bcomplete\b/i] },
+	{ category: "day one", patterns: [/\bday\s?one\b/i] },
+];
+
+/**
+ * Palavras removidas do nome para normalização, mas que NÃO identificam uma
+ * edição discriminante — logo nunca entram na comparação de `hasEdition`.
+ *
+ * - "edition" sozinha não escolhe nenhuma edição (sempre acompanha um tier).
+ * - "standard" NÃO é um tier premium: é a própria versão base do jogo (mesma
+ *   key, mesmo preço). Uma listagem "Standard Edition" tem que casar com uma
+ *   busca pelo jogo base — por isso `standard` é ruído, não categoria.
+ * - tags de região são tratadas à parte por `getRegion`/`removeRegion`.
+ */
+const EDITION_NAME_NOISE: RegExp[] = [/\bedition\b/i, /\bstandard\b/i, /\brow\b/i, /\beu\b/i];
+
+const stripAll = (str: string, patterns: RegExp[]): string => {
+	let result = str;
+	for (const pattern of patterns) {
+		result = result.replace(new RegExp(pattern.source, "gi"), "");
+	}
+	return result;
+};
+
+/**
+ * Remove todas as palavras de edição (tiers + "edition" solta) e tags de região
+ * do nome, para normalizar antes de comparar. Não altera nomes sem edição.
+ */
 export const clearEdition = (stringToSearch: string): string => {
-	const edition = /\bedition\b/gi; // Detectar "edition" como palavra separada
-	const definitiveEditionRegex = /\bdefinitive\b/gi;
-	const standardEditionRegex = /\bstandard\b/gi;
-	const gameOfTheYear = /\bgame of the year\b/gi;
-	const goty = /\bgoty\b/gi;
-	const gotyPoint = /\bg.o.t.y\b/gi;
-	const deluxe = /\bdeluxe\b/gi;
-	const premium = /\bpremium\b/gi;
-	const bundle = /\bbundle\b/gi;
-	const special = /\bspecial\b/gi;
-	const complete = /\bcomplete\b/gi;
-	const dayOne = /\bday\s?one\b/gi;
-
-	const rowRegex = /\brow\b/gi; // Detectar "ROW" como palavra separada
-	const euRegex = /\beu\b/gi; // Detectar "EU" como palavra separada
-
-	// Remover "Definitive Edition"
-	let normalizedString = stringToSearch
-		.replace(edition, "")
-		.replace(definitiveEditionRegex, "")
-		.replace(standardEditionRegex, "")
-		.replace(gameOfTheYear, "")
-		.replace(goty, "")
-		.replace(gotyPoint, "")
-		.replace(deluxe, "")
-		.replace(premium, "")
-		.replace(bundle, "")
-		.replace(special, "")
-		.replace(complete, "")
-		.replace(dayOne, "")
-		.replace(rowRegex, "") // Remove "ROW"
-		.replace(euRegex, ""); // Remove "EU"
+	let normalized = stringToSearch;
+	for (const tier of EDITION_TIERS) {
+		normalized = stripAll(normalized, tier.patterns);
+	}
+	normalized = stripAll(normalized, EDITION_NAME_NOISE);
 
 	// Remover espaços extras para evitar fragmentos
-	normalizedString = normalizedString.replace(/\s{2,}/g, " ").trim(); // Normaliza a string para evitar múltiplos espaços
-
-	return normalizedString;
+	return normalized.replace(/\s{2,}/g, " ").trim();
 };
 
 export const clearQuantity = (stringToSearch: string): string => {
@@ -148,25 +167,19 @@ export const clearDLC = (stringToSearch: string): string => {
 };
 
 
+/**
+ * Retorna o conjunto de categorias de edição CANÔNICAS presentes no nome (ex.:
+ * "GOTY", "Game of the Year" e "G.O.T.Y" retornam todos `{"goty"}`). Usado para
+ * garantir que os dois lados de uma comparação de preço se refiram à MESMA
+ * edição — key base ≠ key de edição, pois têm preços diferentes. A palavra
+ * "edition" sozinha é ignorada de propósito (não identifica um tier).
+ */
 export const hasEdition = (str: string): Set<string> => {
-	const regexList: RegExp[] = [
-		/\bedition\b/gi,
-		/\bdefinitive\b/gi,
-		/\bstandard\b/gi,
-		/\bgame of the year\b/gi,
-		/\bgoty\b/gi,
-		/\bg\.o\.t\.y\b/gi,
-		/\bdeluxe\b/gi,
-		/\bpremium\b/gi,
-		/\bbundle\b/gi,
-		/\bspecial\b/gi,
-		/\bcomplete\b/gi,
-	];
 	const foundKeywords = new Set<string>();
 
-	for (const regex of regexList) {
-		if (regex.test(str)) {
-			foundKeywords.add(regex.source);
+	for (const tier of EDITION_TIERS) {
+		if (tier.patterns.some((pattern) => pattern.test(str))) {
+			foundKeywords.add(tier.category);
 		}
 	}
 
