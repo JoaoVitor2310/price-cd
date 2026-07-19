@@ -42,6 +42,30 @@ describe("matchSearchResult", () => {
 		expect(result).toEqual({ link: "/game/house-flipper-deluxe", name: "House Flipper Deluxe Edition" });
 	});
 
+	it("matches an edition query against a listing that omits the bare 'Edition' word", () => {
+		// A key "Deluxe Edition" e uma listada como só "Deluxe" são a MESMA edição.
+		const results = [makeSearchResult("House Flipper Deluxe", { link: "/game/house-flipper-deluxe" })];
+		const result = matchSearchResult("House Flipper Deluxe Edition", results);
+		expect(result?.link).toBe("/game/house-flipper-deluxe");
+	});
+
+	it("matches across different GOTY spellings (same edition)", () => {
+		const results = [makeSearchResult("House Flipper GOTY", { link: "/game/house-flipper-goty" })];
+		const result = matchSearchResult("House Flipper Game of the Year Edition", results);
+		expect(result?.link).toBe("/game/house-flipper-goty");
+	});
+
+	it("still skips when the tier differs (Deluxe query vs Standard listing)", () => {
+		const results = [makeSearchResult("House Flipper Standard Edition")];
+		expect(matchSearchResult("House Flipper Deluxe Edition", results)).toBeNull();
+	});
+
+	it("matches a base query against a 'Standard Edition' listing (standard = base)", () => {
+		const results = [makeSearchResult("House Flipper Standard Edition", { link: "/game/house-flipper" })];
+		const result = matchSearchResult("House Flipper", results);
+		expect(result?.link).toBe("/game/house-flipper");
+	});
+
 	it("returns the first matching result and ignores the rest", () => {
 		const results = [
 			makeSearchResult("Other Game"),

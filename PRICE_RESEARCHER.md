@@ -200,6 +200,22 @@ Enfileira a busca de listas de trade de um usuário no SteamTrades. Resposta ime
 - Jogos **abaixo** do `minPopularity` mas com preço **≤ €2.00** ainda aparecem no resultado
 - Nomes são normalizados internamente (algarismos romanos → arábicos, sufixos de edição removidos, etc.) — não é necessário tratar o nome antes de enviar
 
+### Key base ≠ key de edição
+
+Uma key da versão **base** de um jogo e uma key de uma **edição** (Deluxe, GOTY, Definitive, etc.) são produtos distintos, com **preços diferentes**. Por isso o sistema trata os dois lados de forma separada:
+
+- **Popularidade (SteamCharts):** busca sempre pelo **jogo base** — a edição é removida do nome só para achar o pico de jogadores (a edição não muda a popularidade). O nome original, com a edição, é preservado para as etapas seguintes.
+- **Preço (AllKeyShop):** busca a key **com a edição** — o preço de "Jogo Deluxe Edition" precisa vir da oferta Deluxe, nunca da base.
+
+A correspondência de edição usa **categorias canônicas** (`clear-string.ts`), então variações de escrita da MESMA edição casam entre si, mas edições diferentes nunca se misturam:
+
+- `GOTY` = `Game of the Year` = `G.O.T.Y` → todas a mesma categoria `goty`
+- `Deluxe Edition` = `Deluxe` (a palavra "Edition" sozinha é ignorada — não identifica uma edição)
+- `Standard Edition` = **jogo base**: "Standard" não é um tier premium, é a própria versão base (mesma key, mesmo preço). Uma listagem "Standard Edition" casa com uma busca pelo jogo base — por isso `standard` **não** é uma categoria discriminante.
+- Categorias premium reconhecidas: `definitive`, `goty`, `deluxe`, `premium`, `bundle`, `special`, `complete`, `day one`
+
+Uma busca por uma edição premium só casa com uma listagem da **mesma** edição; se não houver oferta daquela edição específica, o jogo é descartado (não cai para a base). Já a versão base casa com listagens "Standard Edition".
+
 ---
 
 ## Autenticação
