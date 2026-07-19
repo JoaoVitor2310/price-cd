@@ -1,5 +1,4 @@
 export const GAMIVO_MERCHANT_NAME = "GAMIVO";
-const MIN_POPULARITY_FOR_GAMIVO_REQUIREMENT = 100;
 
 export type OfferPrice = {
 	merchant: string;
@@ -48,7 +47,7 @@ export const findGamivoOffer = <T extends OfferPrice>(offers: T[]): T | null => 
 		.sort((a, b) => a.originalPrice - b.originalPrice)[0] ?? null;
 };
 
-export const bestOfferPrice = (offers: OfferPrice[], popularity: number, checkGamivoOffer: boolean): number | null => {
+export const bestOfferPrice = (offers: OfferPrice[], checkGamivoOffer: boolean): number | null => {
 	if (offers.length === 0) {
 		console.log(`⚠️ [INFO] No prices found for the region.`);
 		return null;
@@ -59,7 +58,7 @@ export const bestOfferPrice = (offers: OfferPrice[], popularity: number, checkGa
 
 	if (checkGamivoOffer) {
 		const hasGamivoOffer = offers.some(o => o.merchant === GAMIVO_MERCHANT_NAME);
-		if (!hasGamivoOffer && popularity < MIN_POPULARITY_FOR_GAMIVO_REQUIREMENT) {
+		if (!hasGamivoOffer) {
 			console.log(`⚠️ [INFO] Gamivo offer not found.`);
 			return null;
 		}

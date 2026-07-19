@@ -85,25 +85,19 @@ describe("findGamivoOffer", () => {
 
 describe("bestOfferPrice", () => {
 	it("returns null when there are no offers", () => {
-		expect(bestOfferPrice([], 500, false)).toBeNull();
+		expect(bestOfferPrice([], false)).toBeNull();
 	});
 
 	it("returns price as a number when offers exist", () => {
 		const offers = [makeOffer(4.99), makeOffer(5.49, { merchant: GAMIVO_MERCHANT_NAME })];
-		const result = bestOfferPrice(offers, 500, false);
+		const result = bestOfferPrice(offers, false);
 		expect(result).not.toBeNull();
 		expect(typeof result).toBe("number");
 	});
 
-	it("returns null when checkGamivoOffer=true, no Gamivo offer, and popularity < 100", () => {
+	it("returns null when checkGamivoOffer=true and there is no Gamivo offer, regardless of price", () => {
 		const offers = [makeOffer(4.99, { merchant: "Steam" })];
-		expect(bestOfferPrice(offers, 50, true)).toBeNull();
-	});
-
-	it("returns price when checkGamivoOffer=true but popularity >= 100 (waives requirement)", () => {
-		const offers = [makeOffer(4.99, { merchant: "Steam" })];
-		const result = bestOfferPrice(offers, 200, true);
-		expect(result).not.toBeNull();
+		expect(bestOfferPrice(offers, true)).toBeNull();
 	});
 
 	it("returns price when checkGamivoOffer=true and Gamivo is present", () => {
@@ -111,7 +105,7 @@ describe("bestOfferPrice", () => {
 			makeOffer(4.99, { merchant: "Steam" }),
 			makeOffer(5.49, { merchant: GAMIVO_MERCHANT_NAME }),
 		];
-		const result = bestOfferPrice(offers, 50, true);
+		const result = bestOfferPrice(offers, true);
 		expect(result).not.toBeNull();
 	});
 });
