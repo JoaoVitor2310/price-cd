@@ -74,6 +74,11 @@ export class FindNewSuppliersUseCase {
 
                     consecutiveInactive = 0;
 
+                    if (!topic.wantsTf2Key) {
+                        console.log(`🚫 [SUPPLIERS] Topic ${code} does not want TF2 keys. Skipping.`);
+                        continue;
+                    }
+
                     if (!topic.steamId) {
                         console.warn(`⚠️ [SUPPLIERS] Steam ID not found in topic ${code}. Skipping.`);
                         continue;

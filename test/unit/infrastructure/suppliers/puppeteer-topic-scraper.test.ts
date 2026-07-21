@@ -42,4 +42,45 @@ describe("extractTopicData", () => {
     it("returns empty games array when .have section is absent", () => {
         expect(extractTopicData("<div>no have section</div>").games).toEqual([]);
     });
+
+    describe("wantsTf2Key", () => {
+        it("returns true when .want contains TF2", () => {
+            const html = '<div class="want">TF2 keys</div>';
+            expect(extractTopicData(html).wantsTf2Key).toBe(true);
+        });
+
+        it("returns true when .want contains TF2 in lowercase (case-insensitive)", () => {
+            const html = '<div class="want">tf2</div>';
+            expect(extractTopicData(html).wantsTf2Key).toBe(true);
+        });
+
+        it("returns true when .want contains Team Fortress 2 Key", () => {
+            const html = '<div class="want">Team Fortress 2 Key</div>';
+            expect(extractTopicData(html).wantsTf2Key).toBe(true);
+        });
+
+        it("returns false when .want contains no TF2", () => {
+            const html = '<div class="want">no TF2</div>';
+            expect(extractTopicData(html).wantsTf2Key).toBe(false);
+        });
+
+        it("returns false when .want contains no tf2 (case-insensitive negation)", () => {
+            const html = '<div class="want">no tf2</div>';
+            expect(extractTopicData(html).wantsTf2Key).toBe(false);
+        });
+
+        it("returns false when .want contains no Team Fortress 2 Key", () => {
+            const html = '<div class="want">no Team Fortress 2 Key</div>';
+            expect(extractTopicData(html).wantsTf2Key).toBe(false);
+        });
+
+        it("returns false when .want has no TF2 mention", () => {
+            const html = '<div class="want">CS2 skins\nDota 2 items</div>';
+            expect(extractTopicData(html).wantsTf2Key).toBe(false);
+        });
+
+        it("returns false when .want section is absent", () => {
+            expect(extractTopicData("<div>no want section</div>").wantsTf2Key).toBe(false);
+        });
+    });
 });
