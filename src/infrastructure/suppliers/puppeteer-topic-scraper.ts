@@ -25,7 +25,16 @@ export function extractTopicData(html: string): TopicData {
         .map((line) => line.trim())
         .filter(Boolean);
 
-    return { authorName, steamId, games, isInactive };
+    const TF2_MATCH = /TF2|Team Fortress 2 Key/i;
+    const TF2_NEGATED = /\bno\s+(TF2|Team Fortress 2 Key)/i;
+    const wantsTf2Key = $(".want")
+        .text()
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .some((line) => TF2_MATCH.test(line) && !TF2_NEGATED.test(line));
+
+    return { authorName, steamId, games, isInactive, wantsTf2Key };
 }
 
 /**

@@ -192,6 +192,25 @@ Enfileira a busca de listas de trade de um usuário no SteamTrades. Resposta ime
 
 ---
 
+### 5. Fluxo de descoberta de fornecedores (background)
+
+O Price Researcher possui um job em segundo plano que varre páginas de listagem do SteamTrades em busca de novos fornecedores potenciais. Este fluxo **não é acionado via endpoint** — é disparado internamente pelo Sistema-Estoque via `POST /api/suppliers/find`.
+
+**Critérios de qualificação de um tópico:**
+
+| Critério | Comportamento ao falhar |
+|---|---|
+| Tópico ativo (sem `.notification.yellow`) | Pula; conta para limite de inativos consecutivos (máx. 5) |
+| Seção `.want` contém `"TF2"` ou `"Team Fortress 2 Key"` (case-insensitive) **sem** `"no"` imediatamente antes | Pula silenciosamente — **não enviamos oferta em TF2 para quem não aceita** |
+| Steam ID presente no tópico | Pula |
+| Jogos na seção `.have` | Pula |
+| Pelo menos um jogo com preço encontrado via Gamivo | Pula |
+| `should_comment === true` retornado pelo Sistema Estoque | Não comenta |
+
+> **Regra do TF2:** a oferta que enviamos aos fornecedores é sempre em keys de TF2. Por isso, só processamos tópicos cuja seção `.want` demonstre aceitar TF2 — presença de `"TF2"` ou `"Team Fortress 2 Key"` (case-insensitive) **sem** o prefixo `"no"` (ex.: `"no TF2"` ou `"no Team Fortress 2 Key"` é descartado).
+
+---
+
 ## Comportamento geral de preços
 
 - **Fonte de popularidade:** SteamCharts (pico de jogadores nas últimas 24h)

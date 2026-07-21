@@ -15,6 +15,7 @@ function makeTopic(overrides: Partial<TopicData> = {}): TopicData {
         steamId: "76561198888888888",
         games: ["Half-Life"],
         isInactive: false,
+        wantsTf2Key: true,
         ...overrides,
     };
 }
@@ -131,6 +132,17 @@ describe("FindNewSuppliersUseCase", () => {
     });
 
     // --- early exits ---
+
+    it("skips topics where wantsTf2Key is false without calling profitabilityChecker", async () => {
+        const input = makeInput({
+            scraper: { scrape: vi.fn().mockResolvedValue(makeTopic({ wantsTf2Key: false })) },
+        });
+
+        const result = await useCase.execute(input);
+
+        expect(input.profitabilityChecker.evaluate).not.toHaveBeenCalled();
+        expect(result.suppliersCommented).toBe(0);
+    });
 
     it("skips inactive topics without calling profitabilityChecker", async () => {
         const input = makeInput({
