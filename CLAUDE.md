@@ -23,6 +23,20 @@ Atue sempre como arquiteto de software sênior com conhecimento profundo de Node
 - Sempre gerar testes para cada alteração feita no projeto e só aceitar depois de executar os testes e passarem todos.
 - Esse sistema é utilizado pelo Sistema Estoque, mantenha o arquivo PRICE_RESEARCHER.md sempre atualizado.
 
+### Documentação viva
+
+Toda documentação `.md` do projeto é **viva**: deve ser atualizada na mesma alteração que a tornou desatualizada, nunca "depois". Documentação errada é pior que documentação ausente — ela é lida como verdade, entra no contexto e propaga o erro. Ao mexer no código, verifique se algum destes arquivos passou a mentir e corrija junto:
+
+| Arquivo | O que guarda | Atualize quando |
+|---|---|---|
+| `CONTEXT.md` | Glossário do domínio (só termos, sem detalhe de implementação) | Um termo do negócio nasce, muda de significado ou é aposentado |
+| `docs/adr/` | Decisões arquiteturais difíceis de reverter | Uma decisão com trade-off real é tomada |
+| `docs/IMPROVEMENTS.md` | Backlog de dívida técnica | Uma dívida é descoberta, resolvida ou muda de prioridade |
+| `docs/wiki/` | Visão de alto nível para leitura não-técnica | Um fluxo, parâmetro ou comportamento visível ao negócio muda |
+| `PRICE_RESEARCHER.md` | Contrato de integração com o Sistema Estoque | Endpoint, payload, header ou comportamento de callback muda |
+
+Quando código e documentação divergirem, **o código é a verdade**: corrija o `.md` e avise explicitamente o que estava errado, em vez de silenciosamente reescrever.
+
 ### Puppeteer — referência
 
 Sempre consulte a documentação mais recente antes de implementar qualquer alteração:
@@ -118,52 +132,20 @@ O módulo `clear-string.ts` é a camada central de normalização usada em todo 
 
 ## Problemas Identificados
 
-### Design e Corretude
-
-**8. `checkGamivoOffer` tratado de forma inconsistente**
-O endpoint `/upload` lê do `req.body.checkGamivoOffer` mas a UI envia como string `"true"`/`"false"` via FormData. O `runListsService` hardcoda `checkGamivoOffer: true` independente do input.
-
-**9. Campo `id` em `FoundGames` reatribuído arbitrariamente**
-Em `searchAllKeyShop`, `id: index` se refere ao índice no subarray `worthyGames`, não ao ID original do jogo, quebrando qualquer correlação downstream por ID.
-
-**10. `router.ts` monta `searchGamesIdSteam` incorretamente**
-O arquivo de rota `search-id-steam.route.ts` define `POST /search-id-steam` mas nunca é montado via `router.use`. O controller é passado diretamente como middleware — uso incorreto.
-
-**11. Sem timeout no nível do servidor Express**
-Operações longas de scraping (potencialmente minutos para listas grandes) mantêm a conexão HTTP aberta. Clientes com timeouts curtos desconectam, mas o servidor continua processando sem necessidade.
-
-### Menores
-
-**13. Sem testes automatizados** — a pasta `test/` contém apenas arquivos `.txt` de fixture. A arquitetura está bem estruturada para testabilidade, mas não há testes.
-
-**14. `public/index.html` referencia G2A/Kinguin** na descrição do output, mas o backend atual só retorna preços via AllKeyShop. Documentação desatualizada.
-
-**15. `moduleResolution: "node"` está depreciado para ESM** — com `"type": "module"` e `"module": "ESNext"`, o correto seria `"Bundler"` ou `"NodeNext"`.
-
-**16. `biome.json` com `vcs.useIgnoreFile: false`** — Biome ignora o `.gitignore` e pode lintar diretórios que não deveriam ser verificados.
+Dívida técnica e melhorias rastreadas em `docs/IMPROVEMENTS.md`.
 
 ---
 
-### Média Prioridade
-8. **Corrigir `moduleResolution`** — mudar para `"NodeNext"` para alinhamento correto com ESM.
+## Agent skills
 
-9. **Remover `nodemailer`** das dependências se não há planos de uso.
+### Issue tracker
 
-10. **Atualizar `public/index.html`** — corrigir a documentação para refletir o output real (AllKeyShop/Gamivo apenas).
+Issues são rastreados no GitHub Issues (`JoaoVitor2310/price-cd`), via CLI `gh`. See `docs/agents/issue-tracker.md`.
 
-### Baixa Prioridade
+### Triage labels
 
-11. **Escrever testes unitários** — especialmente para `clear-string.ts`, `bestOfferPrice`, `detectOfferTooLow` e `worthyByPopularity`, que são funções puras com lógica crítica.
+Vocabulário padrão: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
 
-15. **Notificação de sessão expirada no fluxo `findNewSuppliers`** — o `PuppeteerCommentPoster` já detecta quando está deslogado (check `a[href*="/login"]`) e lança erro com mensagem clara. Falta reagir a esse erro enviando um alerta (email ou webhook). Estrutura sugerida:
-    - Porta `AlertNotifier` em `src/application/suppliers/ports/alert-notifier.port.ts`
-    - Implementação concreta `EmailAlertNotifier` em `src/infrastructure/suppliers/` usando `nodemailer` (já está nas dependências)
-    - Use case captura o erro de autenticação especificamente e chama `alertNotifier.send()`
-    - Sessão do SteamTrades expira em 14 dias (`Max-Age=1209600` no `set-cookie`)
-    - Implementar após concluir o fluxo de `findNewSuppliers`
+### Domain docs
 
-12. **Corrigir o `router.ts`** — montar `search-id-steam.route.ts` via `router.use` corretamente.
-
-13. **Padronizar tratamento de `checkGamivoOffer`** — garantir que seja sempre booleano após parse do schema em todos os endpoints.
-
-14. **Ativar `vcs.useIgnoreFile: true` no `biome.json`** — para respeitar o `.gitignore`.
+Layout single-context — `CONTEXT.md` + `docs/adr/` na raiz do repo, criados sob demanda. See `docs/agents/domain.md`.
