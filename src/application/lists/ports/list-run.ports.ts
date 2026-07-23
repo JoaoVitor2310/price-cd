@@ -16,14 +16,6 @@ export interface InactiveListNotifier {
 }
 
 /**
- * Porta para agendar execução em background no mesmo processo.
- * (infra simples: setImmediate; futuro: fila/worker)
- */
-export interface BackgroundScheduler {
-	schedule(task: () => Promise<void>): void;
-}
-
-/**
  * Porta para executar o fluxo principal das listas.
  */
 export interface RunListsRunner {

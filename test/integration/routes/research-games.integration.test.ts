@@ -44,6 +44,12 @@ const makeGame = (overrides: Partial<FoundGames> = {}): FoundGames => ({
 const makeContent = (minPopularity: number, ...games: string[]) =>
 	[String(minPopularity), ...games].join("\n");
 
+/**
+ * No modo autenticado a resposta volta antes do processamento terminar.
+ * Cede o event loop para a task de background rodar antes das asserções.
+ */
+const flushBackgroundTasks = () => new Promise((resolve) => setImmediate(resolve));
+
 // ---------------------------------------------------------------------------
 // Authenticated mode (valid token → results sent to Sistema Estoque)
 // ---------------------------------------------------------------------------
@@ -67,7 +73,7 @@ describe("POST /api/games/research — authenticated mode", () => {
 		vi.unstubAllGlobals();
 	});
 
-	it("returns { success: true } with no demo flag", async () => {
+	it("returns 202 queued without waiting for the processing to finish", async () => {
 		const game = makeGame();
 		mockPopularityFetch.mockResolvedValueOnce([game]);
 		mockPriceFetch.mockResolvedValueOnce([game]);
@@ -76,8 +82,8 @@ describe("POST /api/games/research — authenticated mode", () => {
 			.post("/api/games/research")
 			.send({ content: makeContent(100, "Half-Life"), checkGamivoOffer: false, internal_secret: INTERNAL_SECRET });
 
-		expect(res.status).toBe(200);
-		expect(res.body).toEqual({ success: true });
+		expect(res.status).toBe(202);
+		expect(res.body).toEqual({ success: true, status: "queued" });
 	});
 
 	it("sends all priced games to Sistema Estoque", async () => {
@@ -91,6 +97,8 @@ describe("POST /api/games/research — authenticated mode", () => {
 		await request(app)
 			.post("/api/games/research")
 			.send({ content: makeContent(0, "Half-Life", "Portal"), checkGamivoOffer: false, internal_secret: INTERNAL_SECRET });
+
+		await flushBackgroundTasks();
 
 		const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
 		const body = JSON.parse(init.body as string);
@@ -108,6 +116,8 @@ describe("POST /api/games/research — authenticated mode", () => {
 			.post("/api/games/research")
 			.send({ content: makeContent(0, "Half-Life"), checkGamivoOffer: false, internal_secret: INTERNAL_SECRET });
 
+		await flushBackgroundTasks();
+
 		const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
 		const body = JSON.parse(init.body as string);
 		expect(body.games[0]).toMatchObject({ id_steam: "70", gamivo_id: "144601" });
@@ -121,6 +131,8 @@ describe("POST /api/games/research — authenticated mode", () => {
 		await request(app)
 			.post("/api/games/research")
 			.send({ content: makeContent(0, "Half-Life"), checkGamivoOffer: false, internal_secret: INTERNAL_SECRET });
+
+		await flushBackgroundTasks();
 
 		const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
 		const body = JSON.parse(init.body as string);
@@ -137,6 +149,8 @@ describe("POST /api/games/research — authenticated mode", () => {
 			.post("/api/games/research")
 			.send({ content: makeContent(0, "Half-Life"), checkGamivoOffer: false, internal_secret: INTERNAL_SECRET, steam_id: "76561198000000001", list_code: "G0eXM" });
 
+		await flushBackgroundTasks();
+
 		const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
 		const body = JSON.parse(init.body as string);
 		expect(body.supplier_steam_id).toBe("76561198000000001");
@@ -151,6 +165,8 @@ describe("POST /api/games/research — authenticated mode", () => {
 		await request(app)
 			.post("/api/games/research")
 			.send({ content: makeContent(0, "Half-Life"), checkGamivoOffer: false, internal_secret: INTERNAL_SECRET });
+
+		await flushBackgroundTasks();
 
 		const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
 		const body = JSON.parse(init.body as string);
@@ -167,36 +183,47 @@ describe("POST /api/games/research — authenticated mode", () => {
 			.post("/api/games/research")
 			.send({ content: makeContent(0, "Half-Life"), checkGamivoOffer: false, internal_secret: INTERNAL_SECRET });
 
+		await flushBackgroundTasks();
+
 		const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
 		expect(url).toBe("http://sistema-estoque/trades/from-price-researcher");
 		expect((init.headers as Record<string, string>)["Authorization"]).toBe("Bearer test-secret");
 	});
 
-	it("returns 200 without calling Sistema Estoque when no game passes popularity filter", async () => {
+	it("does not call Sistema Estoque when no game passes popularity filter", async () => {
 		mockPopularityFetch.mockResolvedValueOnce([makeGame({ popularity: 5 })]);
 
 		const res = await request(app)
 			.post("/api/games/research")
 			.send({ content: makeContent(100, "Obscure Game"), checkGamivoOffer: false, internal_secret: INTERNAL_SECRET });
 
-		expect(res.status).toBe(200);
-		expect(res.body).toEqual({ success: true });
+		await flushBackgroundTasks();
+
+		expect(res.status).toBe(202);
+		expect(res.body).toEqual({ success: true, status: "queued" });
 		expect(mockFetch).not.toHaveBeenCalled();
 		expect(mockPriceFetch).not.toHaveBeenCalled();
 	});
 
-	it("returns 500 when Sistema Estoque call fails", async () => {
+	it("still returns 202 when the Sistema Estoque call fails — the error is logged, not surfaced", async () => {
 		const game = makeGame();
 		mockPopularityFetch.mockResolvedValueOnce([game]);
 		mockPriceFetch.mockResolvedValueOnce([game]);
 		mockFetch.mockResolvedValueOnce(new Response("Service Unavailable", { status: 503 }));
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 
 		const res = await request(app)
 			.post("/api/games/research")
 			.send({ content: makeContent(0, "Half-Life"), checkGamivoOffer: false, internal_secret: INTERNAL_SECRET });
 
-		expect(res.status).toBe(500);
-		expect(res.body.success).toBe(false);
+		await flushBackgroundTasks();
+
+		// O cliente já recebeu a confirmação antes de a falha acontecer.
+		expect(res.status).toBe(202);
+		expect(res.body.success).toBe(true);
+		expect(consoleError).toHaveBeenCalled();
+
+		consoleError.mockRestore();
 	});
 });
 
