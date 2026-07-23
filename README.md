@@ -158,7 +158,7 @@ npm test
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/api/games/research` | Research prices for a list of game names (demo or authenticated) |
+| `POST` | `/api/games/research` | Research prices for a list of game names — sync preview (demo) or async, queued (authenticated) |
 | `POST` | `/api/games/search` | Search prices and return full analysis JSON |
 | `POST` | `/api/games/search-id-steam` | Resolve Steam IDs for a list of games |
 | `POST` | `/api/lists/run` | Async: crawl a Steam user's trade lists and run full analysis |
@@ -172,13 +172,14 @@ npm test
   "checkGamivoOffer": true,
   "internal_secret": "optional-token",
   "steam_id": "optional-supplier-steam-id",
-  "list_code": "optional-list-identifier"
+  "list_code": "optional-list-identifier",
+  "title": "optional-trade-title"
 }
 ```
 
 The `content` field follows a simple format: **line 1** is the minimum 24h peak player count; every subsequent line is a game name.
 
-**Demo mode response** (no token or wrong token):
+**Demo mode response** — `200`, no token or wrong token:
 ```json
 {
   "success": true,
@@ -188,12 +189,13 @@ The `content` field follows a simple format: **line 1** is the minimum 24h peak 
   ]
 }
 ```
+Runs synchronously and is capped at the first 10 games. Nothing is sent to the inventory system.
 
-**Authenticated mode response:**
+**Authenticated mode response** — `202`, valid token:
 ```json
-{ "success": true }
+{ "success": true, "status": "queued" }
 ```
-Results are pushed directly to the inventory system.
+Returns as soon as the work is queued. The full list is processed in the background and the Trade is created in the inventory system when it finishes. A failure during background processing is currently only logged — see `docs/IMPROVEMENTS.md`.
 
 </details>
 

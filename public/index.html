@@ -883,7 +883,7 @@ Counter-Strike 2</pre>
       if (hasToken) {
         banner.className  = "auth";
         banner.querySelector(".mode-icon").textContent = "✓";
-        span.innerHTML = "<strong>Token provided</strong> — if the token is correct, the full game list will be processed and results sent to inventory. Otherwise the request will be rejected.";
+        span.innerHTML = "<strong>Token provided</strong> — if the token is correct, the full game list will be queued for background processing and the Trade will be created in the inventory system when it finishes.";
       } else {
         banner.className  = "demo";
         banner.querySelector(".mode-icon").textContent = "⚠️";
@@ -933,7 +933,14 @@ Counter-Strike 2</pre>
           return;
         }
 
-        if (data.demo) {
+        if (data.status === "queued") {
+          result.className   = "result-success";
+          result.textContent = "List received. Processing is running in the background — the Trade will be created in the inventory system when it finishes.";
+          result.style.display = "block";
+          // Evita que a próxima lista herde o fornecedor/título da Trade recém-enfileirada.
+          document.getElementById("steamId").value = "";
+          document.getElementById("title").value   = "";
+        } else if (data.demo) {
           result.className   = "result-warning";
           result.textContent = "Demo mode — showing results for up to 10 games. Provide a valid token to send results to inventory.";
           result.style.display = "block";
@@ -941,8 +948,9 @@ Counter-Strike 2</pre>
           demoResults.style.display = "block";
           demoResults.scrollIntoView({ behavior: "smooth", block: "start" });
         } else {
-          result.className   = "result-success";
-          result.textContent = "Trade created successfully.";
+          // Resposta bem-sucedida em formato inesperado — nunca deixar a tela muda.
+          result.className   = "result-error";
+          result.textContent = "Unexpected response from the server. Check whether the list was processed before submitting again.";
           result.style.display = "block";
         }
       } catch {

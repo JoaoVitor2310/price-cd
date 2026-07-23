@@ -1,8 +1,6 @@
 import type { SupplierListRequest } from "@/schemas/list.schema.js";
-import type {
-	BackgroundScheduler,
-	RunListsRunner,
-} from "@/application/lists/ports/list-run.ports.js";
+import type { RunListsRunner } from "@/application/lists/ports/list-run.ports.js";
+import type { BackgroundScheduler } from "@/application/shared/ports/background-scheduler.port.js";
 
 export type EnqueueRunListsInput = {
 	request: SupplierListRequest;

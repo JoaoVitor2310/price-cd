@@ -1,8 +1,6 @@
 import { EnqueueRunListsUseCase } from "@/application/lists/enqueue-run-lists.use-case.js";
-import type {
-	BackgroundScheduler,
-	RunListsRunner,
-} from "@/application/lists/ports/list-run.ports.js";
+import type { RunListsRunner } from "@/application/lists/ports/list-run.ports.js";
+import type { BackgroundScheduler } from "@/application/shared/ports/background-scheduler.port.js";
 import { createLimitedConcurrencySchedulerFromEnv } from "@/infrastructure/background/limited-concurrency.scheduler.js";
 import type { SupplierListRequest } from "@/schemas/list.schema.js";
 import { runListsService } from "@/services/lists/run-lists.service.js";

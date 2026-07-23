@@ -1,26 +1,10 @@
 import type { Request, Response } from "express";
 import { ZodError } from "zod";
 import { researchGamesBodySchema } from "@/schemas/game.schema.js";
-import { ResearchGamesUseCase } from "@/application/games/research-games.use-case.js";
-import { SteamChartsPopularityFetcher } from "@/infrastructure/games/steam-charts-popularity-fetcher.js";
-import { AllKeyShopPriceFetcher } from "@/infrastructure/games/allkeyshop-price-fetcher.js";
-import { HttpGameTradeImporter } from "@/infrastructure/games/http-game-trade-importer.js";
-
-const researchGamesUseCase = new ResearchGamesUseCase();
-const popularityFetcher = new SteamChartsPopularityFetcher();
-const priceFetcher = new AllKeyShopPriceFetcher();
-
-let _tradeImporter: HttpGameTradeImporter | undefined;
-function getTradeImporter(): HttpGameTradeImporter {
-	if (!_tradeImporter) {
-		const baseUrl = process.env.SISTEMA_ESTOQUE_URL?.trim();
-		const secret = process.env.EXTERNAL_SECRET?.trim();
-		if (!baseUrl) throw new Error("SISTEMA_ESTOQUE_URL is not defined in .env");
-		if (!secret) throw new Error("EXTERNAL_SECRET is not defined in .env");
-		_tradeImporter = new HttpGameTradeImporter(baseUrl, secret);
-	}
-	return _tradeImporter;
-}
+import {
+	enqueueResearchGamesService,
+	researchGamesDemoService,
+} from "@/services/games/research-games.service.js";
 
 function isAuthenticated(token: string | undefined): boolean {
 	const internalSecret = process.env.INTERNAL_SECRET?.trim();
@@ -31,26 +15,23 @@ export const researchGames = async (req: Request, res: Response) => {
 	try {
 		const { gameNames, minPopularity, checkGamivoOffer, steam_id, list_code, internal_secret, title } = researchGamesBodySchema.parse(req.body);
 
-		const authenticated = isAuthenticated(internal_secret);
-
-		const result = await researchGamesUseCase.execute({
+		const request = {
 			gameNames,
 			minPopularity,
 			checkGamivoOffer,
 			supplierSteamId: steam_id,
 			listCode: list_code,
 			title,
-			popularityFetcher,
-			priceFetcher,
-			tradeImporter: authenticated ? getTradeImporter() : undefined,
-		});
+		};
 
-		if (authenticated) {
-			res.status(200).json({ success: true });
+		if (isAuthenticated(internal_secret)) {
+			await enqueueResearchGamesService(request);
+			res.status(202).json({ success: true, status: "queued" });
 			return;
 		}
 
-		res.status(200).json({ success: true, demo: true, games: result });
+		const games = await researchGamesDemoService(request);
+		res.status(200).json({ success: true, demo: true, games });
 	} catch (error) {
 		if (error instanceof ZodError) {
 			const errorMessage = error.issues.map((issue) => issue.message).join(", ");

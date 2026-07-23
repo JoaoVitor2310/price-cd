@@ -1,4 +1,4 @@
-import type { BackgroundScheduler } from "@/application/lists/ports/list-run.ports.js";
+import type { BackgroundScheduler } from "@/application/shared/ports/background-scheduler.port.js";
 
 /**
  * Agendador baseado em setImmediate.

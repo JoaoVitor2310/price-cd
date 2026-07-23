@@ -21,7 +21,6 @@ Atue sempre como arquiteto de software sênior com conhecimento profundo de Node
 - Todo código novo deve respeitar a separação de camadas: `Domain → Application → Infrastructure → Apresentação`. Nunca coloque lógica de negócio fora do Domain ou Application, nunca deixe o Domain conhecer o Node, nunca deixe um Use Case conhecer HTTP
 - Ao sugerir onde um novo arquivo deve viver, justifique com base na camada correta da arquitetura
 - Sempre gerar testes para cada alteração feita no projeto e só aceitar depois de executar os testes e passarem todos.
-- Esse sistema é utilizado pelo Sistema Estoque, mantenha o arquivo PRICE_RESEARCHER.md sempre atualizado.
 
 ### Documentação viva
 
@@ -33,7 +32,7 @@ Toda documentação `.md` do projeto é **viva**: deve ser atualizada na mesma a
 | `docs/adr/` | Decisões arquiteturais difíceis de reverter | Uma decisão com trade-off real é tomada |
 | `docs/IMPROVEMENTS.md` | Backlog de dívida técnica | Uma dívida é descoberta, resolvida ou muda de prioridade |
 | `docs/wiki/` | Visão de alto nível para leitura não-técnica | Um fluxo, parâmetro ou comportamento visível ao negócio muda |
-| `PRICE_RESEARCHER.md` | Contrato de integração com o Sistema Estoque | Endpoint, payload, header ou comportamento de callback muda |
+| `README.md` | Visão geral do projeto + contrato dos endpoints (rota, request, response) | Um endpoint nasce, muda de status code, request ou response |
 
 Quando código e documentação divergirem, **o código é a verdade**: corrija o `.md` e avise explicitamente o que estava errado, em vez de silenciosamente reescrever.
 
@@ -102,7 +101,9 @@ Segue uma arquitetura hexagonal leve: o subdomínio `lists` tem interfaces de po
 - **SteamCharts**: `Promise.all` em batches de 50 jogos (paralelo dentro do batch, sequencial entre batches).
 - **AllKeyShop**: Estritamente sequencial por jogo (uma única página do navegador navegada por vez).
 - **SteamTrades**: Serializado via promise chain global (`steamTradesGate`) para evitar rate limit.
-- **Background jobs**: `LimitedConcurrencyScheduler` — fila in-process com concorrência configurável via `RUN_LISTS_CONCURRENCY` (default 1).
+- **Background jobs**: `LimitedConcurrencyScheduler` — filas in-process independentes por fluxo, para que uma execução longa não trave a outra:
+  - `lists` (`POST /api/lists/run`): concorrência configurável via `RUN_LISTS_CONCURRENCY` (default 1).
+  - `research` (`POST /api/games/research` autenticado): concorrência fixa em 1 — o scraping do AllKeyShop já é serializado pelo browser compartilhado.
 
 ### Rate Limit e Retry
 
