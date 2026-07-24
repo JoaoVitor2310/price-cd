@@ -23,6 +23,7 @@ function makeTopic(overrides: Partial<TopicData> = {}): TopicData {
 function makeProspectResult(overrides: Partial<ProspectResult> = {}): ProspectResult {
     return {
         profitable: [{ name: "Half-Life", price_euro: 1.5, popularity: 100, region: null, tf2_price: 0.5 }],
+        total_tf2_price: 0.5,
         is_added: false,
         should_comment: true,
         last_commented_at: null,
@@ -72,6 +73,20 @@ describe("FindNewSuppliersUseCase", () => {
 
         expect(input.commentPoster.post).toHaveBeenCalledTimes(1);
         expect(result.suppliersCommented).toBe(1);
+    });
+
+    it("forwards total_tf2_price from evaluate to commentPoster.post", async () => {
+        const input = makeInput({
+            profitabilityChecker: { evaluate: vi.fn().mockResolvedValue(makeProspectResult({ total_tf2_price: 12.34 })) },
+        });
+
+        await useCase.execute(input);
+
+        expect(input.commentPoster.post).toHaveBeenCalledWith(
+            expect.any(String),
+            expect.any(Array),
+            12.34,
+        );
     });
 
     it("does not comment when should_comment is false", async () => {

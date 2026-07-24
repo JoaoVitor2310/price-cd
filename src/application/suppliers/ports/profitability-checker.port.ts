@@ -29,6 +29,8 @@ export type ProfitableGameResult = {
 
 export type ProspectResult = {
     profitable: ProfitableGameResult[];
+    /** Soma dos `tf2_price` de todos os jogos rentáveis, calculada pelo Sistema Estoque. */
+    total_tf2_price: number;
     /** Se o fornecedor já está adicionado como contato no Sistema Estoque. */
     is_added: boolean;
     /** `true` se o price-cd deve postar comentário no tópico. Decisão tomada pelo Sistema Estoque. */

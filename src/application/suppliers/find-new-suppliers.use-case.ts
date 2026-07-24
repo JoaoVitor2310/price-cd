@@ -125,7 +125,7 @@ export class FindNewSuppliersUseCase {
                         list_code: code,
                     };
 
-                    const { profitable: profitableGames, is_added, should_comment, last_commented_at, games_changed } =
+                    const { profitable: profitableGames, total_tf2_price, is_added, should_comment, last_commented_at, games_changed } =
                         await profitabilityChecker.evaluate(supplier, gamesWithPrice);
 
                     console.log(`📊 [SUPPLIERS] Topic ${code}: should_comment=${should_comment}, games_changed=${games_changed}, last_commented_at=${last_commented_at ?? "never"}`);
@@ -139,7 +139,7 @@ export class FindNewSuppliersUseCase {
                     const formatted = formatResult(profitableGames);
                     console.log(`✅ [SUPPLIERS] Commenting on topic ${code} (is_added=${is_added}):\n${formatted}`);
 
-                    await commentPoster.post(url, profitableGames);
+                    await commentPoster.post(url, profitableGames, total_tf2_price);
                     topicsProcessed++;
                     suppliersCommented++;
                     console.log(`✅ [SUPPLIERS] Commented on ${code} with ${profitableGames.length} profitable game(s).`);
