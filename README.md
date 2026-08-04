@@ -162,6 +162,7 @@ npm test
 | `POST` | `/api/games/search` | Search prices and return full analysis JSON |
 | `POST` | `/api/games/search-id-steam` | Resolve Steam IDs for a list of games |
 | `POST` | `/api/lists/run` | Async: crawl a Steam user's trade lists and run full analysis |
+| `POST` | `/api/suppliers/find-new` | Async, queued: scan SteamTrades for new suppliers offering games for TF2 keys |
 
 <details>
 <summary><strong>POST /api/games/research — request body</strong></summary>
@@ -217,6 +218,24 @@ Returns `202 Accepted` immediately. When analysis completes, POSTs to `callback_
   "status": "completed",
   "result": "<structured game data>"
 }
+```
+
+</details>
+
+<details>
+<summary><strong>POST /api/suppliers/find-new</strong></summary>
+
+No request body. Requires `STEAMTRADES_SESSION`, `SISTEMA_ESTOQUE_URL` and `EXTERNAL_SECRET` to be configured on the server.
+
+**Response** — `202`:
+```json
+{ "success": true, "status": "queued" }
+```
+Returns as soon as the scan is queued — scanning up to 100 SteamTrades pages and researching prices per topic can take minutes. Runs in the background; eligible suppliers are commented on directly on SteamTrades once the Sistema Estoque approves. A failure during background processing is currently only logged.
+
+**Response** — `500`, when required env vars are missing:
+```json
+{ "error": "<missing env var message>" }
 ```
 
 </details>

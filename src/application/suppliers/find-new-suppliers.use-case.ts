@@ -8,7 +8,7 @@ import { formatResult } from "@/domain/suppliers/profitability.js";
 const MAX_PAGES = 100;
 const MAX_CONSECUTIVE_INACTIVE = 5;
 const MIN_POPULARITY = 30;
-const MAX_GAMES_PER_SUPPLIER = 50;
+const MAX_GAMES_PER_SUPPLIER = 1000;
 
 export type FindNewSuppliersInput = {
     paginator: TradePaginator;

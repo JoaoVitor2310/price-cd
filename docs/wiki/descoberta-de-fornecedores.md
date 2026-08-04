@@ -27,7 +27,7 @@ Varre as páginas públicas de anúncios do SteamTrades procurando pessoas dispo
 | Popularidade mínima | 30 jogadores simultâneos (fixo no código) | Abaixo disso, o jogo é ignorado mesmo que o preço seja bom | Traz menos jogos, com menos chance de vender | Traz mais jogos, mas mais difíceis de vender (menos populares) |
 | Quantas páginas varrer por execução | até 100 | Até onde a varredura vai antes de desistir | Encontra fornecedores mais "antigos" na lista, mas demora mais | Mais rápido, mas pode não escanear a lista toda |
 | Quantos anúncios inativos seguidos até parar | 5 | Quando parar de virar página assumindo que acabaram os anúncios recentes | Mais tolerante a "buracos" na lista, mas demora mais | Para mais cedo — risco de não ver anúncios recentes que vieram depois de um lote inativo |
-| Quantos jogos analisar por fornecedor | até 50 | Fornecedores com listas gigantes só têm os 50 primeiros jogos pesquisados | Cobre listas maiores, mas demora mais por fornecedor | Mais rápido, mas ignora o resto da lista de fornecedores com muitos jogos |
+| Quantos jogos analisar por fornecedor | até 1000 | Fornecedores com listas gigantes só têm os 1000 primeiros jogos pesquisados | Cobre listas maiores, mas demora mais por fornecedor | Mais rápido, mas ignora o resto da lista de fornecedores com muitos jogos |
 | Exige aceitar TF2 Keys | Sempre sim | Só seguimos com fornecedores que topem TF2 Keys como pagamento — mesmo que aceitem outras formas de pagamento junto | — | — |
 | Exige oferta ativa na Gamivo | Sempre sim, fixo no código | Só considera jogos que têm oferta especificamente na Gamivo, não qualquer preço do AllKeyShop | — | — |
 
