@@ -1,4 +1,5 @@
 import { FindNewSuppliersUseCase } from "@/application/suppliers/find-new-suppliers.use-case.js";
+import { EnqueueFindNewSuppliersUseCase } from "@/application/suppliers/enqueue-find-new-suppliers.use-case.js";
 import { PuppeteerTradePaginator } from "@/infrastructure/suppliers/puppeteer-trade-paginator.js";
 import { PuppeteerTopicScraper } from "@/infrastructure/suppliers/puppeteer-topic-scraper.js";
 import { PuppeteerCommentPoster } from "@/infrastructure/suppliers/puppeteer-comment-poster.js";
@@ -7,9 +8,11 @@ import { SearchGamesUseCase } from "@/application/games/search-games.use-case.js
 import { SteamChartsPopularityFetcher } from "@/infrastructure/games/steam-charts-popularity-fetcher.js";
 import { AllKeyShopPriceFetcher } from "@/infrastructure/games/allkeyshop-price-fetcher.js";
 import { getSuppliersSession, cleanupSuppliersSession } from "@/lib/puppeteer-browser.js";
+import { LimitedConcurrencyScheduler } from "@/infrastructure/background/limited-concurrency.scheduler.js";
 import type { GameSearcher } from "@/application/lists/ports/list-run.ports.js";
 import type { GameAnalysisResult, SearchGamesRequest } from "@/application/games/game.types.js";
 import type { FindNewSuppliersResult } from "@/application/suppliers/find-new-suppliers.use-case.js";
+import type { BackgroundScheduler } from "@/application/shared/ports/background-scheduler.port.js";
 
 /**
  * Adapta `SearchGamesUseCase` para a interface `GameSearcher` esperada pelo use case de suppliers.
@@ -89,4 +92,33 @@ export function createFindNewSuppliersRunner() {
             }
         },
     };
+}
+
+/**
+ * Fila própria da descoberta de fornecedores, separada das filas de `lists` e `research`:
+ * uma varredura longa do SteamTrades não deve competir por concorrência com outros fluxos.
+ * Concorrência 1 — o scraping já é serializado por um único browser Puppeteer compartilhado.
+ */
+let _scheduler: BackgroundScheduler | undefined;
+
+function getScheduler(): BackgroundScheduler {
+    if (!_scheduler) {
+        _scheduler = new LimitedConcurrencyScheduler(1);
+    }
+    return _scheduler;
+}
+
+const enqueueFindNewSuppliersUseCase = new EnqueueFindNewSuppliersUseCase();
+
+/**
+ * Enfileira a descoberta de fornecedores e retorna imediatamente.
+ * A montagem das dependências (e a validação das env vars) acontece aqui, ainda
+ * no ciclo da requisição — falha cedo se a configuração estiver incompleta,
+ * porque depois de enfileirado não há mais ninguém para receber o erro.
+ */
+export function enqueueFindNewSuppliersService(): Promise<void> {
+    return enqueueFindNewSuppliersUseCase.execute({
+        scheduler: getScheduler(),
+        runner: createFindNewSuppliersRunner(),
+    });
 }
