@@ -41,7 +41,7 @@ afterEach(() => {
 describe("toOfferPrices", () => {
 	it("returns an empty array when no price matches the region", () => {
 		const prices = [makePrice(4.99, { region: "2", merchant: 218 })];
-		expect(toOfferPrices(prices, "1", "218")).toHaveLength(0);
+		expect(toOfferPrices(prices, "1", "", "218")).toHaveLength(0);
 	});
 
 	it("filters out prices from other regions", () => {
@@ -49,32 +49,42 @@ describe("toOfferPrices", () => {
 			makePrice(0.5, { region: "2", merchant: 218 }),
 			makePrice(3.0, { region: "1", merchant: 218 }),
 		];
-		const result = toOfferPrices(prices, "1", "218");
+		const result = toOfferPrices(prices, "1", "", "218");
+		expect(result).toHaveLength(1);
+		expect(result[0].originalPrice).toBe(3.0);
+	});
+
+	it("filters out prices from other editions", () => {
+		const prices = [
+			makePrice(0.5, { region: "1", edition: "7", merchant: 218 }),
+			makePrice(3.0, { region: "1", edition: "1", merchant: 218 }),
+		];
+		const result = toOfferPrices(prices, "1", "1", "218");
 		expect(result).toHaveLength(1);
 		expect(result[0].originalPrice).toBe(3.0);
 	});
 
 	it("tags the matching merchant code as Gamivo", () => {
 		const prices = [makePrice(0.6, { region: "1", merchant: 218 })];
-		const result = toOfferPrices(prices, "1", "218");
+		const result = toOfferPrices(prices, "1", "", "218");
 		expect(result[0].merchant).toBe(GAMIVO_MERCHANT_NAME);
 	});
 
 	it("leaves non-Gamivo merchants as their raw code", () => {
 		const prices = [makePrice(1.39, { region: "1", merchant: 61 })];
-		const result = toOfferPrices(prices, "1", "218");
+		const result = toOfferPrices(prices, "1", "", "218");
 		expect(result[0].merchant).toBe("61");
 	});
 
 	it("never tags anything as Gamivo when gamivoMerchantKey is null", () => {
 		const prices = [makePrice(0.6, { region: "1", merchant: 218 })];
-		const result = toOfferPrices(prices, "1", null);
+		const result = toOfferPrices(prices, "1", "", null);
 		expect(result[0].merchant).toBe("218");
 	});
 
 	it("preserves other Price fields (e.g. id) needed downstream", () => {
 		const prices = [makePrice(0.6, { region: "1", merchant: 218, id: 133283219 })];
-		const result = toOfferPrices(prices, "1", "218");
+		const result = toOfferPrices(prices, "1", "", "218");
 		expect(result[0].id).toBe(133283219);
 	});
 });

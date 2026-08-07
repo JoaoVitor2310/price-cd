@@ -13,7 +13,7 @@ export const clearString = (stringToSearch: string): string => {
 	// Remove "-", e, quando "-", remove também o espaço subsequente, colocando tudo em minúsculas para melhor reconhecimento dos jogos
 	stringToSearch = stringToSearch.replace(/-\s?/g, "").toLowerCase();
 
-	// Remove "™", ":", "®", "!", "?", ".", "(", ")", "[", "]", "{", "}", "&", "*", "+", "^" e 
+	// Remove "™", ":", "®", "!", "?", ".", "(", ")", "[", "]", "{", "}", "&", "*", "+", "^" e
 	stringToSearch = stringToSearch.replace(/[™:®!?().[\]{}&*+^;]/g, "");
 
 	// Remove "|" e qualquer espaço após ele
@@ -63,7 +63,7 @@ const RomantoInt = (romanStr: string): number => {
 	}
 
 	return num;
-}
+};
 
 const expandKNumbers = (text: string): string => {
 	return text.replace(/\b(\d+(?:\.\d+)?)k\b/gi, (_, numStr: string) => {
@@ -71,11 +71,11 @@ const expandKNumbers = (text: string): string => {
 		const expanded = num * 1000;
 		return expanded.toString();
 	});
-}
+};
 
 /*
-** Removes Roman numerals from a string and normalizes spaces.
-*/
+ ** Removes Roman numerals from a string and normalizes spaces.
+ */
 export const clearRomanNumber = (stringToSearch: string): string => {
 	const romanNumeralsRegex = /\b[IVXLCDM]+\b/g;
 
@@ -87,7 +87,6 @@ export const clearRomanNumber = (stringToSearch: string): string => {
 
 	return normalizedString;
 };
-
 
 /**
  * Categorias canônicas de edição. Cada categoria mapeia para um ou mais padrões
@@ -104,13 +103,21 @@ type EditionTier = { category: string; patterns: RegExp[] };
 
 const EDITION_TIERS: EditionTier[] = [
 	{ category: "definitive", patterns: [/\bdefinitive\b/i] },
-	{ category: "goty", patterns: [/\bgame of the year\b/i, /\bgoty\b/i, /\bg\.o\.t\.y\b/i] },
+	{
+		category: "goty",
+		patterns: [/\bgame of the year\b/i, /\bgoty\b/i, /\bg\.o\.t\.y\b/i],
+	},
 	{ category: "deluxe", patterns: [/\bdeluxe\b/i] },
 	{ category: "premium", patterns: [/\bpremium\b/i] },
 	{ category: "bundle", patterns: [/\bbundle\b/i] },
 	{ category: "special", patterns: [/\bspecial\b/i] },
 	{ category: "complete", patterns: [/\bcomplete\b/i] },
 	{ category: "day one", patterns: [/\bday\s?one\b/i] },
+	{ category: "remastered", patterns: [/\bremastered\b/i] },
+	{ category: "anniversary", patterns: [/\banniversary\b/i] },
+	{ category: "ultimate", patterns: [/\bultimate\b/i] },
+	{ category: "enhanced", patterns: [/\benhanced\b/i] },
+	{ category: "collector's", patterns: [/\bcollector['’]?s\b/i] },
 ];
 
 /**
@@ -123,7 +130,12 @@ const EDITION_TIERS: EditionTier[] = [
  *   busca pelo jogo base — por isso `standard` é ruído, não categoria.
  * - tags de região são tratadas à parte por `getRegion`/`removeRegion`.
  */
-const EDITION_NAME_NOISE: RegExp[] = [/\bedition\b/i, /\bstandard\b/i, /\brow\b/i, /\beu\b/i];
+const EDITION_NAME_NOISE: RegExp[] = [
+	/\bedition\b/i,
+	/\bstandard\b/i,
+	/\brow\b/i,
+	/\beu\b/i,
+];
 
 const stripAll = (str: string, patterns: RegExp[]): string => {
 	let result = str;
@@ -150,8 +162,7 @@ export const clearEdition = (stringToSearch: string): string => {
 
 export const clearQuantity = (stringToSearch: string): string => {
 	return stringToSearch.replace(/\bx\d+\b|\b\d+x\b/gi, "");
-}
-
+};
 
 export const clearDLC = (stringToSearch: string): string => {
 	// Combined regex pattern to match all DLC-related terms as whole words
@@ -165,7 +176,6 @@ export const clearDLC = (stringToSearch: string): string => {
 
 	return normalizedString;
 };
-
 
 /**
  * Retorna o conjunto de categorias de edição CANÔNICAS presentes no nome (ex.:
@@ -211,7 +221,6 @@ export const removeRegion = (str: string): string => {
 	return str.replace(regionRegex, "");
 };
 
-
 export const searchRegion = (stringToSearch: string) => {
 	const dlcRegex = /\bdlc\b/gi;
 	const expansionRegex = /\bexpansion\b/gi;
@@ -227,4 +236,3 @@ export const searchRegion = (stringToSearch: string) => {
 
 	return normalizedString;
 };
-
