@@ -1,11 +1,48 @@
 import * as cheerio from "cheerio";
-import { clearDLC, clearEdition, clearQuantity, clearString } from "@/helpers/clear-string.js";
+import type { FoundGames } from "@/application/games/game.types.js";
+import type { PopularityFetcher } from "@/application/games/ports/game-search.ports.js";
+import {
+	clearDLC,
+	clearEdition,
+	clearQuantity,
+	clearString,
+} from "@/helpers/clear-string.js";
 import {
 	STEAM_CHARTS_BASE_URL,
 	STEAM_CHARTS_SEARCH_URL,
 } from "@/helpers/constants.js";
-import type { PopularityFetcher } from "@/application/games/ports/game-search.ports.js";
-import type { FoundGames } from "@/application/games/game.types.js";
+
+/**
+ * Exceções pontuais onde o nome escrito pelo revendedor não bate com o
+ * listing do SteamCharts, mas é o MESMO jogo em termos de popularidade — ex.:
+ * "Prey 2017" existe pra distinguir do Prey de 2006 (mesmo caso do AllKeyShop
+ * com "Skyrim Special Edition", ver docs/adr/0003-*), mas o SteamCharts só
+ * lista o jogo como "Prey". Não é uma regra geral de remover ano/sufixo do
+ * nome — só sabemos, caso a caso, que estas duas strings são o mesmo jogo.
+ * Vale só pra esta etapa (popularidade); não afeta a busca de preço.
+ */
+const POPULARITY_NAME_ALIASES: Record<string, string> = {
+	"prey 2017": "Prey",
+};
+
+// Exportado só pra teste alcançar direto — não faz parte da superfície pública
+// deste módulo (o resto do app só importa `SteamChartsPopularityFetcher`).
+export const resolvePopularitySearchName = (gameString: string): string => {
+	return POPULARITY_NAME_ALIASES[gameString.trim().toLowerCase()] ?? gameString;
+};
+
+/**
+ * Nome usado pra buscar/casar no SteamCharts: edição é removida ANTES do
+ * apelido ser consultado — "Prey 2017 Deluxe" só bate com o apelido "Prey
+ * 2017" depois que "Deluxe" já saiu, senão a busca por string exata do
+ * apelido nunca casa. A popularidade é a mesma pra toda edição do mesmo jogo.
+ */
+export const normalizePopularitySearchName = (gameString: string): string => {
+	let clean = clearEdition(gameString);
+	clean = resolvePopularitySearchName(clean);
+	clean = clearQuantity(clean);
+	return clean;
+};
 
 const processGame = async (
 	gameString: string,
@@ -16,21 +53,25 @@ const processGame = async (
 			`🔄 [INFO] Processing game ${originalIndex + 1}: ${gameString}`,
 		);
 
-		let gameStringClean: string = gameString;
-		gameStringClean = clearEdition(gameStringClean);
-		gameStringClean = clearQuantity(gameStringClean);
+		let gameStringClean: string = normalizePopularitySearchName(gameString);
 		const params = new URLSearchParams({ q: gameStringClean });
 
 		let searchHtml: string;
 		try {
-			const searchRes = await fetch(`${STEAM_CHARTS_SEARCH_URL}?${params.toString()}`);
+			const searchRes = await fetch(
+				`${STEAM_CHARTS_SEARCH_URL}?${params.toString()}`,
+			);
 			if (!searchRes.ok) {
-				console.error(`❌ [ERROR] Failed to search SteamCharts for "${gameString}"`);
+				console.error(
+					`❌ [ERROR] Failed to search SteamCharts for "${gameString}"`,
+				);
 				return null;
 			}
 			searchHtml = await searchRes.text();
 		} catch (error) {
-			console.error(`❌ [ERROR] Failed to search SteamCharts for "${gameString}"`);
+			console.error(
+				`❌ [ERROR] Failed to search SteamCharts for "${gameString}"`,
+			);
 			return null;
 		}
 
@@ -73,12 +114,16 @@ const processGame = async (
 		try {
 			const detailsRes = await fetch(`${STEAM_CHARTS_BASE_URL}${id_steam}`);
 			if (!detailsRes.ok) {
-				console.error(`❌ [ERROR] Failed to fetch game details for "${gameString}"`);
+				console.error(
+					`❌ [ERROR] Failed to fetch game details for "${gameString}"`,
+				);
 				return null;
 			}
 			detailsHtml = await detailsRes.text();
 		} catch (error) {
-			console.error(`❌ [ERROR] Failed to fetch game details for "${gameString}"`);
+			console.error(
+				`❌ [ERROR] Failed to fetch game details for "${gameString}"`,
+			);
 			return null;
 		}
 
@@ -100,7 +145,10 @@ const processGame = async (
 			return null;
 		}
 
-		const popularity = Number.parseInt((popularity24hText as string).replace(/,/g, ""), 10);
+		const popularity = Number.parseInt(
+			(popularity24hText as string).replace(/,/g, ""),
+			10,
+		);
 		console.log(
 			`👥 [INFO] Found popularity: ${popularity} for "${gameString}"`,
 		);
@@ -139,7 +187,9 @@ const searchSteamCharts = async (
 	);
 
 	if (minPopularity === 0) {
-		console.log("⚡ [INFO] minPopularity is 0, returning all games without popularity check");
+		console.log(
+			"⚡ [INFO] minPopularity is 0, returning all games without popularity check",
+		);
 		return gamesToSearch.map((gameName, index) => ({
 			id: index,
 			name: gameName,
@@ -177,7 +227,10 @@ const searchSteamCharts = async (
 };
 
 export class SteamChartsPopularityFetcher implements PopularityFetcher {
-	async fetch(gameNames: string[], minPopularity: number): Promise<FoundGames[]> {
+	async fetch(
+		gameNames: string[],
+		minPopularity: number,
+	): Promise<FoundGames[]> {
 		return searchSteamCharts(gameNames, minPopularity);
 	}
 }

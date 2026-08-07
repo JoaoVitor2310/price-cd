@@ -9,7 +9,7 @@ import { scrapSearchResults, scrapGamePage, extractGamivoSlug } from "@/infrastr
 import type { SearchResult } from "@/infrastructure/games/allkeyshop-html-parser.js";
 import type { PriceFetcher } from "@/application/games/ports/game-search.ports.js";
 import type { FoundGames } from "@/application/games/game.types.js";
-import type { Merchants, Price, Regions } from "@/infrastructure/games/allkeyshop.types.js";
+import type { Editions, Merchants, Price, Regions } from "@/infrastructure/games/allkeyshop.types.js";
 import { fetchWithRetry } from "@/lib/fetch-with-retry.js";
 import { gotoWithRetry } from "@/lib/puppeteer-goto-with-retry.js";
 
@@ -39,6 +39,28 @@ const findGamivoMerchantKey = (merchants: Merchants): string | null => {
     return Object.keys(merchants).find(key => merchants[key].name === GAMIVO_MERCHANT_NAME) ?? null;
 };
 
+const editionKeywordsMatch = (a: Set<string>, b: Set<string>): boolean =>
+    [...a].every((keyword) => b.has(keyword)) && [...b].every((keyword) => a.has(keyword));
+
+/**
+ * Resolve o id de edição do AllKeyShop (`editions[id].name`) que corresponde às
+ * palavras de edição encontradas no nome pesquisado. Sem palavra de edição no
+ * nome, procura a edição "Standard" pelo nome literal em vez de casar por Set
+ * vazio — o AllKeyShop tem edições sem tier mapeado (ex.: "Bonus") que também
+ * dariam Set vazio e causariam falso positivo.
+ */
+export const findEditionKey = (editions: Editions, gameNameKeywords: Set<string>): string | null => {
+    if (gameNameKeywords.size === 0) {
+        return Object.keys(editions).find(
+            (key) => editions[key].name.trim().toLowerCase() === "standard"
+        ) ?? null;
+    }
+
+    return Object.keys(editions).find(
+        (key) => editionKeywordsMatch(hasEdition(editions[key].name), gameNameKeywords)
+    ) ?? null;
+};
+
 const normalizeForMatching = (name: string): string => {
     let clean = clearEdition(name);
     clean = clearString(clean);
@@ -54,9 +76,9 @@ const normalizeForMatching = (name: string): string => {
 
 type NormalizedOffer = Omit<Price, "merchant"> & OfferPrice;
 
-export const toOfferPrices = (prices: Price[], regionKey: string, gamivoMerchantKey: string | null): NormalizedOffer[] => {
+export const toOfferPrices = (prices: Price[], regionKey: string, editionKey: string, gamivoMerchantKey: string | null): NormalizedOffer[] => {
     return prices
-        .filter(p => String(p.region) === regionKey)
+        .filter(p => String(p.region) === regionKey && String(p.edition) === editionKey)
         .map(p => ({
             ...p,
             merchant: gamivoMerchantKey != null && Number(p.merchant) === Number(gamivoMerchantKey)
@@ -65,25 +87,36 @@ export const toOfferPrices = (prices: Price[], regionKey: string, gamivoMerchant
         }));
 };
 
+/**
+ * Casa o jogo pesquisado contra os resultados da busca do AllKeyShop pelo nome
+ * base (edição ignorada) — a busca em si nunca leva palavra de edição na query,
+ * então o título do resultado normalmente também não reflete a edição (ela mora
+ * dentro da página, ver `findEditionKey`).
+ *
+ * A única exceção real são jogos onde a edição é um PRODUTO separado no
+ * catálogo (ex.: "Skyrim" 2011 vs "Skyrim Special Edition" 2021 — remaster com
+ * página própria), que aparecem como candidatos distintos com o mesmo nome
+ * base. Nesse caso — e só nesse caso — a palavra de edição desempata: prefere
+ * o candidato cujo título bate exatamente com a edição pedida; sem candidato
+ * único e sem edição exata, cai no primeiro (ordem de relevância do próprio
+ * AllKeyShop).
+ */
 export const matchSearchResult = (gameName: string, searchResults: SearchResult[]): { link: string; name: string } | null => {
     const gameNameClean = normalizeForMatching(gameName);
     const gameNameKeywords = hasEdition(gameName);
 
-    for (const searchResult of searchResults) {
-        const searchResultKeywords = hasEdition(searchResult.name);
+    const candidates = searchResults.filter(
+        (searchResult) => normalizeForMatching(searchResult.name) === gameNameClean
+    );
 
-        const editionMismatch =
-            ![...gameNameKeywords].every((keyword) => searchResultKeywords.has(keyword)) ||
-            ![...searchResultKeywords].every((keyword) => gameNameKeywords.has(keyword));
+    if (candidates.length === 0) return null;
 
-        if (editionMismatch) continue;
+    const exactEditionMatch = candidates.find(
+        (candidate) => editionKeywordsMatch(hasEdition(candidate.name), gameNameKeywords)
+    );
 
-        if (normalizeForMatching(searchResult.name) === gameNameClean) {
-            return { link: searchResult.link, name: searchResult.name };
-        }
-    }
-
-    return null;
+    const match = exactEditionMatch ?? candidates[0];
+    return { link: match.link, name: match.name };
 };
 
 export const fetchGamivoSlug = async (offerId: number): Promise<string | null> => {
@@ -137,6 +170,7 @@ const searchAllKeyShop = async (
                 console.log(`🔍 [INFO] Searching AllKeyShop ${index + 1} for: ${game.name}`);
 
                 let searchString = game.name;
+                searchString = clearEdition(searchString);
                 searchString = clearQuantity(searchString);
                 searchString = new URLSearchParams({ search_name: searchString }).toString();
 
@@ -186,8 +220,14 @@ const searchAllKeyShop = async (
                     continue;
                 }
 
+                const editionKey = findEditionKey(gamePageData.editions, hasEdition(game.name));
+                if (!editionKey) {
+                    console.log(`⚠️ [INFO] Edition not found for "${game.name}".`);
+                    continue;
+                }
+
                 const gamivoMerchantKey = findGamivoMerchantKey(gamePageData.merchants);
-                const offers = toOfferPrices(gamePageData.prices, regionKey, gamivoMerchantKey);
+                const offers = toOfferPrices(gamePageData.prices, regionKey, editionKey, gamivoMerchantKey);
 
                 const price = bestOfferPrice(offers, checkGamivoOffer);
                 if (!price) continue;

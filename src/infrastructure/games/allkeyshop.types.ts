@@ -41,8 +41,17 @@ export interface Merchants {
 	[key: string]: Merchant;
 }
 
+export interface Edition {
+	name: string;
+}
+
+export interface Editions {
+	[key: string]: Edition;
+}
+
 export interface GameData {
 	prices: Price[];
 	regions: Regions;
 	merchants: Merchants;
+	editions: Editions;
 }

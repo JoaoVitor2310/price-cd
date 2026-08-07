@@ -35,3 +35,13 @@ _Avoid_: Importar (verbo reservado para a ação do Sistema Estoque, ver abaixo)
 **Importar**:
 Ação do Sistema Estoque de finalizar uma Trade concretizada, colocando as keys recebidas no Estoque de fato. Ação interna do Sistema Estoque — o price-cd não participa dela, apesar do método `GameTradeImporter.import()` usar esse verbo (nomenclatura a corrigir, ver `docs/IMPROVEMENTS.md`).
 _Avoid_: usar para o envio de jogos precificados pelo price-cd — isso é "Criar Trade"
+
+### Catálogo de jogos (AllKeyShop)
+
+**Edição**:
+Variação de preço dentro do MESMO produto no AllKeyShop (Standard, Deluxe, Bundle, Dayone, etc.). Nunca aparece como um resultado de busca separado — a busca sempre ignora edição, e a edição pedida só é resolvida depois de já se estar no jogo certo. Ver `docs/adr/0003-edicao-resolvida-na-pagina-nao-na-busca.md`.
+_Avoid_: usar para um remaster/relançamento com produto próprio — isso é Versão
+
+**Versão**:
+Relançamento de um jogo que o AllKeyShop trata como PRODUTO separado no catálogo — resultado de busca próprio — mesmo compartilhando o nome-base com o jogo original (ex.: "Skyrim" 2011 vs "Skyrim Special Edition" 2021). A palavra de edição só entra pra desempatar entre Versões candidatas com o mesmo nome-base, nunca para filtrar Edições.
+_Avoid_: Edição (reservado para variação de preço dentro do mesmo produto, ver acima), Remaster

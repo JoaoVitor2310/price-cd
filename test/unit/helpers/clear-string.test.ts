@@ -1,10 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-	clearString,
-	clearEdition,
 	clearDLC,
-	hasEdition,
+	clearEdition,
+	clearString,
 	getRegion,
+	hasEdition,
 	removeRegion,
 } from "@/helpers/clear-string.js";
 
@@ -119,6 +119,27 @@ describe("clearEdition", () => {
 		expect(clearEdition("Game Day One Edition").trim()).toBe("Game");
 	});
 
+	it("removes 'Remastered'", () => {
+		expect(clearEdition("Game Remastered").trim()).toBe("Game");
+	});
+
+	it("removes 'Anniversary'", () => {
+		expect(clearEdition("Game Anniversary Edition").trim()).toBe("Game");
+	});
+
+	it("removes 'Ultimate'", () => {
+		expect(clearEdition("Game Ultimate Edition").trim()).toBe("Game");
+	});
+
+	it("removes 'Enhanced'", () => {
+		expect(clearEdition("Game Enhanced Edition").trim()).toBe("Game");
+	});
+
+	it("removes 'Collector's' with or without the apostrophe", () => {
+		expect(clearEdition("Game Collector's Edition").trim()).toBe("Game");
+		expect(clearEdition("Game Collectors Edition").trim()).toBe("Game");
+	});
+
 	it("removes 'ROW' as standalone word", () => {
 		expect(clearEdition("Game ROW").trim()).toBe("Game");
 	});
@@ -220,14 +241,16 @@ describe("hasEdition", () => {
 	it("asymmetric match: a premium tier does not match a different tier", () => {
 		const a = hasEdition("Game Deluxe Edition");
 		const b = hasEdition("Game Complete Edition");
-		const allMatch = [...a].every((k) => b.has(k)) && [...b].every((k) => a.has(k));
+		const allMatch =
+			[...a].every((k) => b.has(k)) && [...b].every((k) => a.has(k));
 		expect(allMatch).toBe(false);
 	});
 
 	it("asymmetric match: a premium tier does not match the base version (standard)", () => {
 		const a = hasEdition("Game Deluxe Edition");
 		const b = hasEdition("Game Standard Edition");
-		const allMatch = [...a].every((k) => b.has(k)) && [...b].every((k) => a.has(k));
+		const allMatch =
+			[...a].every((k) => b.has(k)) && [...b].every((k) => a.has(k));
 		expect(allMatch).toBe(false);
 	});
 });

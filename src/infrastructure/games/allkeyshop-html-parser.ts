@@ -36,8 +36,7 @@ export const scrapGamePage = (html: string): GameData | null => {
     if (!match) return null;
 
     try {
-        const jsonString = match[1];
-        const json = JSON.parse(jsonString);
+        const json = JSON.parse(match[1]);
         return json;
     } catch (err) {
         console.error('Erro ao fazer parse do JSON:', err);
