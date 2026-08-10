@@ -4,6 +4,7 @@ import type { FindNewSuppliersInput } from "@/application/suppliers/find-new-sup
 import type { TopicData } from "@/application/suppliers/ports/topic-scraper.port.js";
 import type { ProspectResult } from "@/application/suppliers/ports/profitability-checker.port.js";
 import type { GameAnalysisResult } from "@/application/games/game.types.js";
+import { TF2_SEARCH_TERMS } from "@/domain/suppliers/tf2-key-matching.js";
 
 // ---------------------------------------------------------------------------
 // Builders
@@ -39,10 +40,15 @@ function makeGameResult(gameOverrides: Partial<GameAnalysisResult["games"][numbe
     };
 }
 
+/** Item de listagem retornado por `TradePaginator.getTopicsFromPage`. */
+function makeTopicRef(code: string, isClosed = false) {
+    return { code, url: `https://steamtrades.com/trade/${code}`, isClosed };
+}
+
 function makeInput(overrides: Partial<FindNewSuppliersInput> = {}): FindNewSuppliersInput {
     const paginator = {
         getTopicsFromPage: vi.fn()
-            .mockResolvedValueOnce([{ code: "ABC", url: "https://steamtrades.com/trade/ABC" }])
+            .mockResolvedValueOnce([makeTopicRef("ABC")])
             .mockResolvedValue([]),
     };
     const scraper = { scrape: vi.fn().mockResolvedValue(makeTopic()) };
@@ -253,23 +259,145 @@ describe("FindNewSuppliersUseCase", () => {
 
     // --- pagination ---
 
-    it("stops pagination after MAX_CONSECUTIVE_INACTIVE inactive topics", async () => {
+    it("stops pagination for each search term once a page returns no topics", async () => {
         const input = makeInput({
             paginator: {
-                getTopicsFromPage: vi.fn().mockResolvedValue([
-                    { code: "T1", url: "https://steamtrades.com/trade/T1" },
-                    { code: "T2", url: "https://steamtrades.com/trade/T2" },
-                    { code: "T3", url: "https://steamtrades.com/trade/T3" },
-                    { code: "T4", url: "https://steamtrades.com/trade/T4" },
-                    { code: "T5", url: "https://steamtrades.com/trade/T5" },
-                ]),
+                getTopicsFromPage: vi.fn().mockImplementation(async (page: number) =>
+                    page === 1 ? [makeTopicRef("T1"), makeTopicRef("T2")] : [],
+                ),
+            },
+        });
+
+        const result = await useCase.execute(input);
+
+        // Uma página com tópicos + uma página vazia (que interrompe) por termo de busca.
+        expect(result.pagesVisited).toBe(TF2_SEARCH_TERMS.length * 2);
+    });
+
+    it("stops processing collected topics after MAX_CONSECUTIVE_INACTIVE inactive ones", async () => {
+        const topics = ["T1", "T2", "T3", "T4", "T5"].map((code) => makeTopicRef(code));
+        const input = makeInput({
+            paginator: {
+                getTopicsFromPage: vi.fn().mockImplementation(async (page: number) => (page === 1 ? topics : [])),
             },
             scraper: { scrape: vi.fn().mockResolvedValue(makeTopic({ isInactive: true })) },
         });
 
         const result = await useCase.execute(input);
 
-        expect(result.pagesVisited).toBe(1);
+        expect(result.topicsProcessed).toBe(5);
         expect(input.commentPoster.post).not.toHaveBeenCalled();
+    });
+
+    // --- closed listings (cadeado na listagem, distinto de isInactive do tópico aberto) ---
+
+    it("does not collect a closed topic for processing", async () => {
+        const input = makeInput({
+            paginator: {
+                getTopicsFromPage: vi.fn()
+                    .mockResolvedValueOnce([makeTopicRef("CLOSED", true), makeTopicRef("OPEN", false)])
+                    .mockResolvedValue([]),
+            },
+        });
+
+        await useCase.execute(input);
+
+        expect(input.scraper.scrape).toHaveBeenCalledTimes(1);
+        expect(input.scraper.scrape).toHaveBeenCalledWith("https://steamtrades.com/trade/OPEN");
+    });
+
+    it("stops paginating a search term after MAX_CONSECUTIVE_CLOSED closed listings in a row, without fetching further pages", async () => {
+        const closedTopics = Array.from({ length: 5 }, (_, i) => makeTopicRef(`CLOSED${i + 1}`, true));
+        const getTopicsFromPage = vi.fn().mockResolvedValue(closedTopics);
+        const input = makeInput({ paginator: { getTopicsFromPage } });
+
+        const result = await useCase.execute(input);
+
+        // Um fetch por termo — os 5 fechados já vêm na primeira página, então a segunda nunca é buscada.
+        expect(getTopicsFromPage).toHaveBeenCalledTimes(TF2_SEARCH_TERMS.length);
+        expect(result.pagesVisited).toBe(TF2_SEARCH_TERMS.length);
+        expect(input.scraper.scrape).not.toHaveBeenCalled();
+    });
+
+    it("resets the consecutive-closed counter when an open topic appears in between", async () => {
+        const topics = [
+            makeTopicRef("C1", true),
+            makeTopicRef("C2", true),
+            makeTopicRef("C3", true),
+            makeTopicRef("C4", true),
+            makeTopicRef("OPEN", false),
+            makeTopicRef("C5", true),
+            makeTopicRef("C6", true),
+            makeTopicRef("C7", true),
+            makeTopicRef("C8", true),
+        ];
+        const input = makeInput({
+            paginator: {
+                getTopicsFromPage: vi.fn().mockResolvedValueOnce(topics).mockResolvedValue([]),
+            },
+        });
+
+        await useCase.execute(input);
+
+        // Nenhuma sequência bate 5 fechados seguidos (o OPEN no meio zera o contador).
+        expect(input.scraper.scrape).toHaveBeenCalledTimes(1);
+        expect(input.scraper.scrape).toHaveBeenCalledWith("https://steamtrades.com/trade/OPEN");
+    });
+
+    // --- search coverage (have=<term>) ---
+
+    it("queries the paginator once per TF2 search-term variant, not just a literal 'tf2' substring", async () => {
+        const getTopicsFromPage = vi.fn().mockResolvedValue([]);
+        const input = makeInput({ paginator: { getTopicsFromPage } });
+
+        await useCase.execute(input);
+
+        const termsQueried = new Set(getTopicsFromPage.mock.calls.map(([, searchTerm]) => searchTerm));
+        expect(termsQueried).toEqual(new Set(TF2_SEARCH_TERMS));
+    });
+
+    // --- two-phase collection (bump mitigation) ---
+
+    it("collects topics from every page and every search term before processing any of them", async () => {
+        const callOrder: string[] = [];
+        let uniqueCodeCounter = 0;
+        const paginator = {
+            getTopicsFromPage: vi.fn(async (page: number, searchTerm: string) => {
+                callOrder.push(`page:${page}:${searchTerm}`);
+                if (page > 1) return [];
+                uniqueCodeCounter++;
+                return [makeTopicRef(`T${uniqueCodeCounter}`)];
+            }),
+        };
+        const scraper = {
+            scrape: vi.fn(async (url: string) => {
+                callOrder.push(`scrape:${url}`);
+                return makeTopic();
+            }),
+        };
+        const input = makeInput({ paginator, scraper });
+
+        await useCase.execute(input);
+
+        const firstScrapeIndex = callOrder.findIndex((entry) => entry.startsWith("scrape:"));
+        const pageEntries = callOrder.filter((entry) => entry.startsWith("page:"));
+
+        expect(firstScrapeIndex).toBeGreaterThan(-1);
+        expect(callOrder.slice(0, firstScrapeIndex)).toEqual(pageEntries);
+        // page 1 (com tópico) + page 2 (vazia, interrompe) por termo.
+        expect(pageEntries).toHaveLength(TF2_SEARCH_TERMS.length * 2);
+    });
+
+    it("processes a topic only once even when its code appears on more than one page or search term", async () => {
+        const paginator = {
+            getTopicsFromPage: vi.fn().mockImplementation(async (page: number) =>
+                page === 1 ? [makeTopicRef("DUP")] : [],
+            ),
+        };
+        const input = makeInput({ paginator });
+
+        await useCase.execute(input);
+
+        expect(input.scraper.scrape).toHaveBeenCalledTimes(1);
     });
 });

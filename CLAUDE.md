@@ -22,6 +22,10 @@ Atue sempre como arquiteto de software sênior com conhecimento profundo de Node
 - Ao sugerir onde um novo arquivo deve viver, justifique com base na camada correta da arquitetura
 - Sempre gerar testes para cada alteração feita no projeto e só aceitar depois de executar os testes e passarem todos.
 
+### Commits
+
+`git commit` é feito única e exclusivamente pelo usuário — Claude nunca deve rodar `git commit` (nem `git push`) neste repositório, sob nenhuma circunstância, mesmo que peçam explicitamente para "commitar" no meio de uma tarefa. O trabalho do Claude termina em deixar o working tree pronto: código, testes passando, documentação viva atualizada. Se achar que a mudança está pronta pra virar commit, diga isso e pare — quem decide a mensagem e o momento do commit é o usuário.
+
 ### Documentação viva
 
 Toda documentação `.md` do projeto é **viva**: deve ser atualizada na mesma alteração que a tornou desatualizada, nunca "depois". Documentação errada é pior que documentação ausente — ela é lida como verdade, entra no contexto e propaga o erro. Ao mexer no código, verifique se algum destes arquivos passou a mentir e corrija junto:

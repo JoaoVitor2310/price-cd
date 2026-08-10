@@ -2,6 +2,7 @@ import * as cheerio from "cheerio";
 import { getSuppliersSession } from "@/lib/puppeteer-browser.js";
 import type { TopicScraper, TopicData } from "@/application/suppliers/ports/topic-scraper.port.js";
 import { PAGE_NAVIGATION_TIMEOUT } from "@/infrastructure/suppliers/steamtrades.constants.js";
+import { isWantingTf2Keys } from "@/domain/suppliers/tf2-key-matching.js";
 
 const STEAM_ID_REGEX = /\/user\/(\d+)/i;
 
@@ -25,14 +26,12 @@ export function extractTopicData(html: string): TopicData {
         .map((line) => line.trim())
         .filter(Boolean);
 
-    const TF2_MATCH = /TF2|Team Fortress 2 Key/i;
-    const TF2_NEGATED = /\bno\s+(TF2|Team Fortress 2 Key)/i;
     const wantsTf2Key = $(".want")
         .text()
         .split("\n")
         .map((line) => line.trim())
         .filter(Boolean)
-        .some((line) => TF2_MATCH.test(line) && !TF2_NEGATED.test(line));
+        .some(isWantingTf2Keys);
 
     return { authorName, steamId, games, isInactive, wantsTf2Key };
 }

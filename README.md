@@ -231,7 +231,7 @@ No request body. Requires `STEAMTRADES_SESSION`, `SISTEMA_ESTOQUE_URL` and `EXTE
 ```json
 { "success": true, "status": "queued" }
 ```
-Returns as soon as the scan is queued — scanning up to 100 SteamTrades pages and researching prices per topic can take minutes. Runs in the background; eligible suppliers are commented on directly on SteamTrades once the Sistema Estoque approves. A failure during background processing is currently only logged.
+Returns as soon as the scan is queued — scanning up to 100 SteamTrades pages per TF2-Keys search-term variant (the listing search is already filtered server-side) and researching prices per topic can take minutes. Runs in the background; eligible suppliers are commented on directly on SteamTrades once the Sistema Estoque approves. A failure during background processing is currently only logged.
 
 **Response** — `500`, when required env vars are missing:
 ```json
