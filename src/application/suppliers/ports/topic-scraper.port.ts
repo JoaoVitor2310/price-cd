@@ -8,7 +8,7 @@ export type TopicData = {
     games: string[];
     /** `true` se a trade está marcada como inativa (presença de `.notification.yellow`). */
     isInactive: boolean;
-    /** `true` se a seção `.want` menciona "TF2" ou "Team Fortress 2 Key" sem um "no" precedendo. */
+    /** `true` se a seção `.want` menciona "TF2" ou "Team Fortress 2" sem um "no" precedendo. */
     wantsTf2Key: boolean;
 };
 

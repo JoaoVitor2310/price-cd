@@ -6,7 +6,7 @@ import request from "supertest";
 // ---------------------------------------------------------------------------
 
 const { mockGetTopicsFromPage } = vi.hoisted(() => ({
-	mockGetTopicsFromPage: vi.fn<() => Promise<Array<{ code: string; url: string }>>>(),
+	mockGetTopicsFromPage: vi.fn<() => Promise<Array<{ code: string; url: string; isClosed: boolean }>>>(),
 }));
 
 vi.mock("@/infrastructure/suppliers/puppeteer-trade-paginator.js", () => ({
@@ -41,6 +41,7 @@ vi.mock("@/lib/puppeteer-browser.js", () => ({
 }));
 
 import app from "@/app.js";
+import { TF2_SEARCH_TERMS } from "@/domain/suppliers/tf2-key-matching.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -69,10 +70,10 @@ describe("POST /api/suppliers/find-new", () => {
 	});
 
 	it("returns 202 queued without waiting for the scan to finish", async () => {
-		let resolveTopics: ((topics: Array<{ code: string; url: string }>) => void) | undefined;
+		const resolvers: Array<(topics: Array<{ code: string; url: string; isClosed: boolean }>) => void> = [];
 		mockGetTopicsFromPage.mockImplementation(
 			() => new Promise((resolve) => {
-				resolveTopics = resolve;
+				resolvers.push(resolve);
 			}),
 		);
 
@@ -83,17 +84,22 @@ describe("POST /api/suppliers/find-new", () => {
 		// A varredura ainda não terminou — a página nunca respondeu.
 		expect(mockGetTopicsFromPage).toHaveBeenCalledTimes(1);
 
-		resolveTopics?.([]);
-		await flushBackgroundTasks();
+		// Libera uma busca (termo) por vez até a task em background terminar de fato —
+		// senão ela fica presa ocupando a única vaga do scheduler (concorrência 1) e
+		// trava os testes seguintes, que nunca chegam a rodar.
+		for (let i = 0; i < TF2_SEARCH_TERMS.length; i++) {
+			resolvers.shift()?.([]);
+			await flushBackgroundTasks();
+		}
 	});
 
 	it("runs the scan in the background and stops when a page has no topics", async () => {
-		mockGetTopicsFromPage.mockResolvedValueOnce([]);
+		mockGetTopicsFromPage.mockResolvedValue([]);
 
 		await request(app).post("/api/suppliers/find-new").send();
 		await flushBackgroundTasks();
 
-		expect(mockGetTopicsFromPage).toHaveBeenCalledTimes(1);
+		expect(mockGetTopicsFromPage).toHaveBeenCalledTimes(TF2_SEARCH_TERMS.length);
 	});
 
 	it("logs but does not surface an error when the background scan fails", async () => {
