@@ -13,6 +13,7 @@ import type { GameSearcher } from "@/application/lists/ports/list-run.ports.js";
 import type { GameAnalysisResult, SearchGamesRequest } from "@/application/games/game.types.js";
 import type { FindNewSuppliersResult } from "@/application/suppliers/find-new-suppliers.use-case.js";
 import type { BackgroundScheduler } from "@/application/shared/ports/background-scheduler.port.js";
+import { parseEnvList } from "@/helpers/parse-env-list.js";
 
 /**
  * Adapta `SearchGamesUseCase` para a interface `GameSearcher` esperada pelo use case de suppliers.
@@ -54,7 +55,8 @@ export function createFindNewSuppliersRunner() {
     const externalSecret = process.env.EXTERNAL_SECRET?.trim();
     if (!externalSecret) throw new Error("EXTERNAL_SECRET is not defined in .env");
 
-    const ignoredSteamId = process.env.USER_TO_IGNORE?.trim() ?? null;
+    // Aceita um ou vários Steam IDs: `USER_TO_IGNORE=765...1,765...2`.
+    const ignoredSteamIds = new Set(parseEnvList(process.env.USER_TO_IGNORE));
 
     const useCase = new FindNewSuppliersUseCase();
     const paginator = new PuppeteerTradePaginator();
@@ -85,7 +87,7 @@ export function createFindNewSuppliersRunner() {
                     commentPoster,
                     profitabilityChecker,
                     gameSearcher,
-                    ignoredSteamId,
+                    ignoredSteamIds,
                 });
             } finally {
                 await cleanupSuppliersSession();

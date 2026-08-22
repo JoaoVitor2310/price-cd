@@ -56,7 +56,7 @@ function makeInput(overrides: Partial<FindNewSuppliersInput> = {}): FindNewSuppl
     const profitabilityChecker = { evaluate: vi.fn().mockResolvedValue(makeProspectResult()) };
     const gameSearcher = { search: vi.fn().mockResolvedValue(makeGameResult()) };
 
-    return { paginator, scraper, commentPoster, profitabilityChecker, gameSearcher, ignoredSteamId: null, ...overrides };
+    return { paginator, scraper, commentPoster, profitabilityChecker, gameSearcher, ignoredSteamIds: new Set<string>(), ...overrides };
 }
 
 // ---------------------------------------------------------------------------
@@ -139,12 +139,12 @@ describe("FindNewSuppliersUseCase", () => {
         expect(games[0].gamivo_id).toBeNull();
     });
 
-    // --- ignoredSteamId ---
+    // --- ignoredSteamIds ---
 
-    it("skips a topic whose steamId matches ignoredSteamId", async () => {
+    it("skips a topic whose steamId is in ignoredSteamIds", async () => {
         const ignoredId = "76561199999999999";
         const input = makeInput({
-            ignoredSteamId: ignoredId,
+            ignoredSteamIds: new Set([ignoredId]),
             scraper: { scrape: vi.fn().mockResolvedValue(makeTopic({ steamId: ignoredId })) },
         });
 
@@ -155,17 +155,29 @@ describe("FindNewSuppliersUseCase", () => {
         expect(result.suppliersCommented).toBe(0);
     });
 
-    it("does not skip a topic when ignoredSteamId is null", async () => {
-        const input = makeInput({ ignoredSteamId: null });
+    it("skips a topic matching any id of a multi-id ignore list", async () => {
+        const ignoredId = "76561197777777777";
+        const input = makeInput({
+            ignoredSteamIds: new Set(["76561199999999999", ignoredId, "76561198888888888"]),
+            scraper: { scrape: vi.fn().mockResolvedValue(makeTopic({ steamId: ignoredId })) },
+        });
+
+        await useCase.execute(input);
+
+        expect(input.commentPoster.post).not.toHaveBeenCalled();
+    });
+
+    it("does not skip a topic when ignoredSteamIds is empty", async () => {
+        const input = makeInput({ ignoredSteamIds: new Set<string>() });
 
         await useCase.execute(input);
 
         expect(input.commentPoster.post).toHaveBeenCalledTimes(1);
     });
 
-    it("does not skip a topic with a different steamId", async () => {
+    it("does not skip a topic with a steamId outside the ignore list", async () => {
         const input = makeInput({
-            ignoredSteamId: "76561199999999999",
+            ignoredSteamIds: new Set(["76561199999999999", "76561197777777777"]),
             scraper: { scrape: vi.fn().mockResolvedValue(makeTopic({ steamId: "76561198888888888" })) },
         });
 

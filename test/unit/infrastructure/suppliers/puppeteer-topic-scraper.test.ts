@@ -82,5 +82,61 @@ describe("extractTopicData", () => {
         it("returns false when .want section is absent", () => {
             expect(extractTopicData("<div>no want section</div>").wantsTf2Key).toBe(false);
         });
+
+        it("returns false when .have rejects resellers even though .want asks for TF2", () => {
+            const html = `
+                <div class="have">Half-Life\nNo reseller offers</div>
+                <div class="want">TF2 keys</div>`;
+            expect(extractTopicData(html).wantsTf2Key).toBe(false);
+        });
+
+        it("returns false when .want itself rejects resellers", () => {
+            const html = '<div class="want">TF2 keys\nNot for resellers</div>';
+            expect(extractTopicData(html).wantsTf2Key).toBe(false);
+        });
+
+        it("still lists the games of a topic that rejects resellers", () => {
+            const html = `
+                <div class="have">Half-Life\nNo reseller offers</div>
+                <div class="want">TF2 keys</div>`;
+            expect(extractTopicData(html).games).toEqual(["Half-Life", "No reseller offers"]);
+        });
+
+        it("returns false when .want says it is not interested in TF2 keys", () => {
+            const html = '<div class="want">not interested in TF2 keys</div>';
+            expect(extractTopicData(html).wantsTf2Key).toBe(false);
+        });
+
+        it("stays true when .want refuses another payment method alongside TF2", () => {
+            const html = '<div class="want">TF2 keys - no paypal</div>';
+            expect(extractTopicData(html).wantsTf2Key).toBe(true);
+        });
+
+        it("returns false when .want says it doesn't want tf2", () => {
+            const html = '<div class="want">I don\'t want tf2</div>';
+            expect(extractTopicData(html).wantsTf2Key).toBe(false);
+        });
+
+        it("returns false when .want only rarely accepts TF2 keys", () => {
+            const html = '<div class="want">I rarely accept TF2 keys</div>';
+            expect(extractTopicData(html).wantsTf2Key).toBe(false);
+        });
+
+        it("returns false when another .want line refuses key currency broadly", () => {
+            const html = '<div class="want">TF2 keys\nNo CSGO Keys or similar</div>';
+            expect(extractTopicData(html).wantsTf2Key).toBe(false);
+        });
+
+        it("stays true when .want refuses one other key currency without generalizing", () => {
+            const html = '<div class="want">TF2 keys\nNo CSGO Keys</div>';
+            expect(extractTopicData(html).wantsTf2Key).toBe(true);
+        });
+
+        it("stays true when .have mentions resellers without rejecting them", () => {
+            const html = `
+                <div class="have">Half-Life\nReseller friendly</div>
+                <div class="want">TF2 keys</div>`;
+            expect(extractTopicData(html).wantsTf2Key).toBe(true);
+        });
     });
 });

@@ -22,7 +22,10 @@ Nessa primeira etapa (coleta), o SteamTrades continua devolvendo anúncios além
 |---|---|
 | Anúncio ativo, aceita TF2 Keys, tem jogos com preço, Sistema Estoque aprova | O Sistema Estoque cria a Trade e comentamos no anúncio propondo negociação |
 | Anúncio ativo, aceita TF2 Keys, mas Sistema Estoque não aprova dessa vez | Não comentamos, nenhuma Trade é criada |
-| Anúncio não aceita TF2 Keys | Pulamos, sem gastar tempo pesquisando preço |
+| Anúncio não aceita TF2 Keys — inclusive recusa escrita em texto livre ("not interested in TF2 keys", "I don't want tf2", "no TF2") | Pulamos, sem gastar tempo pesquisando preço |
+| Anúncio aceita TF2 Keys só de vez em quando ("I rarely accept TF2 keys") | Pulamos — na prática é um não, e insistir gasta pesquisa e comentário pra quase sempre ouvir não |
+| Anúncio recusa moeda-key em bloco ("No CSGO Keys or similar") | Pulamos — TF2 Key é justamente "similar" a CSGO Key, então a recusa inclui a gente. Recusar só uma moeda específica ("No CSGO Keys", sem generalizar) NÃO conta: é alguém que quer TF2 e não quer CSGO |
+| Anúncio recusa revendedores (ex.: "No reseller offers", escrito na lista de jogos ou na de pagamento) | Pulamos — o CarcaDeals é revendedor, então nem chega a pesquisar preço |
 | Anúncio fechado (cadeado visível já na página de listagem) | Nem coletamos — nunca chega a ser aberto |
 | Anúncio inativo (só se sabe depois de abrir o anúncio) | Pulamos |
 | 5 anúncios fechados seguidos numa mesma busca (na listagem) | Paramos de virar página pra aquele termo — sinal de que passamos da última página com anúncios de verdade |
@@ -38,7 +41,8 @@ Nessa primeira etapa (coleta), o SteamTrades continua devolvendo anúncios além
 | Quantos anúncios fechados seguidos até parar de paginar | 5 | Quando parar de virar página pra um termo de busca, assumindo que passamos da última página com anúncios de verdade | Mais tolerante a "buracos" de fechados isolados no meio da listagem, mas demora mais | Para mais cedo — risco de nunca coletar anúncios recentes que vieram depois de um lote fechado |
 | Quantos anúncios inativos seguidos até parar de processar | 5 | Quando parar de processar os anúncios já coletados, assumindo que o resto também é antigo | Mais tolerante a "buracos" na lista, mas demora mais | Para mais cedo — risco de não processar anúncios recentes que vieram depois de um lote inativo |
 | Quantos jogos analisar por fornecedor | até 1000 | Fornecedores com listas gigantes só têm os 1000 primeiros jogos pesquisados | Cobre listas maiores, mas demora mais por fornecedor | Mais rápido, mas ignora o resto da lista de fornecedores com muitos jogos |
-| Exige aceitar TF2 Keys | Sempre sim | Só seguimos com fornecedores que topem TF2 Keys como pagamento — mesmo que aceitem outras formas de pagamento junto | — | — |
+| Recusa quem não negocia com revendedor | Sempre sim | Anúncios que dizem em texto livre que não querem revendedor ("No reseller offers", "not for resellers", "resellers not welcome") são pulados, mesmo pedindo TF2 Keys | — | — |
+| Exige aceitar TF2 Keys | Sempre sim | Só seguimos com fornecedores que topem TF2 Keys como pagamento — mesmo que aceitem outras formas de pagamento junto. Na dúvida a leitura é otimista: recusa a OUTRO meio de pagamento na mesma linha ("TF2 keys - no paypal") não conta como recusa a TF2, porque perder um fornecedor bom custa mais que uma pesquisa de preço à toa | — | — |
 | Exige oferta ativa na Gamivo | Sempre sim, fixo no código | Só considera jogos que têm oferta especificamente na Gamivo, não qualquer preço do AllKeyShop | — | — |
 
 ## O que NÃO fazemos nesse processo
