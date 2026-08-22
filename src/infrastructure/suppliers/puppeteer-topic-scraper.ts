@@ -2,9 +2,15 @@ import * as cheerio from "cheerio";
 import { getSuppliersSession } from "@/lib/puppeteer-browser.js";
 import type { TopicScraper, TopicData } from "@/application/suppliers/ports/topic-scraper.port.js";
 import { PAGE_NAVIGATION_TIMEOUT } from "@/infrastructure/suppliers/steamtrades.constants.js";
-import { isWantingTf2Keys } from "@/domain/suppliers/tf2-key-matching.js";
+import { acceptsTf2KeysFromUs } from "@/domain/suppliers/supplier-eligibility.js";
 
 const STEAM_ID_REGEX = /\/user\/(\d+)/i;
+
+const toLines = (text: string): string[] =>
+    text
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
 
 /**
  * Extrai os dados do tópico a partir do HTML da página principal.
@@ -20,18 +26,10 @@ export function extractTopicData(html: string): TopicData {
     const steamIdMatch = (authorLink.attr("href") ?? "").match(STEAM_ID_REGEX);
     const steamId = steamIdMatch?.[1] ?? "";
 
-    const games = $(".have")
-        .text()
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean);
+    const games = toLines($(".have").text());
+    const wantLines = toLines($(".want").text());
 
-    const wantsTf2Key = $(".want")
-        .text()
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean)
-        .some(isWantingTf2Keys);
+    const wantsTf2Key = acceptsTf2KeysFromUs({ haveLines: games, wantLines });
 
     return { authorName, steamId, games, isInactive, wantsTf2Key };
 }

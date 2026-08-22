@@ -8,7 +8,12 @@ export type TopicData = {
     games: string[];
     /** `true` se a trade está marcada como inativa (presença de `.notification.yellow`). */
     isInactive: boolean;
-    /** `true` se a seção `.want` menciona "TF2" ou "Team Fortress 2" sem um "no" precedendo. */
+    /**
+     * `true` se o dono aceitaria TF2 Keys **do CarcaDeals** — regra completa (menção a TF2 sem
+     * negação/relutância, menos os vetos de tópico) em `domain/suppliers/supplier-eligibility.ts`.
+     * Não é o mesmo que "o texto menciona TF2": recusar revendedor ("No reseller offers") ou
+     * moeda-key em bloco ("No CSGO Keys or similar") desqualifica mesmo pedindo TF2 Keys.
+     */
     wantsTf2Key: boolean;
 };
 

@@ -18,7 +18,8 @@ export type FindNewSuppliersInput = {
     commentPoster: CommentPoster;
     profitabilityChecker: ProfitabilityChecker;
     gameSearcher: GameSearcher;
-    ignoredSteamId: string | null;
+    /** Steam IDs a nunca abordar (ex.: as próprias listas do CarcaDeals). Vazio = ignora ninguém. */
+    ignoredSteamIds: ReadonlySet<string>;
 };
 
 export type FindNewSuppliersResult = {
@@ -29,7 +30,7 @@ export type FindNewSuppliersResult = {
 
 type ProcessDeps = Pick<
     FindNewSuppliersInput,
-    "scraper" | "commentPoster" | "profitabilityChecker" | "gameSearcher" | "ignoredSteamId"
+    "scraper" | "commentPoster" | "profitabilityChecker" | "gameSearcher" | "ignoredSteamIds"
 >;
 
 /**
@@ -71,7 +72,7 @@ type ProcessDeps = Pick<
  */
 export class FindNewSuppliersUseCase {
     async execute(input: FindNewSuppliersInput): Promise<FindNewSuppliersResult> {
-        const { paginator, scraper, commentPoster, profitabilityChecker, gameSearcher, ignoredSteamId } = input;
+        const { paginator, scraper, commentPoster, profitabilityChecker, gameSearcher, ignoredSteamIds } = input;
 
         const { collectedTopics, pagesVisited } = await this.collectTopics(paginator);
 
@@ -82,7 +83,7 @@ export class FindNewSuppliersUseCase {
             commentPoster,
             profitabilityChecker,
             gameSearcher,
-            ignoredSteamId,
+            ignoredSteamIds,
         });
 
         return { pagesVisited, topicsProcessed, suppliersCommented };
@@ -132,7 +133,7 @@ export class FindNewSuppliersUseCase {
     /** Fase 2: processa cada tópico único coletado (scrape → preço → rentabilidade → comentário). */
     private async processTopics(
         collectedTopics: Map<string, string>,
-        { scraper, commentPoster, profitabilityChecker, gameSearcher, ignoredSteamId }: ProcessDeps,
+        { scraper, commentPoster, profitabilityChecker, gameSearcher, ignoredSteamIds }: ProcessDeps,
     ): Promise<{ topicsProcessed: number; suppliersCommented: number }> {
         let topicsProcessed = 0;
         let suppliersCommented = 0;
@@ -166,7 +167,7 @@ export class FindNewSuppliersUseCase {
                     continue;
                 }
 
-                if (ignoredSteamId && topic.steamId === ignoredSteamId) {
+                if (ignoredSteamIds.has(topic.steamId)) {
                     console.log(`🚫 [SUPPLIERS] Steam ID ${topic.steamId} is in the ignore list. Skipping topic ${code}.`);
                     continue;
                 }
