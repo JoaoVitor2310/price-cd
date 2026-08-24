@@ -1,6 +1,12 @@
 # Orquestra o container: build, portas, variáveis e recursos (sem precisar lembrar flags longas do docker run).
 
 networks:
+  # Rede compartilhada com o Sistema Estoque. Ninguém é dono dela: os dois
+  # projetos a consomem como external, para que um `docker compose down` de
+  # qualquer lado não a destrua. Criar uma vez por máquina:
+  #   docker network create sistema-estoque-cd
+  # Se ela for recriada assim mesmo (ex.: docker system prune), os containers
+  # parados guardam o ID antigo — recupere com `up --force-recreate`.
   sistema-estoque-cd:
     external: true
 
