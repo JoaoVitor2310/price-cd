@@ -131,7 +131,8 @@ O módulo `clear-string.ts` é a camada central de normalização usada em todo 
 
 - Controllers tratam `ZodError` (400) separado de `Error` genérico (500).
 - Funções de service retornam `null` em falhas individuais de jogo (não fatais), permitindo que o batch continue.
-- Browser cleanup usa dupla proteção: fecha todas as páginas, mata o processo filho, chama `browser.close()`, e mata com SIGINT se ainda estiver vivo.
+- **Ciclo de vida do Chromium** (`src/lib/puppeteer-browser.ts` + `src/lib/process-tree.ts`): quem abre um browser é responsável por fechá-lo — nenhum caminho de erro pode zerar a referência sem encerrar o processo. `cleanupBrowser` fecha as páginas, faz `browser.close()` com timeout (`BROWSER_CLOSE_TIMEOUT_MS`, default 15s) e **só depois** parte para sinal: SIGTERM em toda a árvore de processos, janela de graça (`BROWSER_KILL_GRACE_MS`, default 3s), SIGKILL nos sobreviventes. A ordem não é negociável — o `close()` via CDP é o único caminho que derruba renderers, GPU process e zygote; matar o processo principal antes órfã a árvore (foi o que derrubou a VPS por OOM em 2026-08-24). Por isso a árvore é fotografada com `descendantsOf` **antes** do close: depois que o pai morre, os filhos são reparentados para o `init` e viram irrastreáveis. `cleanupBrowser` nunca lança.
+- `invalidateSharedSession()` é assíncrona e **fecha** a sessão antes de zerar as referências; o call site (`searchAllKeyShop`) precisa dar `await` antes do rethrow. `getSharedSession` limpa a sessão morta no `catch` do health check e recicla a sessão por idade (`BROWSER_SESSION_MAX_AGE_MS`, default 30min; `0` desliga).
 - `FetchListTopic` implementa o padrão `Disposable` (`src/lib/dispose.ts`); `RunListsUseCase` chama `disposeIfPresent(fetcher)` em bloco `finally`.
 
 ---

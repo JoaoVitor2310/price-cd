@@ -35,6 +35,10 @@ services:
 
     shm_size: 1gb
 
+    # Mesma rede de segurança do serviço de produção — ver o comentário lá embaixo.
+    mem_limit: 2g
+    pids_limit: 512
+
     networks:
       - sistema-estoque-cd
 
@@ -65,6 +69,20 @@ services:
     # Memória compartilhada (/dev/shm) maior que o padrão (~64MB). Chromium usa muito shm para GPU/texturas;
     # sem isso o browser pode crashar ou ficar instável no Docker.
     shm_size: 1gb
+
+    # Contenção de recursos. Em 2026-08-24 um vazamento de Chromium consumiu
+    # 7,4 GB dos 8 GB da VPS em 16 horas: o OOM killer passou a matar processos
+    # em loop, o SSH deixou de completar o handshake e o sistema-estoque caiu
+    # junto. A causa raiz foi corrigida em src/lib/puppeteer-browser.ts (fechar
+    # antes de matar, e matando a árvore inteira de processos), mas estes
+    # limites FICAM: são a rede de segurança que garante que um vazamento novo
+    # derrube só este container, e não o host. Não remover.
+    #
+    # mem_limit: operação normal fica bem abaixo de 1 GB (node + um browser).
+    # pids_limit: cada Chromium abre ~10-20 processos; o teto corta o acúmulo
+    #             antes que ele esgote a tabela de processos do host.
+    mem_limit: 2g
+    pids_limit: 512
 
     networks:
       - sistema-estoque-cd

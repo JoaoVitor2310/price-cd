@@ -264,7 +264,9 @@ const searchAllKeyShop = async (
             );
             return foundGames;
         } catch (error) {
-            invalidateSharedSession();
+            // Aguarda o fechamento antes de propagar: sem o await, o browser
+            // quebrado ficaria vivo enquanto a próxima busca já sobe outro.
+            await invalidateSharedSession();
             throw error;
         }
     });
