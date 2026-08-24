@@ -4,6 +4,11 @@ import type { ListTopicFetcher } from "@/application/lists/ports/list-run.ports.
 import { ListTopic } from "@/domain/lists/list-topic.js";
 import { delay } from "@/helpers/utils.js";
 import { cleanupBrowser, initializeBrowser } from "@/lib/puppeteer-browser.js";
+import {
+	CloudflareChallengeError,
+	CloudflareChallengeSolver,
+	PageSnapshot,
+} from "@/lib/puppeteer-cloudflare.js";
 
 /** Mesmo TIMEOUT do browser; 2s fixo estourava na VPS com listas concorrentes. */
 function navigationTimeoutMs(): number {
@@ -63,27 +68,60 @@ export class FetchListTopic implements ListTopicFetcher {
 		this.page = undefined;
 	}
 
+	/**
+	 * Navega e devolve o HTML já livre de desafio da Cloudflare.
+	 *
+	 * O `goto` resolve no `domcontentloaded` da interstitial (403 +
+	 * `cf-mitigated: challenge`) enquanto o solver do puppeteer-real-browser
+	 * ainda está trabalhando — por isso a decisão se baseia no HTML, não no
+	 * status da resposta inicial.
+	 *
+	 * @returns o HTML da página, ou `null` se o status for um erro real.
+	 * @throws {CloudflareChallengeError} se o desafio não passar.
+	 */
+	private async loadPage(
+		page: PageWithCursor,
+		url: string,
+	): Promise<string | null> {
+		const response = await page.goto(url, {
+			waitUntil: "domcontentloaded",
+			timeout: navigationTimeoutMs(),
+		});
+
+		const snapshot = new PageSnapshot(await page.content(), url);
+
+		// Bloqueio definitivo (1020/WAF) não casa com os marcadores de desafio e
+		// cairia no `status !== 200` como se fosse erro comum — precisa gritar.
+		if (snapshot.isBlocked) {
+			throw new CloudflareChallengeError(url, "blocked");
+		}
+
+		if (snapshot.isChallenge) {
+			console.warn(`⚠️ [CLOUDFLARE] Desafio detectado em ${url}, aguardando...`);
+			const startedAt = Date.now();
+			const resolved = await new CloudflareChallengeSolver(page).resolve();
+			const seconds = ((Date.now() - startedAt) / 1000).toFixed(1);
+			console.log(`✅ [CLOUDFLARE] Desafio resolvido em ${seconds}s — ${url}`);
+			return resolved;
+		}
+
+		return response?.status() === 200 ? snapshot.html : null;
+	}
+
 	async fetchUserLists(idSteam: string): Promise<ListTopic[]> {
 		return runSerializedOnSteamTrades(async () => {
 			const { page } = await this.ensureBrowser();
-			const response = await page.goto(
+			const html = await this.loadPage(
+				page,
 				`https://www.steamtrades.com/trades/search?user=${idSteam}`,
-				{
-					waitUntil: "domcontentloaded",
-					timeout: navigationTimeoutMs(),
-				},
 			);
 
-			const status = response?.status();
-
-			if (status !== 200) {
+			if (html === null) {
 				await pauseAfterSteamTradesPage();
 				return [];
 			}
 
 			const listTopics: ListTopic[] = [];
-
-			const html = await page.content();
 			const $ = cheerio.load(html);
 
 			// Buscar todos h2 dentro de div.row_trade_name
@@ -103,6 +141,21 @@ export class FetchListTopic implements ListTopicFetcher {
 				);
 			}
 
+			// Lista vazia é ambígua: fornecedor sem anúncio ativo ou seletor
+			// desatualizado. A contagem de `h2` separa os dois casos.
+			if (listTopics.length === 0) {
+				console.warn(
+					`⚠️ [LISTS] Nenhuma Lista ativa para ${idSteam} — ` +
+						`${h2s.length} tópico(s) na página, título ${JSON.stringify($("title").text())}, ` +
+						`${html.length} chars`,
+				);
+			} else {
+				console.log(
+					`📋 [LISTS] ${listTopics.length} Lista(s) ativa(s) para ${idSteam} ` +
+						`(de ${h2s.length} tópico(s) na página)`,
+				);
+			}
+
 			await pauseAfterSteamTradesPage();
 			return listTopics;
 		});
@@ -113,19 +166,13 @@ export class FetchListTopic implements ListTopicFetcher {
 			const gameNames: string[] = [];
 			const { page } = await this.ensureBrowser();
 
-			const response = await page.goto(topicRef, {
-				waitUntil: "domcontentloaded",
-				timeout: navigationTimeoutMs(),
-			});
+			const html = await this.loadPage(page, topicRef);
 
-			const status = response?.status();
-
-			if (status !== 200) {
+			if (html === null) {
 				await pauseAfterSteamTradesPage();
 				return new ListTopic(topicRef, "inactive", []);
 			}
 
-			const html = await page.content();
 			const $ = cheerio.load(html);
 
 			const inactive = $("div.notification.yellow").length > 0;
