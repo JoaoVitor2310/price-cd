@@ -324,7 +324,9 @@ Receita, aplicada igual nos PRs 3 a 6:
    então não dá para injetar por tipo — é o atrito central entre Nest e arquitetura
    hexagonal. `nest-conceitos.md` §3 detalha as três saídas; a recomendada é **porta como
    `abstract class`**, que serve de token sozinha e mantém `application/` sem importar nada
-   do Nest. **Escolha uma no PR 3 e siga até o fim**, registrando no ADR 0004.
+   do Nest. **A decisão já está tomada: opção B**, registrada no ADR 0004 e resumida em
+   `nest-conceitos.md` §3. Fallback para a opção A só se a metadata quebrar (risco 7.2), e só
+   nos use cases afetados.
 2. Os adapters de `infrastructure/` ganham `@Injectable()` e são registrados como
    `{ provide: PopularityFetcher, useClass: SteamChartsPopularityFetcher }`.
 3. **O use case muda de assinatura**: as portas saem do objeto de entrada de `execute()` e vão

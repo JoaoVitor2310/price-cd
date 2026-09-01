@@ -14,6 +14,8 @@ o código faz — é documentação viva, não anotação de estudo.
 
 ---
 
+
+
 ## 1. O modelo mental: container, módulo, provider
 
 O Nest é, no essencial, **um container de injeção de dependências com um roteador HTTP em
@@ -41,13 +43,17 @@ ponto único para desligar nada, e testar exige `vi.mock` no módulo inteiro.
 
 Três blocos, e a divisão de trabalho entre eles:
 
-| Bloco | O que é | Neste projeto |
-|---|---|---|
-| **Provider** | Qualquer coisa que o container sabe construir e entregar | Adapters de `infrastructure/`, use cases de `application/`, filas, sessões de browser |
-| **Módulo** | Uma caixa que agrupa providers e declara o que importa e o que exporta | `GamesModule`, `ListsModule`, `SuppliersModule`, `BrowserModule` |
-| **Controller** | Provider especial que o roteador conhece: mapeia HTTP → método | Substitui `src/routes/` + `src/controllers/` |
+
+| Bloco          | O que é                                                                | Neste projeto                                                                         |
+| -------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| **Provider**   | Qualquer coisa que o container sabe construir e entregar               | Adapters de `infrastructure/`, use cases de `application/`, filas, sessões de browser |
+| **Módulo**     | Uma caixa que agrupa providers e declara o que importa e o que exporta | `GamesModule`, `ListsModule`, `SuppliersModule`, `BrowserModule`                      |
+| **Controller** | Provider especial que o roteador conhece: mapeia HTTP → método         | Substitui `src/routes/` + `src/controllers/`                                          |
+
 
 ---
+
+
 
 ## 2. `@Injectable()` — o que ele realmente faz
 
@@ -61,12 +67,14 @@ como saber o que injetar.
 Consequências práticas:
 
 - Uma classe sem dependências no construtor **não precisa** de `@Injectable()` para ser
-  provider. Mas coloque mesmo assim: no dia em que ela ganhar uma dependência, ninguém vai
-  lembrar do porquê da omissão.
+provider. Mas coloque mesmo assim: no dia em que ela ganhar uma dependência, ninguém vai
+lembrar do porquê da omissão.
 - Isso depende de `emitDecoratorMetadata: true` no `tsconfig.json` **e** de um transform que
-  preserve metadata. O esbuild do Vitest não preserva — daí o risco 7.2 do `NEST.md`.
+preserve metadata. O esbuild do Vitest não preserva — daí o risco 7.2 do `NEST.md`.
 
 ---
+
+
 
 ## 3. Providers e tokens: o problema que o TypeScript cria
 
@@ -78,7 +86,15 @@ constructor(private readonly fetcher: PopularityFetcher) {}  // ❌ o container 
 ```
 
 Esse é o atrito central entre Nest e arquitetura hexagonal, e todo projeto que usa portas
-esbarra nele. Existem três saídas, e **o PR 3 precisa escolher uma e seguir até o fim**:
+esbarra nele. Existem três saídas.
+
+> **Decisão: opção B — porta como `abstract class`.** Vale para todas as portas, do PR 3 em
+> diante. Fallback para A **apenas** se a metadata do decorator não sobreviver ao transform do
+> Vitest (risco 7.2 do `NEST.md`), e nesse caso só nos use cases afetados — não é licença para
+> misturar as duas estratégias por gosto.
+>
+> A decisão e seus trade-offs estão em `docs/adr/0004-nest-como-camada-de-apresentacao.md`;
+> aqui fica só o que ela significa na prática de cada porta.
 
 ### A) Token explícito (`Symbol` ou `string`)
 
@@ -142,17 +158,21 @@ use case ganha ~5 linhas de wiring manual, e você reimplementa parte do que o c
 
 ### Os quatro tipos de provider
 
-| Forma | Quando usar | Exemplo aqui |
-|---|---|---|
-| `useClass` | O container constrói e injeta as dependências | `{ provide: PriceFetcher, useClass: AllKeyShopPriceFetcher }` |
-| `useValue` | Valor pronto — config, constante, dublê em teste | `{ provide: MAX_ACTIVE_LISTS, useValue: 3 }` |
-| `useFactory` | Construção precisa de lógica ou de outro provider | `HttpGameTradeImporter`, que precisa de URL e secret do config |
-| `useExisting` | Apelido para um provider já registrado | Duas portas atendidas pelo mesmo adapter |
+
+| Forma         | Quando usar                                       | Exemplo aqui                                                   |
+| ------------- | ------------------------------------------------- | -------------------------------------------------------------- |
+| `useClass`    | O container constrói e injeta as dependências     | `{ provide: PriceFetcher, useClass: AllKeyShopPriceFetcher }`  |
+| `useValue`    | Valor pronto — config, constante, dublê em teste  | `{ provide: MAX_ACTIVE_LISTS, useValue: 3 }`                   |
+| `useFactory`  | Construção precisa de lógica ou de outro provider | `HttpGameTradeImporter`, que precisa de URL e secret do config |
+| `useExisting` | Apelido para um provider já registrado            | Duas portas atendidas pelo mesmo adapter                       |
+
 
 `useFactory` aceita função `async` — útil se algum dia a construção precisar de I/O. Cuidado:
 isso **atrasa o boot** até a promise resolver. Não é onde abrir um Chromium.
 
 ---
+
+
 
 ## 4. Módulos: `imports`, `providers`, `exports`
 
@@ -171,7 +191,7 @@ exportado — e quem quer usá-lo precisa importar o módulo.
 
 ### ⚠️ A armadilha que custa memória aqui
 
-**Declarar o mesmo provider em `providers` de dois módulos cria duas instâncias.**
+**Declarar o mesmo provider em** `providers` **de dois módulos cria duas instâncias.**
 
 Isso é a coisa mais importante deste documento para este projeto. Se `SharedBrowserSession`
 aparecer em `providers` do `GamesModule` **e** do `SuppliersModule`, o container constrói
@@ -226,13 +246,17 @@ algo foi parar na camada errada.
 
 ---
 
+
+
 ## 5. Escopos
 
-| Escopo | Quantas instâncias | Uso |
-|---|---|---|
-| `DEFAULT` (singleton) | Uma por aplicação | **Tudo aqui.** |
-| `Scope.REQUEST` | Uma por requisição | Nenhum caso neste projeto |
-| `Scope.TRANSIENT` | Uma por consumidor | Nenhum caso neste projeto |
+
+| Escopo                | Quantas instâncias | Uso                       |
+| --------------------- | ------------------ | ------------------------- |
+| `DEFAULT` (singleton) | Uma por aplicação  | **Tudo aqui.**            |
+| `Scope.REQUEST`       | Uma por requisição | Nenhum caso neste projeto |
+| `Scope.TRANSIENT`     | Uma por consumidor | Nenhum caso neste projeto |
+
 
 Escopo default é singleton, e é o certo aqui: os fetchers, as filas e as sessões de browser
 são compartilhados por desenho. `AllKeyShopPriceFetcher` por request seria catastrófico — o
@@ -247,6 +271,8 @@ Se um dia for preciso correlacionar logs por requisição, a saída barata é `A
 do Node, não request scope.
 
 ---
+
+
 
 ## 6. O pipeline de request
 
@@ -263,6 +289,8 @@ requisição
    → exception filters (se algo lançou em qualquer ponto acima)
 resposta
 ```
+
+
 
 ### Pipes — o que substitui o `schema.parse` dos controllers
 
@@ -338,6 +366,8 @@ controller e **não é consistente entre eles**.
 
 ---
 
+
+
 ## 7. Ciclo de vida — a parte que mais importa neste projeto
 
 O container também sabe **destruir**. Num app que segura processos de Chromium, isso deixa de
@@ -376,14 +406,32 @@ process.once("SIGTERM", () => void shutdown());
 ```
 
 Esse é o **único** handler de sinal do processo, e o `process.exit(0)` corta o desligamento
-antes de qualquer outra coisa rodar — a sessão compartilhada do AllKeyShop
-(`invalidateSharedSession`) e a de suppliers (`cleanupSuppliersSession`) nunca são fechadas
-num SIGTERM. Considerando que `cleanupBrowser` (`src/lib/puppeteer-browser.ts`) foi escrito
-justamente para derrubar a árvore de processos na ordem certa — `close()` via CDP primeiro,
-sinal depois —, deixá-lo sem ser chamado no desligamento é desperdiçar a correção.
+antes de qualquer outra coisa rodar. Só o browser do bumper é fechado; a sessão compartilhada
+do AllKeyShop (`invalidateSharedSession`) não é fechada nunca no SIGTERM, e a de suppliers
+(`cleanupSuppliersSession`) — que normalmente fecha no `finally` de cada execução — vaza quando
+o sinal chega no meio de uma execução, porque o `process.exit` roda antes do `finally`.
+
+Considerando que `cleanupBrowser` (`src/lib/puppeteer-browser.ts`) foi escrito justamente para
+derrubar a árvore de processos na ordem certa — `close()` via CDP primeiro, sinal depois —,
+deixá-lo sem ser chamado no desligamento é desperdiçar a correção.
 
 Com o container: cada sessão implementa `OnApplicationShutdown`, o handler manual some, e o
 Nest chama todas.
+
+> #### ⚠️ "Sessão" aqui significa duas coisas — e fechar uma não toca na outra
+>
+> | Termo | O que é | Quem fecha |
+> |---|---|---|
+> | **Sessão de browser** (`SharedSession`, `getSuppliersSession`) | Um processo de Chromium vivo, com sua página | `cleanupBrowser` / `invalidateSharedSession` / `cleanupSuppliersSession` |
+> | **Sessão do SteamTrades** (`PHPSESSID`) | O cookie de login, lido de `STEAMTRADES_SESSION` no `.env` | **Ninguém.** Vive no `.env`, não no processo. |
+>
+> Toda a seção acima fala da **primeira**. Fechar o Chromium não desloga do SteamTrades e não
+> obriga a logar de novo: o `PHPSESSID` é reinjetado como cookie a cada browser novo — em
+> `PuppeteerSteamTradesBumper.ensureSession` e em `find-new-suppliers.factory.ts` — sempre a
+> partir da variável de ambiente. Não existe fluxo de login no código.
+>
+> O que se perde ao fechar o browser é só o custo de subir outro Chromium (~2s). O que se ganha
+> é não deixar uma árvore de processos órfã num container com `mem_limit: 2g`.
 
 **Não confie na ordem de destruição entre módulos.** Se A precisa morrer antes de B, torne
 isso explícito — B injeta A e fecha na sequência que quer, ou um único provider coordena.
@@ -396,6 +444,8 @@ roda uma vez por vida do app. Os dois coexistem e resolvem problemas diferentes 
 significa ou vazar browser por execução, ou fechar o browser errado no meio de um scraping.
 
 ---
+
+
 
 ## 8. Testes: `Test.createTestingModule`
 
@@ -427,10 +477,12 @@ adapters já prometia, agora sem depender do bundler.
 
 Isso vale só para os 4 arquivos de `test/integration/routes/`. Os testes de `domain/`,
 `helpers/` e `lib/` não mudam — são funções puras e classes construídas à mão, e continuam
-sendo o jeito certo de testá-las. **Não instancie o container para testar
-`clear-string.ts`.**
+sendo o jeito certo de testá-las. **Não instancie o container para testar**
+`clear-string.ts`**.**
 
 ---
+
+
 
 ## 9. Colisão de vocabulário: "service"
 
@@ -443,50 +495,64 @@ manual — exatamente o que o container substitui.
 
 Convenção adotada na migração, para não haver ambiguidade:
 
-| Nome | Onde | O que contém |
-|---|---|---|
-| `*.use-case.ts` | `application/` | Orquestração de domínio e portas. Continua sendo o nome. |
-| `*.controller.ts` | `nest/<módulo>/` | Só HTTP: parse, chamada ao use case, resposta. |
-| `*.module.ts` | `nest/<módulo>/` | Só wiring. |
-| `*.service.ts` | — | **Não usar.** O diretório `src/services/` desaparece no PR 10. |
+
+| Nome              | Onde             | O que contém                                                   |
+| ----------------- | ---------------- | -------------------------------------------------------------- |
+| `*.use-case.ts`   | `application/`   | Orquestração de domínio e portas. Continua sendo o nome.       |
+| `*.controller.ts` | `nest/<módulo>/` | Só HTTP: parse, chamada ao use case, resposta.                 |
+| `*.module.ts`     | `nest/<módulo>/` | Só wiring.                                                     |
+| `*.service.ts`    | —                | **Não usar.** O diretório `src/services/` desaparece no PR 10. |
+
 
 Se em algum PR aparecer um `*.service.ts` com um `if` de regra de negócio dentro, a migração
 saiu do trilho: aquilo é um use case em `application/`.
 
 ---
 
+
+
 ## 10. O que o Nest oferece e este projeto não vai usar
 
 Saber o que ficou de fora, e por quê, vale tanto quanto saber o que entrou.
 
-| Recurso | Por que não |
-|---|---|
-| TypeORM / Prisma / Mongoose | `docs/adr/0001` — o price-cd é stateless por decisão. Estado vive no Sistema Estoque, consultado por porta. |
-| `class-validator` / `class-transformer` | Zod já é o padrão do projeto, com schemas prontos em `src/schemas/`. Uma linguagem de validação basta. |
-| GraphQL | A API são 5 endpoints REST consumidos por um sistema só. |
-| Microservices / transports | Um processo, um container. |
-| CQRS module | Não há separação leitura/escrita a fazer num scraper sem banco. |
-| Guards para autenticação | O contrato do modo demo exige 200 com token errado. Ver §6. |
-| Interceptors | Nenhum caso hoje. Candidatos futuros em §6. |
-| Fastify adapter | O Express platform é o que preserva paridade de comportamento durante o strangler. Trocar depois, se houver motivo medido — não há. |
-| BullMQ (`@nestjs/bullmq`) | A fila in-process resolve hoje. Vira candidato se os itens 4 e 5 do `IMPROVEMENTS.md` exigirem sobreviver a restart — e aí o `BackgroundScheduler` já é uma porta, então troca-se o adapter. |
+
+| Recurso                                 | Por que não                                                                                                                                                                                  |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TypeORM / Prisma / Mongoose             | `docs/adr/0001` — o price-cd é stateless por decisão. Estado vive no Sistema Estoque, consultado por porta.                                                                                  |
+| `class-validator` / `class-transformer` | Zod já é o padrão do projeto, com schemas prontos em `src/schemas/`. Uma linguagem de validação basta.                                                                                       |
+| GraphQL                                 | A API são 5 endpoints REST consumidos por um sistema só.                                                                                                                                     |
+| Microservices / transports              | Um processo, um container.                                                                                                                                                                   |
+| CQRS module                             | Não há separação leitura/escrita a fazer num scraper sem banco.                                                                                                                              |
+| Guards para autenticação                | O contrato do modo demo exige 200 com token errado. Ver §6.                                                                                                                                  |
+| Interceptors                            | Nenhum caso hoje. Candidatos futuros em §6.                                                                                                                                                  |
+| Fastify adapter                         | O Express platform é o que preserva paridade de comportamento durante o strangler. Trocar depois, se houver motivo medido — não há.                                                          |
+| BullMQ (`@nestjs/bullmq`)               | A fila in-process resolve hoje. Vira candidato se os itens 4 e 5 do `IMPROVEMENTS.md` exigirem sobreviver a restart — e aí o `BackgroundScheduler` já é uma porta, então troca-se o adapter. |
+
 
 A última linha é o argumento de que a arquitetura atual estava certa: adotar Nest não obriga
 a adotar o ecossistema inteiro.
 
 ---
 
+
+
 ## 11. Checklist de armadilhas
 
 - [ ] Provider com estado declarado em `providers` de dois módulos → **duas instâncias**. Use
-      um módulo dono + `exports`/`imports`. (§4 — o de maior custo aqui.)
+  ```
+  um módulo dono + `exports`/`imports`. (§4 — o de maior custo aqui.)
+  ```
 - [ ] Interface de TS como token de injeção → não existe em runtime. (§3)
 - [ ] `emitDecoratorMetadata` sem transform que o preserve → o container não resolve nada. (§2)
 - [ ] `useGlobalPipes`/`useGlobalFilters` quando o pipe ou filter precisa injetar → use
-      `APP_PIPE`/`APP_FILTER`. (§6)
+  ```
+  `APP_PIPE`/`APP_FILTER`. (§6)
+  ```
 - [ ] `Scope.REQUEST` num provider fundo → contamina a cadeia inteira para cima. (§5)
 - [ ] Esquecer `app.enableShutdownHooks()` → `onApplicationShutdown` nunca roda, Chromium
-      sobrevive ao SIGTERM. (§7)
+  ```
+  sobrevive ao SIGTERM. (§7)
+  ```
 - [ ] Depender da ordem de destruição entre módulos → torne explícita. (§7)
 - [ ] Guard para autenticação que deveria ser opcional → muda o contrato público. (§6)
 - [ ] `*.service.ts` com regra de negócio → é use case, vai para `application/`. (§9)
@@ -495,9 +561,11 @@ a adotar o ecossistema inteiro.
 
 ---
 
+
+
 ## 12. Leitura
 
-Documentação oficial — https://docs.nestjs.com — nesta ordem, que é a de utilidade para esta
+Documentação oficial — [https://docs.nestjs.com](https://docs.nestjs.com) — nesta ordem, que é a de utilidade para esta
 migração e não a do índice do site:
 
 1. **Modules**, **Providers**, **Custom providers** — o núcleo. §1 a §4 daqui.
@@ -506,9 +574,9 @@ migração e não a do índice do site:
 4. **Lifecycle events** — a parte que mais importa neste projeto.
 5. **Testing** — `Test.createTestingModule` e `overrideProvider`.
 6. **Configuration** (`@nestjs/config`), **Task scheduling** (`@nestjs/schedule`) — sob demanda,
-   nos PRs 2 e 7.
+  nos PRs 2 e 7.
 7. **Guards**, **Interceptors**, **Middleware** — leia para conhecer; aqui, para saber por que
-   não estão sendo usados.
+  não estão sendo usados.
 
 Sobre o padrão de migração: Martin Fowler, *StranglerFigApplication* (2004) —
-https://martinfowler.com/bliki/StranglerFigApplication.html
+[https://martinfowler.com/bliki/StranglerFigApplication.html](https://martinfowler.com/bliki/StranglerFigApplication.html)
