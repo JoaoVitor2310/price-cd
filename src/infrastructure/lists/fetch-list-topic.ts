@@ -1,6 +1,7 @@
 import * as cheerio from "cheerio";
 import type { PageWithCursor } from "puppeteer-real-browser";
 import type { ListTopicFetcher } from "@/application/lists/ports/list-run.ports.js";
+import { HaveListing } from "@/domain/lists/have-listing.js";
 import { ListTopic } from "@/domain/lists/list-topic.js";
 import { delay } from "@/helpers/utils.js";
 import { cleanupBrowser, initializeBrowser } from "@/lib/puppeteer-browser.js";
@@ -163,7 +164,6 @@ export class FetchListTopic implements ListTopicFetcher {
 
 	async fetchList(topicRef: string): Promise<ListTopic> {
 		return runSerializedOnSteamTrades(async () => {
-			const gameNames: string[] = [];
 			const { page } = await this.ensureBrowser();
 
 			const html = await this.loadPage(page, topicRef);
@@ -181,17 +181,17 @@ export class FetchListTopic implements ListTopicFetcher {
 				return new ListTopic(topicRef, "inactive", []);
 			}
 
-			// Pegar conteúdo da div.have
-			const gamesText = $("div.have").text();
+			const listing = HaveListing.parse($("div.have").text());
 
-			// Cada linha é um jogo
-			gamesText.split("\n").forEach((game) => {
-				gameNames.push(game.trim());
-			});
+			for (const section of listing.skippedSections) {
+				console.log(
+					`⏭️ [LISTS] ${section.games.length} jogo(s) de ${section.platform} ` +
+						`ignorado(s) — plataforma ainda não precificável (${topicRef})`,
+				);
+			}
 
 			await pauseAfterSteamTradesPage();
-			// Fallback: se nada foi capturado, tente outro seletor ou deixe vazio
-			return new ListTopic(topicRef, "active", gameNames);
+			return new ListTopic(topicRef, "active", listing.priceableGames);
 		});
 	}
 }

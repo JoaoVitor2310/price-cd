@@ -28,6 +28,7 @@ Nessa primeira etapa (coleta), o SteamTrades continua devolvendo anúncios além
 | Anúncio recusa revendedores (ex.: "No reseller offers", escrito na lista de jogos ou na de pagamento) | Pulamos — o CarcaDeals é revendedor, então nem chega a pesquisar preço |
 | Anúncio fechado (cadeado visível já na página de listagem) | Nem coletamos — nunca chega a ser aberto |
 | Anúncio inativo (só se sabe depois de abrir o anúncio) | Pulamos |
+| Anúncio com jogos de outra plataforma (ex.: seção `GOG:`) | Ignoramos só esses jogos e seguimos com os da Steam. A recusa a revendedor escrita dentro dessa seção continua valendo — o veto lê o anúncio inteiro |
 | 5 anúncios fechados seguidos numa mesma busca (na listagem) | Paramos de virar página pra aquele termo — sinal de que passamos da última página com anúncios de verdade |
 | 5 anúncios inativos seguidos (entre os já coletados) | Paramos de processar o restante — sinal de que chegamos na cauda de anúncios antigos |
 | Uma página não retorna nenhum anúncio | Paramos de virar página — sinal de que chegamos ao fim da lista |
