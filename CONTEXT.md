@@ -14,6 +14,10 @@ _Avoid_: TF2 Key (conceito de moeda de troca, não produto — ver abaixo)
 Mann Co. Supply Crate Key, o item virtual do Team Fortress 2 usado como moeda de troca líquida na comunidade do SteamTrades. É a forma de pagamento que o CarcaDeals oferece aos fornecedores em troca dos jogos ofertados — não tem relação com license keys.
 _Avoid_: Key (sem qualificador — sempre especificar "TF2 Key")
 
+**Plataforma**:
+A loja que resgata a key — Steam, GOG, Epic, etc. O CarcaDeals compra e revende apenas keys da Steam: é a única plataforma que o price-cd sabe precificar, porque o AllKeyShop trata key de outra loja como produto separado. Fornecedores que misturam plataformas declaram isso na Lista com um cabeçalho (`GOG:`) acima dos jogos daquela loja; essas seções são descartadas antes da pesquisa de preço.
+_Avoid_: Loja, Store
+
 ### Ciclo de vida do fornecedor
 
 **Fornecedor**:

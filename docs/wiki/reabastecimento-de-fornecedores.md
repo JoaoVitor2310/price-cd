@@ -17,6 +17,7 @@ Pra fornecedores que a gente já conhece (já temos o Steam ID guardado), buscam
 | Fornecedor tem Listas ativas com jogos novos e com preço bom | Cria a Trade automaticamente no Sistema Estoque |
 | Fornecedor tem Listas ativas mas sem jogos com preço encontrado | Não cria nada, sem erro |
 | Alguma das Listas do fornecedor está inativa | Pula só essa Lista, continua nas outras |
+| A Lista tem jogos de outra plataforma (ex.: seção `GOG:`) | Ignora só esses jogos e segue com os da Steam — o preço de key de outra loja é diferente e ainda não sabemos buscar |
 | O SteamTrades pede verificação de robô (Cloudflare) | Espera a verificação passar sozinha (até 45s) e segue normalmente |
 | O SteamTrades bloqueia o acesso de vez | O reabastecimento para com erro registrado, em vez de terminar "sem nada encontrado" — bloqueio não é confundido com fornecedor sem jogos |
 

@@ -38,6 +38,17 @@ const topicHtml = `
 Celeste
 </div>${FILLER}</body></html>`;
 
+/** Lista mista: keys da Steam no topo, seção GOG abaixo. */
+const mixedTopicHtml = `
+<html><body><div class="have">Half-Life 2
+Portal 2
+
+GOG:
+
+Mystic Academy: Escape Room
+XCOM: Chimera Squad
+</div>${FILLER}</body></html>`;
+
 /**
  * Simula o comportamento real: `goto` resolve no domcontentloaded da
  * interstitial (403), e `content()` só devolve o HTML real depois que o
@@ -157,6 +168,27 @@ describe("FetchListTopic.fetchList", () => {
 		expect(topic.status).toBe("active");
 		expect(topic.gameNames).toContain("Hades");
 		expect(topic.gameNames).toContain("Celeste");
+	});
+
+	it("skips games listed under a GOG header", async () => {
+		useFakePage(makePage({ status: 200, contents: [mixedTopicHtml] }));
+
+		const topic = await new FetchListTopic().fetchList(
+			"https://www.steamtrades.com/trades/aaa/lista-1",
+		);
+
+		expect(topic.gameNames).toEqual(["Half-Life 2", "Portal 2"]);
+		expect(topic.gameNames).not.toContain("XCOM: Chimera Squad");
+	});
+
+	it("does not emit empty game names for blank lines", async () => {
+		useFakePage(makePage({ status: 200, contents: [topicHtml] }));
+
+		const topic = await new FetchListTopic().fetchList(
+			"https://www.steamtrades.com/trades/aaa/lista-1",
+		);
+
+		expect(topic.gameNames).toEqual(["Hades", "Celeste"]);
 	});
 
 	it("waits out the challenge before deciding the topic is inactive", async () => {
