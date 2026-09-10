@@ -2,6 +2,8 @@ import type { PopularityFetcher, PriceFetcher } from "@/application/games/ports/
 import type { GameTradeImporter, GameTradeInput } from "@/application/games/ports/game-trade-importer.port.js";
 import { worthyByPopularity } from "@/domain/games/worthy-by-popularity.js";
 import { filterExcludedGames } from "@/domain/games/excluded-games.js";
+import { partitionByPrice } from "@/domain/games/worthy-by-price.js";
+import { logDiscardedByPrice } from "@/application/games/log-discarded-by-price.js";
 
 const DEMO_GAME_LIMIT = 10;
 
@@ -35,8 +37,10 @@ export class ResearchGamesUseCase {
 
 		const gamesWithPrices = await priceFetcher.fetch(worthyGames, checkGamivoOffer);
 
-		const pricedGames: GameTradeInput[] = gamesWithPrices
-			.filter((g) => g.GamivoPrice != null)
+		const { worthy, tooCheap } = partitionByPrice(gamesWithPrices);
+		logDiscardedByPrice(tooCheap);
+
+		const pricedGames: GameTradeInput[] = worthy
 			.map((g) => ({
 				name: g.name,
 				price_euro: g.GamivoPrice as number,

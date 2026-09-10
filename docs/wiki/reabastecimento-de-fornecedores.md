@@ -26,6 +26,7 @@ Pra fornecedores que a gente já conhece (já temos o Steam ID guardado), buscam
 | Parâmetro | Valor atual | O que controla | Se aumentar | Se diminuir |
 |---|---|---|---|---|
 | Popularidade mínima | 30 jogadores simultâneos (fixo no código) | Mesmo corte da Descoberta — abaixo disso, ignora o jogo | Traz menos jogos, com menos chance de vender | Traz mais jogos, mas mais difíceis de vender (menos populares) |
+| Preço mínimo negociável | 0,50 € (fixo no código) | Jogos cujo melhor preço não passa disso são descartados depois da busca de preço | Descarta mais jogos, focando só nos que dão lucro relevante | Traz jogos mais baratos, cujo lucro por unidade é de centavos |
 | Quantas Listas do fornecedor revisar | até 3 | Fornecedores com muitos anúncios ativos só têm os 3 primeiros revisados | Não faz diferença — o SteamTrades limita cada fornecedor a no máximo 3 anúncios ativos, então 3 já cobre o total possível | Mais rápido, mas pode deixar de revisar algum anúncio ativo do fornecedor |
 | Quantos reabastecimentos rodam ao mesmo tempo | 1 por vez | Evita sobrecarregar o SteamTrades com buscas simultâneas | Processa mais fornecedores em paralelo, com risco maior de bloqueio temporário no SteamTrades | Mais lento, mais seguro |
 | Exigir oferta ativa na Gamivo | Sim por padrão — mas pode ser desligado explicitamente por quem aciona | Se ligado, só considera jogos com oferta especificamente na Gamivo | Menos jogos qualificam, mas todos com uma fonte de preço conhecida | Mais jogos qualificam, usando qualquer oferta do AllKeyShop |

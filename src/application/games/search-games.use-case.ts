@@ -2,6 +2,8 @@ import type { PopularityFetcher, PriceFetcher } from "@/application/games/ports/
 import type { FoundGames, GameAnalysisResult } from "@/application/games/game.types.js";
 import { worthyByPopularity } from "@/domain/games/worthy-by-popularity.js";
 import { filterExcludedGames } from "@/domain/games/excluded-games.js";
+import { partitionByPrice } from "@/domain/games/worthy-by-price.js";
+import { logDiscardedByPrice } from "@/application/games/log-discarded-by-price.js";
 
 export type SearchGamesInput = {
 	gameNames: string[];
@@ -35,10 +37,13 @@ export class SearchGamesUseCase {
 
 		const worthyGames = filterExcludedGames(worthyByPopularity(foundGames, minPopularity));
 
-		const gamesWithPrices =
+		const priced =
 			worthyGames.length === 0
 				? []
 				: await priceFetcher.fetch(worthyGames, checkGamivoOffer);
+
+		const { worthy: gamesWithPrices, tooCheap } = partitionByPrice(priced);
+		logDiscardedByPrice(tooCheap);
 
 		const processingTime = (performance.now() - startTime) / 1000;
 		console.log(`🕒 [INFO] Processing time: ${processingTime} seconds.`);

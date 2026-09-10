@@ -154,14 +154,12 @@ exercita a cada PR — mas é peso. A mitigação é ritmo: os PRs 2 a 8 devem s
 próxima, e o cutover (PR 9) não deve esperar "mais um refinamento". Meia migração parada na
 `main` é o único desfecho ruim possível aqui.
 
-### O cenário que forçaria a branch longa
+### O cenário que forçaria a branch longa — descartado no PR 0
 
-Um só: se o PR 0 concluir que é preciso trocar o sistema de módulos (ESM → CommonJS). Os dois
-entrypoints não coexistem sob `"type"` diferente no `package.json`. Nesse caso a branch
-`nest` recebe apenas os PRs 2+, o PR 1 (harness) vai direto para a `main`, e a branch faz
-`git merge main` **a cada merge na main**, não em cadência de calendário. Como ela não toca
-`domain/`, `application/`, `infrastructure/` nem `lib/`, o conflito fica restrito a
-`package.json` e `tsconfig.json`. Ver 7.1.
+Havia um só: precisar trocar o sistema de módulos (ESM → CommonJS), porque os dois entrypoints
+não coexistem sob `"type"` diferente no `package.json`. O spike do PR 0 provou Nest 12 rodando
+sob `"type": "module"` com as libs do projeto carregadas (ADR 0004), então **a branch longa
+está fora**: a coexistência acontece na `main`, como descrito acima. Ver 7.1.
 
 ---
 
@@ -254,18 +252,18 @@ do repo ou em branch descartada.
 
 Responder, com critério de aceite executável:
 
-1. **Nest roda com `"type": "module"` neste projeto?** Aceite: um `AppModule` com um provider
-   injetado por token de interface, importando `puppeteer-real-browser`, `cheerio` e `zod`,
-   sobe e responde. Passou → ESM fica, strangler na `main`. Não passou de forma limpa →
-   CommonJS, e a seção 3 vira o cenário da branch longa.
-2. **`emitDecoratorMetadata` funciona sob Vitest?** O Vitest usa esbuild por padrão, que não
-   emite metadata de decorator. Testar `unplugin-swc` no `vitest.config.ts`. Aceite: um teste
-   com `Test.createTestingModule` resolve um provider injetado por classe.
-3. **Fixar a major do Nest** (hoje 11.x — confirmar no npm antes de começar).
+1. **Nest roda com `"type": "module"` neste projeto?** ✅ **Sim.** `AppModule` com porta
+   injetada por `abstract class`, importando `puppeteer-real-browser`, `cheerio` e `zod`,
+   responde HTTP 200. ESM fica, strangler na `main`.
+2. **`emitDecoratorMetadata` funciona sob Vitest?** ⚠️ **Só com `unplugin-swc`.** Com o
+   esbuild padrão do Vitest 3.2.4 os testes falham. Medido também fora do Vitest: `tsc` emite
+   (o build de produção está salvo), `tsx` **não** — `npm run dev` migra para
+   `node --import @swc-node/register/esm-register`.
+3. **Fixar a major do Nest.** ✅ **12.x** (`@nestjs/core` 12.0.1 em 2026-09-03; o plano supunha
+   11.x, que já não é a atual). `@nestjs/config` acompanha em 12.0.0.
 
-Saída: `docs/adr/0004-nest-como-camada-de-apresentacao.md`, no formato dos ADRs existentes
-(decisão + `## Consequences`), registrando sistema de módulos, versão do Nest e a fronteira
-de camadas da seção 1.
+Saída: `docs/adr/0004-nest-como-camada-de-apresentacao.md` — **escrito**, registrando sistema
+de módulos, versão do Nest, toolchain de metadata e a fronteira de camadas da seção 1.
 
 Resolve de quebra o item 6 do `docs/IMPROVEMENTS.md` (`moduleResolution: "node"`, depreciado
 para ESM), que precisa ser decidido aqui de qualquer forma.
@@ -511,16 +509,29 @@ depreciado — item 6 do IMPROVEMENTS), com aliases `@/*` resolvidos por `tsc-al
 com extensão `.js` explícita. O Nest é historicamente CommonJS-first: o CLI scaffolda CJS e a
 maior parte da documentação assume CJS.
 
-Nada no `src/` usa recurso exclusivo de ESM (não há top-level await nem `import.meta` —
-verificado), então a troca é *possível*; mas ela obriga a mexer em todos os imports e mata o
-strangler na `main`. Decisão do PR 0, por critério executável, não por opinião.
+**Resolvido no PR 0: ESM fica.** O spike subiu Nest 12 sob `"type": "module"` com
+`puppeteer-real-browser`, `cheerio` e `zod` no mesmo processo e respondeu 200 — nenhum atrito
+de interop apareceu. `moduleResolution` passa a `"bundler"` no PR 2, fechando o item 6 do
+IMPROVEMENTS. Ver ADR 0004.
 
 ### 7.2 Metadata de decorator no Vitest
 
-Sem transform que preserve metadata, `Test.createTestingModule` não resolve providers por
-tipo. Mitigação barata se der errado: `@Inject(TOKEN)` explícito em todo provider — mais
-verboso, mas independe de metadata, e para portas (interfaces) o token explícito já é
-obrigatório de qualquer forma. Provar no PR 0.
+**Resolvido no PR 0: `unplugin-swc` é obrigatório**, no Vitest e no runtime de dev. O que o
+spike mediu:
+
+| Ferramenta | Emite `design:paramtypes`? |
+|---|---|
+| `tsc` (`npm run build`) | sim |
+| `tsx` (`npm run dev` hoje) | **não** |
+| Vitest 3.2.4 com esbuild | **não** |
+| Vitest + `unplugin-swc` | sim |
+| `node --import @swc-node/register/esm-register` | sim |
+
+O que faz disso uma armadilha, e não um erro de configuração comum: **sem metadata o Nest não
+falha no boot.** Ele injeta `undefined` e a aplicação sobe; o estouro vem só na chamada da
+rota, como 500 genérico. Pior, um teste que resolve o provider pelo token passa mesmo assim —
+só asserção HTTP de ponta a ponta, ou leitura direta de `Reflect.getMetadata`, detecta. O PR 2
+deve trazer os dois formatos de teste.
 
 ### 7.3 Estado global de módulo remanescente
 
@@ -531,9 +542,9 @@ continua correto para ambos. Migrar para provider depois do cutover, se incomoda
 
 ### 7.4 Suíte de testes instável
 
-O item 16 do `docs/IMPROVEMENTS.md` registra timeouts aleatórios do Vitest em WSL2 por
+O item 17 do `docs/IMPROVEMENTS.md` registra timeouts aleatórios do Vitest em WSL2 por
 contenção de worker. Durante a migração isso é veneno: uma falha de timeout vai parecer
-regressão do Nest. **Resolver o item 16 antes do PR 3**, ou o sinal do harness de contrato
+regressão do Nest. **Resolver o item 17 antes do PR 3**, ou o sinal do harness de contrato
 fica ruidoso justamente quando ele mais importa.
 
 ### 7.5 Escopo do container
@@ -572,7 +583,7 @@ Conforme a regra do `CLAUDE.md`, cada PR atualiza o que tornou desatualizado:
 |---|---|---|
 | `docs/adr/0004-...` | PR 0 | Decisão, sistema de módulos, fronteira de camadas, estratégia de token de porta |
 | `docs/nest-conceitos.md` | PRs 2–7 | Cada conceito passa de "vamos usar" para "está assim, aqui, por isto" |
-| `docs/IMPROVEMENTS.md` | PRs 0, 5, 7, 8 | Fechar itens 3, 6, 12; abrir o que o harness revelar |
+| `docs/IMPROVEMENTS.md` | PRs 0, 5, 7, 8 | Fechar itens 3, 6, 13; abrir o que o harness revelar |
 | `CLAUDE.md` | PRs 2, 9, 10 | Seções "Arquitetura" e "Tecnologias e Padrões" |
 | `README.md` | PRs 8, 9, 10 | Stack, árvore de diretórios, Getting Started |
 | `docs/wiki/` | PR 9 | Só se algum comportamento visível ao negócio mudar — não deveria mudar |

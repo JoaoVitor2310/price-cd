@@ -32,5 +32,6 @@ Quando o token interno é informado, o envio é **assíncrono**: a tela confirma
 | Parâmetro | Valor atual | O que controla | Se aumentar | Se diminuir |
 |---|---|---|---|---|
 | Popularidade mínima | Escolhida pelo usuário a cada pesquisa | Abaixo disso, o jogo é descartado | Traz menos jogos, com menos chance de vender | Traz mais jogos, mas mais difíceis de vender (menos populares) |
+| Preço mínimo negociável | 0,50 € (fixo no código) | Jogos cujo melhor preço não passa disso são descartados depois da busca de preço | Descarta mais jogos, focando só nos que dão lucro relevante | Traz jogos mais baratos, cujo lucro por unidade é de centavos |
 | Limite de jogos no modo demonstração | 10 | Quantos jogos são processados quando não há token interno | Demonstração mais completa, porém mais demorada | Resposta mais rápida na demonstração |
 | Exigir oferta ativa na Gamivo | Escolhido pelo usuário (marcado por padrão) | Se marcado, só considera jogos com oferta na Gamivo | Menos jogos no resultado, todos revendáveis pela Gamivo | Mais jogos no resultado, usando qualquer oferta do AllKeyShop |
