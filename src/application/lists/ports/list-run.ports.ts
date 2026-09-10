@@ -25,6 +25,10 @@ export interface RunListsRunner {
 /**
  * Porta para buscar popularidade e preços de jogos.
  * Isola RunListsUseCase da implementação concreta de SearchGamesUseCase.
+ *
+ * Contrato: o resultado já vem cortado pelas regras de domínio do catálogo —
+ * popularidade mínima, jogos excluídos e Preço mínimo negociável (`partitionByPrice`).
+ * Quem consome não repete esses filtros; quem implementa precisa aplicá-los.
  */
 export interface GameSearcher {
 	search(request: SearchGamesRequest): Promise<GameAnalysisResult>;

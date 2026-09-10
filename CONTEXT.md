@@ -49,3 +49,8 @@ _Avoid_: usar para um remaster/relançamento com produto próprio — isso é Ve
 **Versão**:
 Relançamento de um jogo que o AllKeyShop trata como PRODUTO separado no catálogo — resultado de busca próprio — mesmo compartilhando o nome-base com o jogo original (ex.: "Skyrim" 2011 vs "Skyrim Special Edition" 2021). A palavra de edição só entra pra desempatar entre Versões candidatas com o mesmo nome-base, nunca para filtrar Edições.
 _Avoid_: Edição (reservado para variação de preço dentro do mesmo produto, ver acima), Remaster
+
+### Preço mínimo negociável
+
+Piso de valor abaixo do qual não vale a pena negociar um jogo: mesmo com popularidade suficiente e oferta encontrada, o lucro por unidade seria de poucos centavos e não paga o tempo da negociação com o Fornecedor. Hoje o piso é 0,50 € e o corte é estrito — um jogo exatamente em 0,50 € é descartado. Aplicado depois da busca de preço, sobre o melhor preço encontrado.
+_Avoid_: usar para o corte de Popularidade mínima, que é anterior e olha jogadores simultâneos, não preço
