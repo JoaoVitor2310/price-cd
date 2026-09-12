@@ -3,6 +3,8 @@ export type ResearchGamesRequest = {
 	gameNames: string[];
 	minPopularity: number;
 	checkGamivoOffer: boolean;
+	/** Piso de preço negociável. Omitido → default do domínio (`MIN_PRICE_EURO`). */
+	minPrice?: number;
 	/** Steam ID do Fornecedor, para vincular a Trade criada. */
 	supplierSteamId?: string;
 	/** Código da Lista de origem no SteamTrades. */

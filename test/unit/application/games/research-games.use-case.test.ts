@@ -66,6 +66,24 @@ describe("ResearchGamesUseCase", () => {
 		expect(result).toBeNull();
 	});
 
+	it("keeps games below the default floor when minPrice is lowered (bundle flow)", async () => {
+		const tradeImporter: GameTradeImporter = {
+			import: vi.fn().mockResolvedValue(undefined),
+		};
+		const found = [game("Cheap"), game("Free")];
+		const priced = [game("Cheap", 0.1), game("Free", 0)];
+
+		await new ResearchGamesUseCase().execute({
+			...makeInput(found, priced, tradeImporter),
+			minPrice: 0,
+		});
+
+		expect(tradeImporter.import).toHaveBeenCalledTimes(1);
+		const [imported] = vi.mocked(tradeImporter.import).mock.calls[0];
+		// minPrice 0, corte estrito: 0.10 entra; 0.00 (sem valor negociável) fica de fora.
+		expect(imported.map((g) => g.name)).toEqual(["Cheap"]);
+	});
+
 	it("filters cheap games in demo mode too", async () => {
 		const found = [game("Cheap"), game("Worthy")];
 		const priced = [game("Cheap", 0.2), game("Worthy", 1.5)];

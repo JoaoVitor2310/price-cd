@@ -13,12 +13,13 @@ function isAuthenticated(token: string | undefined): boolean {
 
 export const researchGames = async (req: Request, res: Response) => {
 	try {
-		const { gameNames, minPopularity, checkGamivoOffer, steam_id, list_code, internal_secret, title } = researchGamesBodySchema.parse(req.body);
+		const { gameNames, minPopularity, checkGamivoOffer, minPrice, steam_id, list_code, internal_secret, title } = researchGamesBodySchema.parse(req.body);
 
 		const request = {
 			gameNames,
 			minPopularity,
 			checkGamivoOffer,
+			minPrice,
 			supplierSteamId: steam_id,
 			listCode: list_code,
 			title,

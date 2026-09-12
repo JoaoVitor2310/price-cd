@@ -77,7 +77,7 @@ This allows the tool to be publicly accessible for demonstration while keeping t
 - **Rate limit resilience** — `fetchWithRetry` honours `Retry-After` headers on HTTP 429 with exponential backoff (3 attempts, 5 s base delay); `gotoWithRetry` handles Puppeteer timeouts the same way
 - **Inventory integration** — `HttpGameTradeImporter` implements the `GameTradeImporter` port using native `fetch` with a 15 s `AbortController` timeout, posting structured results to the inventory system over a private bearer-authenticated API
 - **Domain-level exclusion list** — `filterExcludedGames` is a pure domain function applied after the popularity filter; free-to-play games are excluded before the price fetcher is ever called
-- **Domain-level price floor** — `partitionByPrice` splits off any game whose best price is not above €0.50; games that cheap return a few cents of profit and are not worth negotiating; every discarded game is logged with its price, so it never disappears silently between the price fetcher and the result. Applied inside the two pricing pipelines (`SearchGamesUseCase`, `ResearchGamesUseCase`); the `lists` and supplier-discovery flows inherit it through the `GameSearcher` port instead of repeating the rule
+- **Domain-level price floor** — `partitionByPrice` splits off any game whose best price is not above the floor (default €0.50); games that cheap return a few cents of profit and are not worth negotiating; every discarded game is logged with its price, so it never disappears silently between the price fetcher and the result. Applied inside the two pricing pipelines (`SearchGamesUseCase`, `ResearchGamesUseCase`); the `lists` and supplier-discovery flows inherit the default through the `GameSearcher` port instead of repeating the rule. The `research` endpoint can override the floor per request via `minPrice` (bundles send `0`); the floor value is an argument to `partitionByPrice`, so the €0.50 default lives in one place (`MIN_PRICE_EURO`)
 - **Async background jobs** — `LimitedConcurrencyScheduler` queues list-processing jobs in-process with configurable concurrency; on completion it POSTs a callback to any URL the caller provides
 - **Game name normalisation** — `clear-string.ts` normalises roman numerals, K-suffixed numbers, edition keywords, DLC tags, regional tags and special characters to maximise match accuracy across different naming conventions
 - **Full test suite** — 159 tests (unit + integration) with zero real network or browser calls; integration layer tests the full HTTP pipeline via supertest with vitest mocks at the infrastructure boundary
@@ -170,8 +170,10 @@ npm test
 
 ```json
 {
-  "content": "100\nHalf-Life\nPortal 2\nHades",
+  "minPopularity": 100,
+  "gameNames": ["Half-Life", "Portal 2", "Hades"],
   "checkGamivoOffer": true,
+  "minPrice": 0.5,
   "internal_secret": "optional-token",
   "steam_id": "optional-supplier-steam-id",
   "list_code": "optional-list-identifier",
@@ -179,7 +181,7 @@ npm test
 }
 ```
 
-The `content` field follows a simple format: **line 1** is the minimum 24h peak player count; every subsequent line is a game name.
+`minPopularity` is the minimum 24h peak player count (`0` or greater); `gameNames` is a non-empty array of game names. `minPrice` is the minimum negotiable price floor in euros — games priced at or below it are discarded; **omit it to use the €0.50 default**, or send `0` (e.g. for bundles) to keep any priced game. Unknown fields are rejected (strict schema).
 
 **Demo mode response** — `200`, no token or wrong token:
 ```json

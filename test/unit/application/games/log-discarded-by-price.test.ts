@@ -16,6 +16,15 @@ describe("logDiscardedByPrice", () => {
 		expect(message).toContain("€0.50");
 	});
 
+	it("reflects a custom floor in the message when one is given", () => {
+		const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+		logDiscardedByPrice([{ name: "A", GamivoPrice: 0.1 }], 1);
+
+		expect(log.mock.calls[0][0]).toContain("€1.00");
+		expect(log.mock.calls[0][0]).not.toContain("€0.50");
+	});
+
 	it("says so explicitly when the game has no price at all", () => {
 		const log = vi.spyOn(console, "log").mockImplementation(() => {});
 

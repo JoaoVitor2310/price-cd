@@ -52,5 +52,5 @@ _Avoid_: Edição (reservado para variação de preço dentro do mesmo produto, 
 
 ### Preço mínimo negociável
 
-Piso de valor abaixo do qual não vale a pena negociar um jogo: mesmo com popularidade suficiente e oferta encontrada, o lucro por unidade seria de poucos centavos e não paga o tempo da negociação com o Fornecedor. Hoje o piso é 0,50 € e o corte é estrito — um jogo exatamente em 0,50 € é descartado. Aplicado depois da busca de preço, sobre o melhor preço encontrado.
+Piso de valor abaixo do qual não vale a pena negociar um jogo: mesmo com popularidade suficiente e oferta encontrada, o lucro por unidade seria de poucos centavos e não paga o tempo da negociação com o Fornecedor. O piso **default** é 0,50 € e o corte é estrito — um jogo exatamente em 0,50 € é descartado. Aplicado depois da busca de preço, sobre o melhor preço encontrado. O default vale para a busca, o Reabastecimento e a Descoberta de Fornecedores; a Pesquisa (endpoint `research`) pode sobrescrever o piso por requisição via `minPrice` — a de bundle manda `0` porque quer os jogos independente de preço.
 _Avoid_: usar para o corte de Popularidade mínima, que é anterior e olha jogadores simultâneos, não preço

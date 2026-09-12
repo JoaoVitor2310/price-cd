@@ -41,8 +41,10 @@ const makeGame = (overrides: Partial<FoundGames> = {}): FoundGames => ({
 	...overrides,
 });
 
-const makeContent = (minPopularity: number, ...games: string[]) =>
-	[String(minPopularity), ...games].join("\n");
+const makeBody = (minPopularity: number, ...gameNames: string[]) => ({
+	minPopularity,
+	gameNames,
+});
 
 /**
  * No modo autenticado a resposta volta antes do processamento terminar.
@@ -80,10 +82,49 @@ describe("POST /api/games/research — authenticated mode", () => {
 
 		const res = await request(app)
 			.post("/api/games/research")
-			.send({ content: makeContent(100, "Half-Life"), checkGamivoOffer: false, internal_secret: INTERNAL_SECRET });
+			.send({ ...makeBody(100, "Half-Life"), checkGamivoOffer: false, internal_secret: INTERNAL_SECRET });
 
 		expect(res.status).toBe(202);
 		expect(res.body).toEqual({ success: true, status: "queued" });
+	});
+
+	it("keeps games below the default price floor when minPrice is 0 (bundle flow)", async () => {
+		const games = [
+			makeGame({ id: 0, name: "Cheap", GamivoPrice: 0.1 }),
+			makeGame({ id: 1, name: "Worthy", GamivoPrice: 2 }),
+		];
+		mockPopularityFetch.mockResolvedValueOnce(games);
+		mockPriceFetch.mockResolvedValueOnce(games);
+
+		await request(app)
+			.post("/api/games/research")
+			.send({ ...makeBody(0, "Cheap", "Worthy"), minPrice: 0, internal_secret: INTERNAL_SECRET });
+
+		await flushBackgroundTasks();
+
+		const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+		const body = JSON.parse(init.body as string);
+		// Sem o piso default de €0,50, o jogo a €0,10 sobrevive.
+		expect(body.games.map((g: { name: string }) => g.name)).toEqual(["Cheap", "Worthy"]);
+	});
+
+	it("applies the default €0.50 floor when minPrice is omitted", async () => {
+		const games = [
+			makeGame({ id: 0, name: "Cheap", GamivoPrice: 0.1 }),
+			makeGame({ id: 1, name: "Worthy", GamivoPrice: 2 }),
+		];
+		mockPopularityFetch.mockResolvedValueOnce(games);
+		mockPriceFetch.mockResolvedValueOnce(games);
+
+		await request(app)
+			.post("/api/games/research")
+			.send({ ...makeBody(0, "Cheap", "Worthy"), internal_secret: INTERNAL_SECRET });
+
+		await flushBackgroundTasks();
+
+		const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+		const body = JSON.parse(init.body as string);
+		expect(body.games.map((g: { name: string }) => g.name)).toEqual(["Worthy"]);
 	});
 
 	it("sends all priced games to Sistema Estoque", async () => {
@@ -96,7 +137,7 @@ describe("POST /api/games/research — authenticated mode", () => {
 
 		await request(app)
 			.post("/api/games/research")
-			.send({ content: makeContent(0, "Half-Life", "Portal"), checkGamivoOffer: false, internal_secret: INTERNAL_SECRET });
+			.send({ ...makeBody(0, "Half-Life", "Portal"), checkGamivoOffer: false, internal_secret: INTERNAL_SECRET });
 
 		await flushBackgroundTasks();
 
@@ -114,7 +155,7 @@ describe("POST /api/games/research — authenticated mode", () => {
 
 		await request(app)
 			.post("/api/games/research")
-			.send({ content: makeContent(0, "Half-Life"), checkGamivoOffer: false, internal_secret: INTERNAL_SECRET });
+			.send({ ...makeBody(0, "Half-Life"), checkGamivoOffer: false, internal_secret: INTERNAL_SECRET });
 
 		await flushBackgroundTasks();
 
@@ -130,7 +171,7 @@ describe("POST /api/games/research — authenticated mode", () => {
 
 		await request(app)
 			.post("/api/games/research")
-			.send({ content: makeContent(0, "Half-Life"), checkGamivoOffer: false, internal_secret: INTERNAL_SECRET });
+			.send({ ...makeBody(0, "Half-Life"), checkGamivoOffer: false, internal_secret: INTERNAL_SECRET });
 
 		await flushBackgroundTasks();
 
@@ -147,7 +188,7 @@ describe("POST /api/games/research — authenticated mode", () => {
 
 		await request(app)
 			.post("/api/games/research")
-			.send({ content: makeContent(0, "Half-Life"), checkGamivoOffer: false, internal_secret: INTERNAL_SECRET, steam_id: "76561198000000001", list_code: "G0eXM" });
+			.send({ ...makeBody(0, "Half-Life"), checkGamivoOffer: false, internal_secret: INTERNAL_SECRET, steam_id: "76561198000000001", list_code: "G0eXM" });
 
 		await flushBackgroundTasks();
 
@@ -164,7 +205,7 @@ describe("POST /api/games/research — authenticated mode", () => {
 
 		await request(app)
 			.post("/api/games/research")
-			.send({ content: makeContent(0, "Half-Life"), checkGamivoOffer: false, internal_secret: INTERNAL_SECRET });
+			.send({ ...makeBody(0, "Half-Life"), checkGamivoOffer: false, internal_secret: INTERNAL_SECRET });
 
 		await flushBackgroundTasks();
 
@@ -181,7 +222,7 @@ describe("POST /api/games/research — authenticated mode", () => {
 
 		await request(app)
 			.post("/api/games/research")
-			.send({ content: makeContent(0, "Half-Life"), checkGamivoOffer: false, internal_secret: INTERNAL_SECRET });
+			.send({ ...makeBody(0, "Half-Life"), checkGamivoOffer: false, internal_secret: INTERNAL_SECRET });
 
 		await flushBackgroundTasks();
 
@@ -195,7 +236,7 @@ describe("POST /api/games/research — authenticated mode", () => {
 
 		const res = await request(app)
 			.post("/api/games/research")
-			.send({ content: makeContent(100, "Obscure Game"), checkGamivoOffer: false, internal_secret: INTERNAL_SECRET });
+			.send({ ...makeBody(100, "Obscure Game"), checkGamivoOffer: false, internal_secret: INTERNAL_SECRET });
 
 		await flushBackgroundTasks();
 
@@ -214,7 +255,7 @@ describe("POST /api/games/research — authenticated mode", () => {
 
 		const res = await request(app)
 			.post("/api/games/research")
-			.send({ content: makeContent(0, "Half-Life"), checkGamivoOffer: false, internal_secret: INTERNAL_SECRET });
+			.send({ ...makeBody(0, "Half-Life"), checkGamivoOffer: false, internal_secret: INTERNAL_SECRET });
 
 		await flushBackgroundTasks();
 
@@ -247,7 +288,7 @@ describe("POST /api/games/research — demo mode", () => {
 
 		const res = await request(app)
 			.post("/api/games/research")
-			.send({ content: makeContent(100, "Half-Life"), checkGamivoOffer: false });
+			.send({ ...makeBody(100, "Half-Life"), checkGamivoOffer: false });
 
 		expect(res.status).toBe(200);
 		expect(res.body.success).toBe(true);
@@ -262,7 +303,7 @@ describe("POST /api/games/research — demo mode", () => {
 
 		const res = await request(app)
 			.post("/api/games/research")
-			.send({ content: makeContent(0, "Half-Life"), checkGamivoOffer: false, internal_secret: "wrong-token" });
+			.send({ ...makeBody(0, "Half-Life"), checkGamivoOffer: false, internal_secret: "wrong-token" });
 
 		expect(res.status).toBe(200);
 		expect(res.body.demo).toBe(true);
@@ -276,7 +317,7 @@ describe("POST /api/games/research — demo mode", () => {
 		const gameNames = games.map((g) => g.name);
 		await request(app)
 			.post("/api/games/research")
-			.send({ content: makeContent(0, ...gameNames), checkGamivoOffer: false });
+			.send({ ...makeBody(0, ...gameNames), checkGamivoOffer: false });
 
 		const [calledNames] = mockPopularityFetch.mock.calls[0] as [string[], number];
 		expect(calledNames.length).toBeLessThanOrEqual(10);
@@ -287,7 +328,7 @@ describe("POST /api/games/research — demo mode", () => {
 
 		const res = await request(app)
 			.post("/api/games/research")
-			.send({ content: makeContent(100, "Obscure Game"), checkGamivoOffer: false });
+			.send({ ...makeBody(100, "Obscure Game"), checkGamivoOffer: false });
 
 		expect(res.status).toBe(200);
 		expect(res.body.demo).toBe(true);
@@ -304,37 +345,55 @@ describe("POST /api/games/research — validation", () => {
 		vi.clearAllMocks();
 	});
 
-	it("returns 400 when content is missing", async () => {
+	it("returns 400 when minPopularity is missing", async () => {
 		const res = await request(app)
 			.post("/api/games/research")
-			.send({ checkGamivoOffer: false });
+			.send({ gameNames: ["Half-Life"], checkGamivoOffer: false });
 
 		expect(res.status).toBe(400);
 		expect(res.body.success).toBe(false);
 	});
 
-	it("returns 400 when content has no game names after the popularity line", async () => {
+	it("returns 400 when gameNames is empty", async () => {
 		const res = await request(app)
 			.post("/api/games/research")
-			.send({ content: makeContent(100), checkGamivoOffer: false });
+			.send({ ...makeBody(100), checkGamivoOffer: false });
 
 		expect(res.status).toBe(400);
 		expect(res.body.success).toBe(false);
 	});
 
-	it("returns 400 when first line is not a valid number", async () => {
+	it("returns 400 when minPopularity is not a number", async () => {
 		const res = await request(app)
 			.post("/api/games/research")
-			.send({ content: "not-a-number\nHalf-Life", checkGamivoOffer: false });
+			.send({ minPopularity: "not-a-number", gameNames: ["Half-Life"], checkGamivoOffer: false });
 
 		expect(res.status).toBe(400);
 		expect(res.body.success).toBe(false);
 	});
 
-	it("returns 400 when first line popularity is negative", async () => {
+	it("returns 400 when minPopularity is negative", async () => {
 		const res = await request(app)
 			.post("/api/games/research")
-			.send({ content: "-10\nHalf-Life", checkGamivoOffer: false });
+			.send({ ...makeBody(-10, "Half-Life"), checkGamivoOffer: false });
+
+		expect(res.status).toBe(400);
+		expect(res.body.success).toBe(false);
+	});
+
+	it("returns 400 when minPrice is negative", async () => {
+		const res = await request(app)
+			.post("/api/games/research")
+			.send({ ...makeBody(100, "Half-Life"), minPrice: -1 });
+
+		expect(res.status).toBe(400);
+		expect(res.body.success).toBe(false);
+	});
+
+	it("returns 400 when an unknown field is sent", async () => {
+		const res = await request(app)
+			.post("/api/games/research")
+			.send({ ...makeBody(100, "Half-Life"), content: "100\nHalf-Life" });
 
 		expect(res.status).toBe(400);
 		expect(res.body.success).toBe(false);
