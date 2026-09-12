@@ -1,6 +1,6 @@
 import * as z from "zod";
 
-export const fileContentSchema = z.strictObject({
+export const gameSearchSchema = z.strictObject({
 	minPopularity: z
 		.number()
 		.min(0, { message: "Minimum popularity must be 0 or greater" }),
@@ -26,58 +26,43 @@ export const gameIdSteamResponseSchema = z.strictObject({
 	id_steam: z.string().optional(),
 });
 
-export const fileContentIdSteamSchema = z.strictObject({
+export const steamIdLookupSchema = z.strictObject({
 	games: z
 		.array(gameIdSteamSchema)
 		.min(1, { message: "At least one game is required" }),
 });
 
-export const fileContentIdSteamResponseSchema = z.strictObject({
+export const steamIdLookupResponseSchema = z.strictObject({
 	games: z
 		.array(gameIdSteamResponseSchema)
 		.min(1, { message: "At least one game is required" }),
 });
 
-export type FileContent = z.infer<typeof fileContentSchema>;
+export type GameSearch = z.infer<typeof gameSearchSchema>;
 export type GameIdSteam = z.infer<typeof gameIdSteamSchema>;
 export type GameIdSteamResponse = z.infer<typeof gameIdSteamResponseSchema>;
-export type FileContentIdSteam = z.infer<typeof fileContentIdSteamSchema>;
-export type FileContentIdSteamResponse = z.infer<typeof fileContentIdSteamResponseSchema>;
+export type SteamIdLookup = z.infer<typeof steamIdLookupSchema>;
+export type SteamIdLookupResponse = z.infer<typeof steamIdLookupResponseSchema>;
 
-const fileLineSchema = z.string().transform((val) => val.trim());
-
-const parseGameListContent = (content: string, checkGamivoOffer: boolean): FileContent => {
-	const lines = content.split("\n");
-
-	const minPopularityStr = fileLineSchema.parse(lines[0] ?? "");
-	const minPopularity = z.coerce
+// A pesquisa recebe o mesmo formato estruturado da busca (`gameSearchSchema`) —
+// `minPopularity` e `gameNames` são campos de primeira classe, não um blob de
+// texto. Converter um arquivo `.txt` em `{ minPopularity, gameNames }` é
+// responsabilidade de quem chama (front-end / adaptador de arquivo), não do
+// contrato da API. `checkGamivoOffer` é opcional aqui (default `false`) porque a
+// pesquisa é acionada por integrações que nem sempre se importam com a Gamivo.
+export const researchGamesBodySchema = gameSearchSchema.extend({
+	checkGamivoOffer: z.boolean().optional().default(false),
+	// Piso de preço negociável. Omitido → default do domínio (€0,50). Bundles
+	// mandam `0` para aceitar jogos abaixo do piso. Sem default aqui de propósito:
+	// o domínio é a fonte única do valor padrão.
+	minPrice: z
 		.number()
-		.min(0, { message: "Minimum popularity must be 0 or greater" })
-		.parse(minPopularityStr);
-
-	const gameNames = lines
-		.slice(1)
-		.map((line) => fileLineSchema.parse(line))
-		.filter((line) => line !== "");
-
-	return fileContentSchema.parse({ minPopularity, gameNames, checkGamivoOffer });
-};
-
-export const researchGamesBodySchema = z
-	.object({
-		content: z.string().min(1, { message: "The 'content' field is required." }),
-		checkGamivoOffer: z.boolean().optional().default(false),
-		steam_id: z.string().optional(),
-		list_code: z.string().optional(),
-		internal_secret: z.string().optional(),
-		title: z.string().optional(),
-	})
-	.transform((val) => ({
-		...parseGameListContent(val.content, val.checkGamivoOffer),
-		steam_id: val.steam_id,
-		list_code: val.list_code,
-		internal_secret: val.internal_secret,
-		title: val.title,
-	}));
+		.min(0, { message: "minPrice must be 0 or greater" })
+		.optional(),
+	steam_id: z.string().optional(),
+	list_code: z.string().optional(),
+	internal_secret: z.string().optional(),
+	title: z.string().optional(),
+});
 
 export type ResearchGamesBody = z.infer<typeof researchGamesBodySchema>;

@@ -1,13 +1,13 @@
 import type { Request, Response } from "express";
 import { ZodError } from "zod";
-import { fileContentIdSteamSchema, fileContentIdSteamResponseSchema } from "@/schemas/game.schema.js";
+import { steamIdLookupSchema, steamIdLookupResponseSchema } from "@/schemas/game.schema.js";
 import { SteamChartsPopularityFetcher } from "@/infrastructure/games/steam-charts-popularity-fetcher.js";
 
 const popularityFetcher = new SteamChartsPopularityFetcher();
 
 export const searchGamesIdSteam = async (req: Request, res: Response) => {
   try {
-    const validatedData = fileContentIdSteamSchema.parse(req.body);
+    const validatedData = steamIdLookupSchema.parse(req.body);
 
     const gameNames = validatedData.games.map((game) => game.name);
     const steamChartsResults = await popularityFetcher.fetch(gameNames, 1);
@@ -23,7 +23,7 @@ export const searchGamesIdSteam = async (req: Request, res: Response) => {
       };
     });
 
-    const result = fileContentIdSteamResponseSchema.parse({ games: gamesWithSteamId });
+    const result = steamIdLookupResponseSchema.parse({ games: gamesWithSteamId });
 
     res.status(200).json({
       success: true,

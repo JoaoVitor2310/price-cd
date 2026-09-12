@@ -11,6 +11,8 @@ export type ResearchGamesInput = {
 	gameNames: string[];
 	minPopularity: number;
 	checkGamivoOffer: boolean;
+	/** Piso de preço negociável. Omitido → default do domínio (`MIN_PRICE_EURO`). */
+	minPrice?: number;
 	supplierSteamId?: string;
 	listCode?: string;
 	title?: string;
@@ -23,7 +25,7 @@ export class ResearchGamesUseCase {
 	// Returns null when results were sent to inventory (authenticated).
 	// Returns the priced games list when in demo mode.
 	async execute(input: ResearchGamesInput): Promise<GameTradeInput[] | null> {
-		const { minPopularity, checkGamivoOffer, supplierSteamId, listCode, title,
+		const { minPopularity, checkGamivoOffer, minPrice, supplierSteamId, listCode, title,
 			popularityFetcher, priceFetcher, tradeImporter } = input;
 
 		const isDemo = !tradeImporter;
@@ -37,8 +39,8 @@ export class ResearchGamesUseCase {
 
 		const gamesWithPrices = await priceFetcher.fetch(worthyGames, checkGamivoOffer);
 
-		const { worthy, tooCheap } = partitionByPrice(gamesWithPrices);
-		logDiscardedByPrice(tooCheap);
+		const { worthy, tooCheap } = partitionByPrice(gamesWithPrices, minPrice);
+		logDiscardedByPrice(tooCheap, minPrice);
 
 		const pricedGames: GameTradeInput[] = worthy
 			.map((g) => ({

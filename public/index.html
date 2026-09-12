@@ -910,7 +910,11 @@ Counter-Strike 2</pre>
         alert("Paste the game list before submitting.");
         return;
       }
-      const content = `${minPop || "0"}\n${games}`;
+      const minPopularity = Number(minPop || "0");
+      const gameNames = games
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
       const btn         = document.getElementById("uploadButton");
       const loading     = document.getElementById("loadingIndicator");
       const result      = document.getElementById("resultMessage");
@@ -926,7 +930,8 @@ Counter-Strike 2</pre>
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            content,
+            minPopularity,
+            gameNames,
             checkGamivoOffer: document.getElementById("checkGamivoOffer").checked,
             title:            document.getElementById("title").value.trim()           || undefined,
             steam_id:         document.getElementById("steamId").value.trim()         || undefined,

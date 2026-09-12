@@ -298,7 +298,7 @@ Pipe transforma e/ou valida o argumento antes de o handler recebê-lo:
 
 ```ts
 @Post("search")
-async search(@Body(new ZodValidationPipe(fileContentSchema)) body: FileContent) { … }
+async search(@Body(new ZodValidationPipe(gameSearchSchema)) body: GameSearch) { … }
 ```
 
 O `ZodValidationPipe` deste projeto tem ~15 linhas e relança o `ZodError`, deixando a

@@ -31,6 +31,25 @@ describe("partitionByPrice", () => {
 		expect(partitionByPrice([])).toEqual({ worthy: [], tooCheap: [] });
 	});
 
+	it("uses a custom price floor when one is provided", () => {
+		const { worthy, tooCheap } = partitionByPrice(makeGames([0.1, 1, 2]), 1);
+		expect(worthy.map((g) => g.GamivoPrice)).toEqual([2]);
+		expect(tooCheap.map((g) => g.GamivoPrice)).toEqual([0.1, 1]);
+	});
+
+	it("with a zero floor keeps any priced game but still discards the priceless", () => {
+		const { worthy, tooCheap } = partitionByPrice(makeGames([0.01, 0, undefined]), 0);
+		expect(worthy.map((g) => g.GamivoPrice)).toEqual([0.01]);
+		expect(tooCheap.map((g) => g.GamivoPrice)).toEqual([0, undefined]);
+	});
+
+	it("defaults to MIN_PRICE_EURO when no floor is given", () => {
+		const prices = [0.49, MIN_PRICE_EURO, 0.51];
+		expect(partitionByPrice(makeGames(prices))).toEqual(
+			partitionByPrice(makeGames(prices), MIN_PRICE_EURO),
+		);
+	});
+
 	it("preserves generic type — extra fields are kept", () => {
 		const { worthy } = partitionByPrice([
 			{ id: 0, name: "Game A", popularity: 200, region: "EU", GamivoPrice: 4.5 },
