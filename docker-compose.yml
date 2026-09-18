@@ -18,6 +18,9 @@ services:
 
     container_name: price-researcher-dev
 
+    # Mesmo motivo do serviço de produção — ver o comentário lá embaixo.
+    init: true
+
     ports:
       - "${HOST_PORT_DEV:-5556}:5555"
 
@@ -48,6 +51,19 @@ services:
     container_name: price-researcher
 
     restart: unless-stopped
+
+    # Um init de verdade como PID 1. Sem ele o `exec node` do docker/start.sh
+    # faz do Node o PID 1, e o Node não é um init: o libuv só dá `waitpid` nos
+    # filhos que ele mesmo criou. Todo neto do Chromium (renderer, GPU process,
+    # zygote) reparentado para o PID 1 ao morrer vira zumbi PERMANENTE — não
+    # gasta memória, mas ocupa um slot da tabela de processos e conta para o
+    # pids_limit. Em 2026-09-18 a produção chegou a 511/512 PIDs com a memória
+    # em 1 GB de 2 GB: qualquer fork() passou a falhar com "Cannot fork",
+    # inclusive o `docker exec`, e o primeiro a quebrar foi a busca de binário
+    # do chrome-launcher ao abrir o browser para o AllKeyShop.
+    # O cleanupBrowser continua necessário (ele derruba a árvore); o init é
+    # quem COLHE os mortos. São papéis diferentes — não remover nenhum dos dois.
+    init: true
 
     ports:
       - "${HOST_PORT:-5555}:5555"
