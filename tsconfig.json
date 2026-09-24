@@ -2,10 +2,17 @@
 	"compilerOptions": {
 		"target": "ES6",
 		"module": "ESNext",
-		"moduleResolution": "node",
+		"moduleResolution": "bundler",
 		"outDir": "./dist",
 		"allowSyntheticDefaultImports": true,
 		"esModuleInterop": true,
+
+		// Exigidos pelo container de DI do Nest: o decorator anota a classe e
+		// `emitDecoratorMetadata` grava `design:paramtypes`, que é como o Nest
+		// descobre o tipo de cada parâmetro do construtor. Sem isso ele injeta
+		// `undefined` SEM erro no boot — ver `docs/adr/0004-*.md`.
+		"experimentalDecorators": true,
+		"emitDecoratorMetadata": true,
 
 		"forceConsistentCasingInFileNames": true,
 		"strict": true,

@@ -24,8 +24,8 @@ O spike confirmou Nest 12 funcionando sob `"type": "module"` com `cheerio`, `zod
 injetada por `abstract class`. Não há troca para CommonJS, e portanto não há branch longa: a
 coexistência Express/Nest acontece na `main`.
 
-`moduleResolution` passa de `"node"` (depreciado sob ESM) para `"bundler"` — resolve o item 6
-do `docs/IMPROVEMENTS.md`, que precisava ser decidido aqui de qualquer forma.
+`moduleResolution` passa de `"node"` (depreciado sob ESM) para `"bundler"`, aplicado no PR 2
+junto com `experimentalDecorators` e `emitDecoratorMetadata`.
 
 ## Toolchain: `emitDecoratorMetadata` exige SWC fora do build
 
@@ -35,7 +35,7 @@ dependência por tipo. O spike mediu cada ferramenta do projeto:
 | Ferramenta | Emite metadata? | Consequência |
 |---|---|---|
 | `tsc` (build de produção) | **sim** | `npm run build` funciona sem mudança |
-| `tsx` (`npm run dev`) | **não** | dev passa a usar `node --import @swc-node/register/esm-register` |
+| `tsx` (`npm run dev`) | **não** | serve ao Express, que não tem decorator — fica como está. O entrypoint Nest (`dev:nest`) usa `node --import @swc-node/register/esm-register`; o `dev` só troca no cutover |
 | Vitest com esbuild (padrão) | **não** | `vitest.config.ts` passa a usar `unplugin-swc` |
 
 O modo de falha é o que torna isso perigoso: **sem metadata o Nest não lança erro no boot** —
@@ -48,7 +48,7 @@ metadata ausente; só uma asserção HTTP de ponta a ponta, ou uma leitura diret
 
 - Qualquer novo `.ts` em `domain/`, `application/` ou `helpers/` que importe `@nestjs/*` é bug
   de arquitetura, não preferência de estilo.
-- Trocar `unplugin-swc` por outro transform nos testes, ou voltar o dev para `tsx`, reintroduz
+- Trocar `unplugin-swc` por outro transform nos testes, ou apontar `dev:nest` para o `tsx`, reintroduz
   a falha silenciosa. As duas configurações existem por essa razão e não são cosméticas.
 - Toda porta nova nasce como `abstract class` em `application/**/ports/`.
 - O `.swcrc` passa a ser arquivo de infraestrutura de build: `legacyDecorator` e

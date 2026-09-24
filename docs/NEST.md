@@ -8,7 +8,8 @@ Os conceitos do Nest usados aqui — container, providers, tokens, escopos, pipe
 request, ciclo de vida — estão explicados em **`docs/nest-conceitos.md`**, mapeados a este
 código. Este arquivo assume esse vocabulário e trata só da sequência e da estratégia.
 
-Status: **proposto, não iniciado**. Nenhum PR abaixo foi aberto.
+Status: **PRs 0 a 2 entregues** (spike + ADR 0004, harness de contrato, esqueleto Nest).
+Produção segue no Express. Próximo: PR 3.
 
 ---
 
@@ -224,8 +225,8 @@ uniformizar, é um PR separado, antes ou depois, nunca durante.
 | # | PR | Depende de | Conceitos Nest introduzidos |
 |---:|---|---|---|
 | 0 | Spike + ADR 0004 | — | decorators, `reflect-metadata`, `emitDecoratorMetadata` |
-| 1 | Harness de contrato (só Express) | — | — |
-| 2 | Esqueleto Nest + ConfigModule | 0, 1 | `NestFactory`, `@Module`, dynamic module, pipes e filters globais |
+| 1 | ✅ Harness de contrato (só Express) | — | — |
+| 2 | ✅ Esqueleto Nest + ConfigModule | 0, 1 | `NestFactory`, `@Module`, dynamic module, pipes e filters globais |
 | 3 | Módulo `games`: `/search`, `/search-id-steam` | 2 | `@Controller`, custom providers, injection tokens, `Test.createTestingModule` |
 | 4 | Módulo `games`: `/research` | 3 | `useFactory`, providers com estado, por que **não** usar Guard aqui |
 | 5 | Módulo `lists` | 4 | duas instâncias da mesma classe com tokens distintos, `OnModuleDestroy` |
@@ -265,12 +266,12 @@ Responder, com critério de aceite executável:
 Saída: `docs/adr/0004-nest-como-camada-de-apresentacao.md` — **escrito**, registrando sistema
 de módulos, versão do Nest, toolchain de metadata e a fronteira de camadas da seção 1.
 
-Resolve de quebra o item 6 do `docs/IMPROVEMENTS.md` (`moduleResolution: "node"`, depreciado
-para ESM), que precisa ser decidido aqui de qualquer forma.
+Decide de quebra o `moduleResolution: "node"` (depreciado para ESM), que precisava ser
+resolvido aqui de qualquer forma. Aplicado no PR 2.
 
 ---
 
-### PR 1 — Harness de testes de contrato
+### PR 1 — Harness de testes de contrato ✅ **entregue**
 
 Seção 4. Só Express nesta altura — `nest.contract.test.ts` nasce no PR 3.
 
@@ -278,40 +279,94 @@ Não é opcional e não pode vir depois: a partir do PR 3, cada módulo Nest alt
 use case compartilhado com o Express. Sem o harness, não há como afirmar que o Express
 continua íntegro a cada PR.
 
+O que existe hoje, em `test/contract/`:
+
+| Arquivo | Papel |
+|---|---|
+| `contract-cases.ts` | 19 casos cobrindo as 5 rotas + `GET /` + 404. O contrato como ele **é**. |
+| `api-contract.suite.ts` | `runApiContract(getServer, only?)` — o opt-in por rota |
+| `doubles.ts` | dublês dos adaptadores de `infrastructure/` (camada que não migra) |
+| `express.contract.test.ts` | a bateria contra o app Express |
+
+A costura dos dublês é `infrastructure/`, não `services/`: é o que permite o mesmo arquivo de
+dublês servir ao app Nest no PR 3 sem duplicação, já que `services/` morre no PR 10. O
+agendador é inerte de propósito — registra a tarefa e não a executa, que é exatamente o
+contrato de um 202. Nada abre browser; a bateria roda em ~800ms.
+
+Validado por mutação: trocar o `202` de `/api/lists/run` por `200` faz falhar 1 caso, o
+certo. Um harness que passa com o código quebrado não é portão de nada.
+
 ---
 
-### PR 2 — Esqueleto Nest + ConfigModule
+### PR 2 — Esqueleto Nest + ConfigModule ✅ **entregue**
 
-Sobe um app Nest que não serve nenhuma rota de negócio.
+Sobe um app Nest que não serve nenhuma rota de negócio. Produção segue no Express; o
+Dockerfile não mudou.
 
-- `src/main.ts` — `NestFactory.create<NestExpressApplication>(AppModule)`,
-  `app.enableShutdownHooks()`, `setTimeout` equivalente ao `SERVER_TIMEOUT_MS` atual, porta
-  vinda do config com **default diferente do Express** (`PORT_NEST=5557`) para que os dois
-  subam em dev sem colidir.
-- `src/config/env.schema.ts` — schema Zod sobre `process.env`, cobrindo o que já está
-  catalogado no `.env.example`. Vive **fora** de `src/nest/` porque o Express também pode
-  consumi-lo.
-- `src/nest/config/config.module.ts` — `ConfigModule.forRoot({ isGlobal: true, validate })`
-  apontando para esse schema. Falha no boot com mensagem clara se faltar variável
-  obrigatória, em vez de estourar no primeiro request.
-- `src/nest/common/zod-validation.pipe.ts` — ~15 linhas, `schema.parse` no `transform`,
-  relançando `ZodError`. Escrito à mão em vez de `nestjs-zod`: é pequeno demais para
-  justificar uma dependência acoplada à major do Zod.
-- `src/nest/common/all-exceptions.filter.ts` — `ZodError` → 400 com as mensagens
-  concatenadas (mesmo formato de hoje), `HttpException` → passa, resto → 500. Este arquivo
-  sozinho substitui o `catch` duplicado dos 5 controllers.
-- `GET /health` para provar que o app sobe.
-- Scripts: `dev:nest`, e `build` cobrindo os dois entrypoints.
+| Arquivo | Papel |
+|---|---|
+| `src/config/env.schema.ts` | schema Zod de todas as 22 variáveis de `process.env`. Fora de `src/nest/` porque descreve o processo, não a apresentação |
+| `src/nest/config/config.module.ts` | `ConfigModule.forRoot({ isGlobal, cache, validate })` |
+| `src/nest/common/zod-validation.pipe.ts` | `schema.parse` no `transform`, deixando o `ZodError` subir |
+| `src/nest/common/all-exceptions.filter.ts` | o `try/catch` dos 5 controllers, num arquivo só |
+| `src/nest/health/health.controller.ts` | `GET /api/health`, a prova de que a DI resolve |
+| `src/nest/app.module.ts` | composition root; filter via `APP_FILTER` |
+| `src/main.ts` | entrypoint, irmão de `server.ts`; `PORT_NEST=5557` |
 
-Registre pipe e filter via `APP_PIPE`/`APP_FILTER` (providers de `@nestjs/core`), não via
-`app.useGlobalPipes()` — a diferença está em `nest-conceitos.md` §6 e importa assim que o
-filter precisar injetar algo.
+**Toolchain (ADR 0004 aplicado):** `experimentalDecorators` + `emitDecoratorMetadata` no
+`tsconfig.json`, `moduleResolution` de `"node"` para `"bundler"`, `.swcrc` novo e
+`unplugin-swc` no `vitest.config.ts`. Scripts `dev:nest` (via `@swc-node/register`, não `tsx`)
+e `start:nest`. O `npm run dev` do Express segue no `tsx`: ele não tem decorator, não precisa
+de SWC — só troca no PR 10.
 
-Produção continua no Express. O Dockerfile não muda.
+**Validação no boot, não no primeiro request.** Duas variáveis inválidas derrubam o processo
+listando as duas de uma vez. É ganho real sobre o Express, onde
+`Number(process.env.X) || default` engole `"abc"` como default em silêncio.
+
+**O que é obrigatório:** quase nada. Exigir variável muda comportamento, e a maioria dos
+fluxos é degradável de propósito — `/api/games/research` sem `INTERNAL_SECRET` responde em
+modo demo, que é contrato coberto em `test/contract/`. Só `STEAMTRADES_SESSION`,
+`SISTEMA_ESTOQUE_URL` e `EXTERNAL_SECRET` são exigidos, e apenas sob `NODE_ENV=production`.
+Em dev e teste o app sobe com `.env` vazio.
+
+#### Desvios do plano original, e por quê
+
+**Não há `APP_PIPE`.** O plano previa registrar o `ZodValidationPipe` globalmente, mas ele
+recebe o schema no construtor — cada rota valida contra um schema diferente. Ele é aplicado
+por parâmetro (`@Body(new ZodValidationPipe(gameSearchSchema))`). Pipe global só faria sentido
+se existisse validação válida para toda rota.
+
+**`setGlobalPrefix` e `useStaticAssets` vieram do PR 8.** O plano os listava lá, e o PR 2
+pedia `GET /health`. Entregou-se `/api/health`, porque sem o prefixo o app Nest não tem as
+mesmas URLs do Express e a bateria de contrato do PR 3 não teria onde bater. É antecipação
+deliberada; o PR 8 fica com o `SERVER_TIMEOUT_MS` e o resto da paridade.
+
+**`cache: true` no ConfigModule** não estava no plano. Entrou porque o ambiente é validado no
+boot e reler `process.env` a cada acesso contradiria isso. Tem consequência de teste: o app
+Nest não enxerga mutação de `process.env` feita depois do boot — por isso o harness ganhou
+`withEnv` por app em vez de mutar o ambiente direto.
+
+**O filter global não cobre o contrato inteiro.** As rotas não respondem erro no mesmo
+formato (`test/contract/contract-cases.ts`): duas usam `{ error, details }`, duas usam a
+mensagem em `data`, com prefixos diferentes e uma delas em português. Um filter global só tem
+um default — aqui é `{ error: "Validation failed", details }`, que cobre 2 das 4. As outras
+duas precisam de tratamento próprio nos PRs 4 e 5, porque mudar o formato delas **é mudança de
+contrato** e o plano proíbe isso durante a migração. A bateria de contrato falha se alguém
+esquecer.
 
 ---
 
 ### PR 3 — Módulo `games`: `/search` e `/search-id-steam`
+
+> **Obrigatório neste PR:** estas duas rotas respondem 500 como
+> `{ error: "Internal server error", message: "Failed to analyze games" }` — sem ponto final e
+> com `message`, não `details`. O `AllExceptionsFilter` global responde o outro formato. Declare
+> o formato legado com `@UseFilters(...)` no controller. A bateria de contrato já cobre os três
+> formatos de 500 e falha se isso for esquecido.
+>
+> **Também obrigatório:** o `nest.contract.test.ts` precisa fornecer um `withEnv` que reconstrua
+> o módulo de teste — o Nest congela o ambiente no boot, então mutar `process.env` não funciona
+> do lado dele.
 
 Fluxos síncronos, sem fila e sem auth. É onde a receita é validada antes de aplicá-la aos
 fluxos difíceis.
@@ -448,11 +503,14 @@ apagá-lo. Não porte código morto para a arquitetura nova.
 O que não é rota mas é comportamento observável:
 
 - `express.static(public/)` → `app.useStaticAssets()` do `NestExpressApplication`.
-- `GET /` com o texto do LinkedIn.
+- `GET /` servindo `public/index.html` — **não** o texto do LinkedIn. O
+  `app.use(express.static(publicDir))` vem antes do `app.get("/")` em `src/app.ts`, então o
+  estático vence e o handler de autoria é inalcançável (item 17 do IMPROVEMENTS). A ordem
+  `useStaticAssets` vs rota precisa dar o mesmo resultado.
 - `server.setTimeout(SERVER_TIMEOUT_MS)`.
 - `app.setGlobalPrefix("api")` no lugar do `router.use("/api", ...)`.
-- Item 12 do `docs/IMPROVEMENTS.md` resolvido de graça: `search-id-steam.route.ts` é montado
-  de forma incorreta hoje; com decorators o problema deixa de existir.
+- `search-id-steam.route.ts` deixa de existir como arquivo de rota — vira um `@Post()` no
+  `GamesController`, junto de `/search`.
 
 Ao final deste PR, `nest.contract.test.ts` roda **sem `only`**. É o marco de paridade.
 
@@ -504,15 +562,14 @@ continua usando Express por baixo — ver `nest-conceitos.md` §10); atualizar `
 
 ### 7.1 ESM vs CommonJS — o único risco de virar buraco
 
-O projeto é `"type": "module"`, `"module": "ESNext"`, `"moduleResolution": "node"` (já
-depreciado — item 6 do IMPROVEMENTS), com aliases `@/*` resolvidos por `tsc-alias` e imports
+O projeto era `"type": "module"`, `"module": "ESNext"`, `"moduleResolution": "node"` (já
+depreciado), com aliases `@/*` resolvidos por `tsc-alias` e imports
 com extensão `.js` explícita. O Nest é historicamente CommonJS-first: o CLI scaffolda CJS e a
 maior parte da documentação assume CJS.
 
 **Resolvido no PR 0: ESM fica.** O spike subiu Nest 12 sob `"type": "module"` com
 `puppeteer-real-browser`, `cheerio` e `zod` no mesmo processo e respondeu 200 — nenhum atrito
-de interop apareceu. `moduleResolution` passa a `"bundler"` no PR 2, fechando o item 6 do
-IMPROVEMENTS. Ver ADR 0004.
+de interop apareceu. `moduleResolution` passou a `"bundler"` no PR 2. Ver ADR 0004.
 
 ### 7.2 Metadata de decorator no Vitest
 
@@ -542,10 +599,10 @@ continua correto para ambos. Migrar para provider depois do cutover, se incomoda
 
 ### 7.4 Suíte de testes instável
 
-O item 17 do `docs/IMPROVEMENTS.md` registra timeouts aleatórios do Vitest em WSL2 por
+O item **15** do `docs/IMPROVEMENTS.md` registra timeouts aleatórios do Vitest em WSL2 por
 contenção de worker. Durante a migração isso é veneno: uma falha de timeout vai parecer
-regressão do Nest. **Resolver o item 17 antes do PR 3**, ou o sinal do harness de contrato
-fica ruidoso justamente quando ele mais importa.
+regressão do Nest. **Resolver antes do PR 3**, ou o sinal do harness de contrato fica ruidoso
+justamente quando ele mais importa.
 
 ### 7.5 Escopo do container
 
@@ -583,7 +640,7 @@ Conforme a regra do `CLAUDE.md`, cada PR atualiza o que tornou desatualizado:
 |---|---|---|
 | `docs/adr/0004-...` | PR 0 | Decisão, sistema de módulos, fronteira de camadas, estratégia de token de porta |
 | `docs/nest-conceitos.md` | PRs 2–7 | Cada conceito passa de "vamos usar" para "está assim, aqui, por isto" |
-| `docs/IMPROVEMENTS.md` | PRs 0, 5, 7, 8 | Fechar itens 3, 6, 13; abrir o que o harness revelar |
+| `docs/IMPROVEMENTS.md` | PRs 2, 5, 7 | Fechar itens 3 e 15; abrir o que o harness revelar. Item feito sai do arquivo — o backlog só guarda o que falta |
 | `CLAUDE.md` | PRs 2, 9, 10 | Seções "Arquitetura" e "Tecnologias e Padrões" |
 | `README.md` | PRs 8, 9, 10 | Stack, árvore de diretórios, Getting Started |
 | `docs/wiki/` | PR 9 | Só se algum comportamento visível ao negócio mudar — não deveria mudar |

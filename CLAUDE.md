@@ -22,6 +22,12 @@ Atue sempre como arquiteto de software sênior com conhecimento profundo de Node
 - Ao sugerir onde um novo arquivo deve viver, justifique com base na camada correta da arquitetura
 - Sempre gerar testes para cada alteração feita no projeto e só aceitar depois de executar os testes e passarem todos.
 
+### Idioma no código
+
+**Todo código é em inglês** — nomes de `describe`/`it`, identificadores, mensagens de erro, strings de asserção, dados de fixture. Português fica **exclusivamente** em comentários explicativos e na documentação `.md`.
+
+Única exceção: string que reproduz literalmente uma saída de produção (ex.: a mensagem `"Erro no corpo da requisição: ..."` que `run-lists.controller.ts` devolve hoje). Nesse caso o português é o contrato, não escolha — e merece comentário dizendo isso.
+
 ### Commits
 
 `git commit` é feito única e exclusivamente pelo usuário — Claude nunca deve rodar `git commit` (nem `git push`) neste repositório, sob nenhuma circunstância, mesmo que peçam explicitamente para "commitar" no meio de uma tarefa. O trabalho do Claude termina em deixar o working tree pronto: código, testes passando, documentação viva atualizada. Se achar que a mudança está pronta pra virar commit, diga isso e pare — quem decide a mensagem e o momento do commit é o usuário.
@@ -34,7 +40,7 @@ Toda documentação `.md` do projeto é **viva**: deve ser atualizada na mesma a
 |---|---|---|
 | `CONTEXT.md` | Glossário do domínio (só termos, sem detalhe de implementação) | Um termo do negócio nasce, muda de significado ou é aposentado |
 | `docs/adr/` | Decisões arquiteturais difíceis de reverter | Uma decisão com trade-off real é tomada |
-| `docs/IMPROVEMENTS.md` | Backlog de dívida técnica | Uma dívida é descoberta, resolvida ou muda de prioridade |
+| `docs/IMPROVEMENTS.md` | Backlog de dívida técnica — **só o que falta fazer** | Uma dívida é descoberta ou muda de prioridade. Item resolvido é **removido do arquivo**, não marcado como feito: o backlog não é histórico (para isso existe o git log). Ao remover, renumere os itens seguintes e corrija quem os referenciava por número |
 | `docs/wiki/` | Visão de alto nível para leitura não-técnica | Um fluxo, parâmetro ou comportamento visível ao negócio muda |
 | `README.md` | Visão geral do projeto + contrato dos endpoints (rota, request, response) | Um endpoint nasce, muda de status code, request ou response |
 
@@ -59,10 +65,22 @@ Esse sistema é um projeto que apenas dá suporte ao sistema princial **Sistema-
 
 ## Arquitetura
 
+> **Migração em andamento.** O projeto está sendo migrado para Nest.js pelo padrão Strangler
+> Fig: dois entrypoints coexistem sobre um núcleo compartilhado até o cutover. Produção roda
+> o Express. Plano em `docs/NEST.md`, conceitos em `docs/nest-conceitos.md`, decisão em
+> `docs/adr/0004-nest-como-camada-de-apresentacao.md`.
+>
+> A fronteira de camadas é inegociável: `domain/`, `application/` e `helpers/` **nunca**
+> importam `@nestjs/*`; `infrastructure/` e `lib/` no máximo `@Injectable()`; regra de
+> negócio nunca vive em `nest/`.
+
 ```
 src/
-├── server.ts              # Ponto de entrada (bind da porta)
+├── server.ts              # Entrypoint Express (produção hoje)
+├── main.ts                # Entrypoint Nest (PORT_NEST, não serve rota de negócio ainda)
 ├── app.ts                 # Express setup, rotas, static files
+├── config/                # Schema Zod do ambiente — compartilhado pelos dois apps
+├── nest/                  # Apresentação Nest: módulos, filter, pipe. ZERO regra de negócio
 ├── routes/                # Roteamento HTTP (thin wrappers)
 ├── controllers/           # Parse de request, validação, formatação de response
 ├── schemas/               # Schemas Zod + helpers de parse
@@ -97,7 +115,9 @@ Segue uma arquitetura hexagonal leve: o subdomínio `lists` tem interfaces de po
 | puppeteer-extra-plugin-stealth | Esconde fingerprint do Puppeteer |
 | puppeteer-extra-plugin-adblocker | Bloqueia ads para reduzir ruído e acelerar scraping |
 | Biome | Linter + formatter (substitui ESLint + Prettier) |
-| tsx / tsc-alias | Execução em dev e resolução de aliases no build |
+| Nest.js 12 | Camada de apresentação do app novo (`src/main.ts`), em migração |
+| tsx / tsc-alias | Execução em dev do Express e resolução de aliases no build |
+| SWC | Transform dos testes (`unplugin-swc`) e do `dev:nest`. **Obrigatório**: o esbuild do Vitest e o `tsx` não emitem `design:paramtypes`, e sem essa metadata o Nest injeta `undefined` sem erro no boot — ver ADR 0004 |
 | Xvfb (Docker) | Display virtual para Chromium headed em containers Linux |
 
 ### Padrões de Concorrência
@@ -129,7 +149,8 @@ O módulo `clear-string.ts` é a camada central de normalização usada em todo 
 
 ### Tratamento de Erros
 
-- Controllers tratam `ZodError` (400) separado de `Error` genérico (500).
+- Controllers Express tratam `ZodError` (400) separado de `Error` genérico (500). No app Nest isso é um arquivo só, `src/nest/common/all-exceptions.filter.ts`, registrado via `APP_FILTER` (provider do container, não `useGlobalFilters`, para poder injetar dependências).
+- O formato de erro **não é uniforme entre as rotas** e está congelado assim de propósito durante a migração: `test/contract/contract-cases.ts` trava o contrato como ele é, para que qualquer diferença do app Nest seja bug, não melhoria acidental. Uniformizar é PR próprio, antes ou depois — nunca durante.
 - Funções de service retornam `null` em falhas individuais de jogo (não fatais), permitindo que o batch continue.
 - **Ciclo de vida do Chromium** (`src/lib/puppeteer-browser.ts` + `src/lib/process-tree.ts`): quem abre um browser é responsável por fechá-lo — nenhum caminho de erro pode zerar a referência sem encerrar o processo. `cleanupBrowser` fecha as páginas, faz `browser.close()` com timeout (`BROWSER_CLOSE_TIMEOUT_MS`, default 15s) e **só depois** parte para sinal: SIGTERM em toda a árvore de processos, janela de graça (`BROWSER_KILL_GRACE_MS`, default 3s), SIGKILL nos sobreviventes. A ordem não é negociável — o `close()` via CDP é o único caminho que derruba renderers, GPU process e zygote; matar o processo principal antes órfã a árvore (foi o que derrubou a VPS por OOM em 2026-08-24). Por isso a árvore é fotografada com `descendantsOf` **antes** do close: depois que o pai morre, os filhos são reparentados para o `init` e viram irrastreáveis. `cleanupBrowser` nunca lança. Derrubar a árvore é só metade do trabalho: os netos do Chromium morrem já reparentados para o PID 1, e o Node não colhe órfãos (o libuv só dá `waitpid` nos filhos que ele mesmo criou). Por isso os serviços do `docker-compose.yml` rodam com `init: true` — sem ele os zumbis enchem o `pids_limit` até todo `fork()` falhar com `Cannot fork` (produção, 2026-09-18). Ver `docs/adr/0005-container-precisa-de-init-para-colher-zumbis.md`.
 - `invalidateSharedSession()` é assíncrona e **fecha** a sessão antes de zerar as referências; o call site (`searchAllKeyShop`) precisa dar `await` antes do rethrow. `getSharedSession` limpa a sessão morta no `catch` do health check e recicla a sessão por idade (`BROWSER_SESSION_MAX_AGE_MS`, default 30min; `0` desliga).
