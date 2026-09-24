@@ -73,6 +73,12 @@ Esse sistema é um projeto que apenas dá suporte ao sistema princial **Sistema-
 > A fronteira de camadas é inegociável: `domain/`, `application/` e `helpers/` **nunca**
 > importam `@nestjs/*`; `infrastructure/` e `lib/` no máximo `@Injectable()`; regra de
 > negócio nunca vive em `nest/`.
+>
+> Consequência prática no wiring: portas são `abstract class` (existem em runtime, então
+> servem de token de injeção sem decorator); adapters de `infrastructure/` são registrados
+> com `useClass` e podem ter `@Injectable()`; **use cases de `application/` são registrados
+> com `useFactory` + `inject`**, porque sem decorator o TypeScript não emite
+> `design:paramtypes` e o container não descobre o construtor sozinho.
 
 ```
 src/

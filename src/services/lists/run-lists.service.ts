@@ -9,9 +9,10 @@ import { HttpGameTradeImporter } from "@/infrastructure/games/http-game-trade-im
 import type { GameAnalysisResult, SearchGamesRequest } from "@/application/games/game.types.js";
 
 const runListsUseCase = new RunListsUseCase();
-const searchGamesUseCase = new SearchGamesUseCase();
-const popularityFetcher = new SteamChartsPopularityFetcher();
-const priceFetcher = new AllKeyShopPriceFetcher();
+const searchGamesUseCase = new SearchGamesUseCase(
+	new SteamChartsPopularityFetcher(),
+	new AllKeyShopPriceFetcher(),
+);
 
 function getTradeImporter(): HttpGameTradeImporter {
 	const baseUrl = process.env.SISTEMA_ESTOQUE_URL;
@@ -24,11 +25,7 @@ function getTradeImporter(): HttpGameTradeImporter {
 
 class GameSearcherAdapter implements GameSearcher {
 	async search(request: SearchGamesRequest): Promise<GameAnalysisResult> {
-		return searchGamesUseCase.execute({
-			...request,
-			popularityFetcher,
-			priceFetcher,
-		});
+		return searchGamesUseCase.execute(request);
 	}
 }
 

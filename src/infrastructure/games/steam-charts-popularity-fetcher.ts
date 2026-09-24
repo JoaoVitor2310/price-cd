@@ -1,3 +1,4 @@
+import { Injectable } from "@nestjs/common";
 import * as cheerio from "cheerio";
 import type { FoundGames } from "@/application/games/game.types.js";
 import type { PopularityFetcher } from "@/application/games/ports/game-search.ports.js";
@@ -226,6 +227,7 @@ const searchSteamCharts = async (
 	return foundGames;
 };
 
+@Injectable()
 export class SteamChartsPopularityFetcher implements PopularityFetcher {
 	async fetch(
 		gameNames: string[],

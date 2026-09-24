@@ -9,10 +9,9 @@ import type { BackgroundScheduler } from "@/application/shared/ports/background-
 import { LimitedConcurrencyScheduler } from "@/infrastructure/background/limited-concurrency.scheduler.js";
 import { SteamChartsPopularityFetcher } from "@/infrastructure/games/steam-charts-popularity-fetcher.js";
 import { AllKeyShopPriceFetcher } from "@/infrastructure/games/allkeyshop-price-fetcher.js";
+import { NoopGameTradeImporter } from "@/application/games/ports/noop-game-trade-importer.js";
 import { HttpGameTradeImporter } from "@/infrastructure/games/http-game-trade-importer.js";
 
-const researchGamesUseCase = new ResearchGamesUseCase();
-const enqueueResearchGamesUseCase = new EnqueueResearchGamesUseCase();
 const popularityFetcher = new SteamChartsPopularityFetcher();
 const priceFetcher = new AllKeyShopPriceFetcher();
 
@@ -50,12 +49,16 @@ function getScheduler(): BackgroundScheduler {
 
 class ResearchGamesServiceRunner implements ResearchGamesRunner {
 	async run(request: ResearchGamesRequest): Promise<void> {
-		await researchGamesUseCase.execute({
-			...request,
+		// O importer é resolvido aqui, e não no boot, porque `getTradeImporter`
+		// lê env e lança se faltar configuração — o mesmo motivo de
+		// `assertTradeImporterConfigured` existir.
+		const useCase = new ResearchGamesUseCase(
 			popularityFetcher,
 			priceFetcher,
-			tradeImporter: getTradeImporter(),
-		});
+			getTradeImporter(),
+		);
+
+		await useCase.execute({ ...request, demo: false });
 	}
 }
 
@@ -68,11 +71,12 @@ export const enqueueResearchGamesService = async (request: ResearchGamesRequest)
 	// depois de enfileirar não há mais ninguém para receber o erro.
 	assertTradeImporterConfigured();
 
-	await enqueueResearchGamesUseCase.execute({
-		request,
-		scheduler: getScheduler(),
-		runner: new ResearchGamesServiceRunner(),
-	});
+	const enqueueResearchGamesUseCase = new EnqueueResearchGamesUseCase(
+		getScheduler(),
+		new ResearchGamesServiceRunner(),
+	);
+
+	await enqueueResearchGamesUseCase.execute({ request });
 };
 
 /**
@@ -83,10 +87,13 @@ export const enqueueResearchGamesService = async (request: ResearchGamesRequest)
 export const researchGamesDemoService = async (
 	request: ResearchGamesRequest,
 ): Promise<GameTradeInput[] | null> => {
-	return researchGamesUseCase.execute({
-		...request,
+	// Null object, NÃO `getTradeImporter()`: o demo precisa rodar sem o Sistema
+	// Estoque configurado, e `getTradeImporter` lança se faltar env.
+	const useCase = new ResearchGamesUseCase(
 		popularityFetcher,
 		priceFetcher,
-		tradeImporter: undefined,
-	});
+		new NoopGameTradeImporter(),
+	);
+
+	return useCase.execute({ ...request, demo: true });
 };

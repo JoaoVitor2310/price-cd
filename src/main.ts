@@ -1,11 +1,12 @@
 import "reflect-metadata";
+import dotenv from "dotenv";
 import { Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { NestFactory } from "@nestjs/core";
 import type { NestExpressApplication } from "@nestjs/platform-express";
-import path from "node:path";
 import type { Env } from "@/config/env.schema.js";
 import { AppModule } from "@/nest/app.module.js";
+import { configureNestApp } from "@/nest/configure-app.js";
 
 /**
  * Entrypoint do app Nest, irmão de `src/server.ts` (Express).
@@ -16,13 +17,16 @@ import { AppModule } from "@/nest/app.module.js";
  * bump entra no PR 7, e dois processos agendando bump ao mesmo tempo seria
  * spam no SteamTrades.
  */
+// Antes de qualquer coisa: o `.env` preenche o que ainda não está definido, sem
+// sobrescrever o que o ambiente real já trouxe. O `ConfigModule` lê só de
+// `process.env` (ver `ignoreEnvFile` em config.module.ts).
+dotenv.config();
+
 async function bootstrap(): Promise<void> {
 	const app = await NestFactory.create<NestExpressApplication>(AppModule);
 	const config = app.get(ConfigService<Env, true>);
 
-	// Paridade com src/app.ts: os arquivos estáticos e o prefixo /api das rotas.
-	app.useStaticAssets(path.join(process.cwd(), "public"));
-	app.setGlobalPrefix("api", { exclude: ["/"] });
+	configureNestApp(app);
 
 	/**
 	 * Liga os hooks de ciclo de vida do container ao SIGTERM/SIGINT do processo.

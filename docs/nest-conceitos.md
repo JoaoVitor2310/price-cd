@@ -90,6 +90,12 @@ esbarra nele. Existem três saídas.
 
 > **Decisão: opção B — porta como `abstract class`.** Vale para todas as portas, do PR 3 em
 > diante. Fallback para A **apenas** se a metadata do decorator não sobreviver ao transform do
+>
+> **Importante, aprendido no PR 3:** isso decide o **token da porta**, não como a classe que
+> consome a porta é registrada. Use case vive em `application/`, que não pode importar
+> `@nestjs/*` — nem `@Injectable()`. Então o use case é registrado com **opção C**
+> (`useFactory` + `inject`). As duas convivem no mesmo módulo, e é assim de propósito:
+> B para o token, C para o wiring de tudo que mora em `application/`.
 > Vitest (risco 7.2 do `NEST.md`), e nesse caso só nos use cases afetados — não é licença para
 > misturar as duas estratégias por gosto.
 >

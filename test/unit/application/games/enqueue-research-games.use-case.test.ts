@@ -35,17 +35,14 @@ function makeScheduler() {
 // ---------------------------------------------------------------------------
 
 describe("EnqueueResearchGamesUseCase", () => {
-    let useCase: EnqueueResearchGamesUseCase;
-
-    beforeEach(() => {
-        useCase = new EnqueueResearchGamesUseCase();
-    });
-
+    // O use case nasce dentro de cada teste porque scheduler e runner agora
+    // entram pelo construtor, e cada caso monta os seus.
     it("schedules the work instead of running it inline", async () => {
         const scheduler = makeScheduler();
         const runner = { run: vi.fn().mockResolvedValue(undefined) };
+        const useCase = new EnqueueResearchGamesUseCase(scheduler, runner);
 
-        await useCase.execute({ request: makeRequest(), scheduler, runner });
+        await useCase.execute({ request: makeRequest() });
 
         expect(scheduler.schedule).toHaveBeenCalledTimes(1);
         expect(runner.run).not.toHaveBeenCalled();
@@ -54,9 +51,10 @@ describe("EnqueueResearchGamesUseCase", () => {
     it("passes the request through to the runner when the scheduled task runs", async () => {
         const scheduler = makeScheduler();
         const runner = { run: vi.fn().mockResolvedValue(undefined) };
+        const useCase = new EnqueueResearchGamesUseCase(scheduler, runner);
         const request = makeRequest({ title: "Specific trade" });
 
-        await useCase.execute({ request, scheduler, runner });
+        await useCase.execute({ request });
         await scheduler.runScheduledTask();
 
         expect(runner.run).toHaveBeenCalledWith(request);
@@ -70,8 +68,9 @@ describe("EnqueueResearchGamesUseCase", () => {
                 resolveRunner = resolve;
             })),
         };
+        const useCase = new EnqueueResearchGamesUseCase(scheduler, runner);
 
-        await useCase.execute({ request: makeRequest(), scheduler, runner });
+        await useCase.execute({ request: makeRequest() });
 
         // A execução já retornou mesmo com o runner ainda pendente.
         expect(scheduler.schedule).toHaveBeenCalledTimes(1);
@@ -84,9 +83,10 @@ describe("EnqueueResearchGamesUseCase", () => {
     it("swallows runner errors so the background queue is not broken", async () => {
         const scheduler = makeScheduler();
         const runner = { run: vi.fn().mockRejectedValue(new Error("scraping failed")) };
+        const useCase = new EnqueueResearchGamesUseCase(scheduler, runner);
         const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 
-        await useCase.execute({ request: makeRequest(), scheduler, runner });
+        await useCase.execute({ request: makeRequest() });
 
         await expect(scheduler.runScheduledTask()).resolves.toBeUndefined();
         expect(consoleError).toHaveBeenCalled();

@@ -21,16 +21,13 @@ import { parseEnvList } from "@/helpers/parse-env-list.js";
  * do upload de arquivos e não compartilha estado com outras requisições.
  */
 class GameSearcherAdapter implements GameSearcher {
-    private readonly useCase = new SearchGamesUseCase();
-    private readonly popularityFetcher = new SteamChartsPopularityFetcher();
-    private readonly priceFetcher = new AllKeyShopPriceFetcher();
+    private readonly useCase = new SearchGamesUseCase(
+        new SteamChartsPopularityFetcher(),
+        new AllKeyShopPriceFetcher(),
+    );
 
     async search(request: SearchGamesRequest): Promise<GameAnalysisResult> {
-        return this.useCase.execute({
-            ...request,
-            popularityFetcher: this.popularityFetcher,
-            priceFetcher: this.priceFetcher,
-        });
+        return this.useCase.execute(request);
     }
 }
 

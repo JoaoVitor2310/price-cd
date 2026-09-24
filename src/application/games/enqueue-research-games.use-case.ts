@@ -4,10 +4,9 @@ import type {
 	ResearchGamesRunner,
 } from "@/application/games/ports/research-games-runner.port.js";
 
+/** Só dado: as dependências estão no construtor. */
 export type EnqueueResearchGamesInput = {
 	request: ResearchGamesRequest;
-	scheduler: BackgroundScheduler;
-	runner: ResearchGamesRunner;
 };
 
 /**
@@ -19,8 +18,14 @@ export type EnqueueResearchGamesInput = {
  * aguardando a resposta neste ponto.
  */
 export class EnqueueResearchGamesUseCase {
+	constructor(
+		private readonly scheduler: BackgroundScheduler,
+		private readonly runner: ResearchGamesRunner,
+	) {}
+
 	async execute(input: EnqueueResearchGamesInput): Promise<void> {
-		const { request, scheduler, runner } = input;
+		const { request } = input;
+		const { scheduler, runner } = this;
 
 		scheduler.schedule(async () => {
 			try {

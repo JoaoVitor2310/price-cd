@@ -1,3 +1,4 @@
+import { Injectable } from "@nestjs/common";
 import * as cheerio from "cheerio";
 import dotenv from "dotenv";
 import { clearString, clearEdition, hasEdition, getRegion, removeRegion, clearQuantity } from "@/helpers/clear-string.js";
@@ -272,6 +273,7 @@ const searchAllKeyShop = async (
     });
 };
 
+@Injectable()
 export class AllKeyShopPriceFetcher implements PriceFetcher {
     async fetch(games: FoundGames[], checkGamivoOffer: boolean): Promise<FoundGames[]> {
         return searchAllKeyShop(games, checkGamivoOffer);

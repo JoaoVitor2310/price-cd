@@ -8,8 +8,8 @@ Os conceitos do Nest usados aqui — container, providers, tokens, escopos, pipe
 request, ciclo de vida — estão explicados em **`docs/nest-conceitos.md`**, mapeados a este
 código. Este arquivo assume esse vocabulário e trata só da sequência e da estratégia.
 
-Status: **PRs 0 a 2 entregues** (spike + ADR 0004, harness de contrato, esqueleto Nest).
-Produção segue no Express. Próximo: PR 3.
+Status: **PRs 0 a 4 entregues.** As três rotas de `games` já existem nos dois apps e passam na
+mesma bateria de contrato. Produção segue no Express. Próximo: PR 5 (`lists`).
 
 ---
 
@@ -227,8 +227,8 @@ uniformizar, é um PR separado, antes ou depois, nunca durante.
 | 0 | Spike + ADR 0004 | — | decorators, `reflect-metadata`, `emitDecoratorMetadata` |
 | 1 | ✅ Harness de contrato (só Express) | — | — |
 | 2 | ✅ Esqueleto Nest + ConfigModule | 0, 1 | `NestFactory`, `@Module`, dynamic module, pipes e filters globais |
-| 3 | Módulo `games`: `/search`, `/search-id-steam` | 2 | `@Controller`, custom providers, injection tokens, `Test.createTestingModule` |
-| 4 | Módulo `games`: `/research` | 3 | `useFactory`, providers com estado, por que **não** usar Guard aqui |
+| 3 | ✅ Módulo `games`: `/search`, `/search-id-steam` | 2 | `@Controller`, custom providers, injection tokens, `Test.createTestingModule` |
+| 4 | ✅ Módulo `games`: `/research` | 3 | `useFactory`, providers com estado, por que **não** usar Guard aqui |
 | 5 | Módulo `lists` | 4 | duas instâncias da mesma classe com tokens distintos, `OnModuleDestroy` |
 | 6 | Módulo `suppliers` + ciclo de vida do browser | 5 | `exports`/`imports` vs provider duplicado, `OnApplicationShutdown` |
 | 7 | Agendador de bump | 6 | `@nestjs/schedule`, `OnApplicationBootstrap` |
@@ -356,7 +356,7 @@ esquecer.
 
 ---
 
-### PR 3 — Módulo `games`: `/search` e `/search-id-steam`
+### PR 3 — Módulo `games`: `/search` e `/search-id-steam` ✅ **entregue**
 
 > **Obrigatório neste PR:** estas duas rotas respondem 500 como
 > `{ error: "Internal server error", message: "Failed to analyze games" }` — sem ponto final e
@@ -390,8 +390,7 @@ Receita, aplicada igual nos PRs 3 a 6:
    await useCase.execute({ gameNames, minPopularity, checkGamivoOffer,
                            popularityFetcher, priceFetcher });
 
-   // depois (opção B: porta como abstract class)
-   @Injectable()
+   // depois — SEM @Injectable(): application/ não importa @nestjs/*
    class SearchGamesUseCase {
      constructor(
        private readonly popularityFetcher: PopularityFetcher,
@@ -400,6 +399,20 @@ Receita, aplicada igual nos PRs 3 a 6:
      async execute(input: { gameNames: string[]; minPopularity: number; checkGamivoOffer: boolean }) { … }
    }
    ```
+
+   > **Correção do plano (PR 3).** Esta receita mostrava `@Injectable()` sobre o use case, o
+   > que contradiz a fronteira do ADR 0004 — `application/` **nunca** importa `@nestjs/*`.
+   > A combinação correta são duas decisões separadas:
+   >
+   > | O quê | Como | Onde |
+   > |---|---|---|
+   > | Token da porta | `abstract class` (opção B) | `application/**/ports/` |
+   > | Registro do adapter | `useClass` + `@Injectable()` | `infrastructure/` |
+   > | Registro do use case | `useFactory` + `inject` | declarado no módulo Nest |
+   >
+   > Sem decorator o TypeScript não emite `design:paramtypes`, então o container não descobre
+   > o construtor sozinho — a lista `inject` é essa informação, escrita à mão. É o custo de
+   > manter a camada limpa, e é uma linha por use case.
 
    Isso separa **dependência** de **dado**, que hoje estão no mesmo objeto — e é a mudança
    que faz o container ter o que resolver.
@@ -417,25 +430,56 @@ case. No Nest, injete a porta no controller — não invente um use case só par
 
 ---
 
-### PR 4 — Módulo `games`: `/research`
+### PR 4 — Módulo `games`: `/research` ✅ **entregue**
 
 Três coisas novas de uma vez.
 
-- **Autenticação sem Guard.** A tentação é transformar `isAuthenticated()` num `@UseGuards()`.
-  **Não faça.** Guard rejeita a requisição quando retorna `false`, e aqui token ausente ou
-  errado significa *modo demo com 200*, não 401. Um Guard mudaria o contrato. Mantenha a
-  checagem no controller, ou use um Guard que apenas **marca** `request.isAuthenticated` e
-  sempre retorna `true` — o segundo é mais elegante e ainda ensina o conceito, mas o primeiro
-  é honesto. Ver `nest-conceitos.md` §6.
-- **Fila como provider.** `LimitedConcurrencyScheduler` vira provider com estado, escopo
-  singleton (default). Concorrência fixa em 1 aqui.
-- **`useFactory` para dependência configurada.** `HttpGameTradeImporter` precisa de
-  `SISTEMA_ESTOQUE_URL` e `EXTERNAL_SECRET`:
-  `{ provide: TRADE_IMPORTER, useFactory: (cfg) => new HttpGameTradeImporter(cfg.url, cfg.secret), inject: [ConfigService] }`.
-  Preserve o comportamento de `assertTradeImporterConfigured()`: hoje ele falha ainda no ciclo
-  do request, porque depois de enfileirado não há mais ninguém para receber o erro. Com a
-  validação do PR 2 no boot, o app nem sobe mal configurado — melhor ainda, mas mantenha a
-  checagem.
+- **Autenticação sem Guard.** Token ausente ou errado significa *modo demo com 200*, não 401.
+  Guard que retorna `false` rejeita com 403 e mudaria o contrato. A checagem ficou em
+  `GamesController.isAuthenticated()`, lendo `INTERNAL_SECRET` do `ConfigService`. Coberto por
+  caso de contrato **e** por teste de módulo, os dois nomeando o 403 que **não** deve acontecer.
+- **Fila como provider.** `LimitedConcurrencyScheduler(1)` entra como `useValue` sob o token
+  `RESEARCH_SCHEDULER`. Token próprio, e não a porta `BackgroundScheduler`: existem duas filas
+  com concorrências diferentes, e um token único para a porta faria elas colidirem no PR 5.
+- **`useFactory` para dependência configurada.** `HttpGameTradeImporter` é construído a partir
+  do `ConfigService`, mas de forma **preguiçosa** (`LazyGameTradeImporter`). A primeira versão
+  construía no boot, e isso quebrou paridade: o Express sobe sem `SISTEMA_ESTOQUE_URL` e serve
+  `/research` em modo demo, enquanto o Nest morria no boot. A checagem acontece no caminho
+  autenticado, dentro da requisição — depois de enfileirado não há mais ninguém para receber o
+  erro, que é a razão de o `assertTradeImporterConfigured()` do Express existir.
+
+#### Duas descobertas que mudaram código fora do previsto
+
+**O `.env` vencia `process.env` no `ConfigService`.** Com `INTERNAL_SECRET` exportado no
+ambiente e outro valor no arquivo `.env`, o `ConfigService` devolvia o **do arquivo** — default
+do `@nestjs/config`. Isso inverte a precedência que o resto do sistema assume: no
+`docker-compose.yml` o bloco `environment:` existe justamente para mandar mais que o
+`env_file:`. Um `.env` esquecido dentro da imagem sobrescreveria a configuração do deploy em
+silêncio. Corrigido com `ignoreEnvFile: true` + `dotenv.config()` no `main.ts` (que não
+sobrescreve variável já definida), e travado em
+`test/integration/nest/config-precedence.test.ts`.
+
+**O app Nest não subia sem o Sistema Estoque.** Encontrado pelo CI, não pelos testes locais:
+o `.env` da máquina de desenvolvimento escondia o problema. Além do `LazyGameTradeImporter`,
+nasceu `test/integration/nest/boot-without-inventory.test.ts`, que sobe o app com as variáveis
+apagadas e cobra as três propriedades: o app sobe, o demo responde 200, e o caminho autenticado
+falha **dentro da requisição** com 500, não em background.
+
+Lição que se repete: **teste que lê o ambiente tem entrada escondida.** Os arquivos de
+contrato do Nest agora forçam as variáveis no `beforeAll`, como o do Express já fazia desde o
+PR 1.
+
+**O modo demo passou a exigir o Sistema Estoque.** Ao mover `tradeImporter` para o construtor,
+o caminho demo passou a construir o importer real — que lança se faltar `SISTEMA_ESTOQUE_URL`.
+Regressão real: o demo existe para mostrar preços **sem** integração. Resolvido com
+`NoopGameTradeImporter` (null object) e um teste que roda com as variáveis apagadas. Nenhum
+caso de contrato pegaria isso, porque a bateria configura o ambiente.
+
+#### Mudança de modelagem: `demo` virou dado
+
+Antes, modo demo era inferido de `tradeImporter === undefined` — a dependência fazendo papel
+de flag. Quem esquecesse de passar o importer criava um modo demo silencioso em vez de um erro.
+Agora `ResearchGamesInput.demo` é booleano explícito e o importer é sempre injetado.
 
 ---
 

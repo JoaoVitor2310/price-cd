@@ -15,19 +15,23 @@ const game = (name: string, GamivoPrice?: number): FoundGames => ({
 	GamivoPrice,
 });
 
-const makeInput = (
+/** As dependências agora vão para o construtor; a entrada é só dado. */
+const makeUseCase = (
 	found: FoundGames[],
 	priced: FoundGames[],
-	tradeImporter?: GameTradeImporter,
-) => ({
+	tradeImporter: GameTradeImporter = { import: vi.fn().mockResolvedValue(undefined) },
+) =>
+	new ResearchGamesUseCase(
+		{ fetch: vi.fn().mockResolvedValue(found) } as PopularityFetcher,
+		{ fetch: vi.fn().mockResolvedValue(priced) } as PriceFetcher,
+		tradeImporter,
+	);
+
+const makeInput = (found: FoundGames[], demo = false) => ({
 	gameNames: found.map((g) => g.name),
 	minPopularity: 100,
 	checkGamivoOffer: false,
-	popularityFetcher: {
-		fetch: vi.fn().mockResolvedValue(found),
-	} as PopularityFetcher,
-	priceFetcher: { fetch: vi.fn().mockResolvedValue(priced) } as PriceFetcher,
-	tradeImporter,
+	demo,
 });
 
 describe("ResearchGamesUseCase", () => {
@@ -42,9 +46,7 @@ describe("ResearchGamesUseCase", () => {
 			game("Worthy", 2),
 		];
 
-		await new ResearchGamesUseCase().execute(
-			makeInput(found, priced, tradeImporter),
-		);
+		await makeUseCase(found, priced, tradeImporter).execute(makeInput(found));
 
 		expect(tradeImporter.import).toHaveBeenCalledTimes(1);
 		const [imported] = vi.mocked(tradeImporter.import).mock.calls[0];
@@ -58,8 +60,8 @@ describe("ResearchGamesUseCase", () => {
 		const found = [game("Cheap")];
 		const priced = [game("Cheap", 0.1)];
 
-		const result = await new ResearchGamesUseCase().execute(
-			makeInput(found, priced, tradeImporter),
+		const result = await makeUseCase(found, priced, tradeImporter).execute(
+			makeInput(found),
 		);
 
 		expect(tradeImporter.import).not.toHaveBeenCalled();
@@ -73,8 +75,8 @@ describe("ResearchGamesUseCase", () => {
 		const found = [game("Cheap"), game("Free")];
 		const priced = [game("Cheap", 0.1), game("Free", 0)];
 
-		await new ResearchGamesUseCase().execute({
-			...makeInput(found, priced, tradeImporter),
+		await makeUseCase(found, priced, tradeImporter).execute({
+			...makeInput(found),
 			minPrice: 0,
 		});
 
@@ -88,8 +90,8 @@ describe("ResearchGamesUseCase", () => {
 		const found = [game("Cheap"), game("Worthy")];
 		const priced = [game("Cheap", 0.2), game("Worthy", 1.5)];
 
-		const result = await new ResearchGamesUseCase().execute(
-			makeInput(found, priced),
+		const result = await makeUseCase(found, priced).execute(
+			makeInput(found, true),
 		);
 
 		expect(result?.map((g) => g.name)).toEqual(["Worthy"]);

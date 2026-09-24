@@ -2,14 +2,14 @@ import { Module } from "@nestjs/common";
 import { APP_FILTER } from "@nestjs/core";
 import { AllExceptionsFilter } from "@/nest/common/all-exceptions.filter.js";
 import { AppConfigModule } from "@/nest/config/config.module.js";
+import { GamesModule } from "@/nest/games/games.module.js";
 import { HealthController } from "@/nest/health/health.controller.js";
 
 /**
  * A raiz do app Nest — o composition root que vai substituir `src/app.ts`.
  *
- * Por enquanto não serve nenhuma rota de negócio: os módulos `games`, `lists` e
- * `suppliers` entram nos PRs 3 a 6 (`docs/NEST.md` §5), e produção segue no
- * Express até o PR 9.
+ * Serve as rotas de busca (`games`, PR 3). `lists` e `suppliers` entram nos PRs
+ * 5 e 6 (`docs/NEST.md` §5); produção segue no Express até o PR 9.
  *
  * O filter é registrado como provider via `APP_FILTER`, não com
  * `app.useGlobalFilters()`. A diferença importa: registrado assim ele participa
@@ -25,7 +25,7 @@ import { HealthController } from "@/nest/health/health.controller.js";
  * não é o caso.
  */
 @Module({
-	imports: [AppConfigModule],
+	imports: [AppConfigModule, GamesModule],
 	controllers: [HealthController],
 	providers: [
 		{ provide: APP_FILTER, useClass: AllExceptionsFilter },
