@@ -153,6 +153,13 @@ docker compose up price-researcher-dev
 npm test
 ```
 
+**Run the Nest app (migration in progress):**
+```bash
+npm run dev:nest   # port 5557, alongside the Express app on 5555
+```
+The project is being migrated to Nest.js with the Strangler Fig pattern — both entrypoints
+coexist over a shared core until the cutover. Production runs Express. See `docs/NEST.md`.
+
 ---
 
 ## API Endpoints
@@ -164,6 +171,7 @@ npm test
 | `POST` | `/api/games/search-id-steam` | Resolve Steam IDs for a list of games |
 | `POST` | `/api/lists/run` | Async: crawl a Steam user's trade lists and run full analysis |
 | `POST` | `/api/suppliers/find-new` | Async, queued: scan SteamTrades for new suppliers offering games for TF2 keys |
+| `GET` | `/api/health` | **Nest app only** (`npm run dev:nest`, port 5557). Liveness probe — not served by the Express app in production |
 
 <details>
 <summary><strong>POST /api/games/research — request body</strong></summary>
