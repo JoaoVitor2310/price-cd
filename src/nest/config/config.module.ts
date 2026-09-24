@@ -20,6 +20,24 @@ import { validateEnv } from "@/config/env.schema.js";
 			isGlobal: true,
 			cache: true,
 			validate: validateEnv,
+			/**
+			 * **Não** deixe o Nest ler o `.env`.
+			 *
+			 * Com o carregamento dele ligado, o valor do ARQUIVO vence o que já
+			 * está em `process.env` — medido: com `INTERNAL_SECRET=x` exportado e
+			 * `INTERNAL_SECRET=y` no `.env`, o `ConfigService` devolve `y`.
+			 *
+			 * Isso inverte a precedência que o resto do sistema assume. No
+			 * `docker-compose.yml` o bloco `environment:` existe justamente para
+			 * mandar mais que o `env_file:` — com o `.env` vencendo, um arquivo
+			 * esquecido dentro da imagem passaria por cima da configuração do
+			 * deploy, em silêncio.
+			 *
+			 * O `.env` continua valendo em dev: quem o carrega é o `dotenv.config()`
+			 * do `src/main.ts`, que **não** sobrescreve variável já definida — a
+			 * precedência correta, e a mesma que o Express já usa via `src/app.ts`.
+			 */
+			ignoreEnvFile: true,
 		}),
 	],
 })

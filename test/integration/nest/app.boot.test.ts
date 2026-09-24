@@ -7,6 +7,7 @@ import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AllExceptionsFilter } from "@/nest/common/all-exceptions.filter.js";
 import { AppModule } from "@/nest/app.module.js";
+import { configureNestApp } from "@/nest/configure-app.js";
 import { HealthController } from "@/nest/health/health.controller.js";
 
 describe("Nest app skeleton", () => {
@@ -18,7 +19,7 @@ describe("Nest app skeleton", () => {
 		}).compile();
 
 		app = moduleRef.createNestApplication<NestExpressApplication>();
-		app.setGlobalPrefix("api", { exclude: ["/"] });
+		configureNestApp(app);
 		await app.init();
 	});
 

@@ -13,6 +13,11 @@ export type GameTradeOptions = {
     title?: string;
 };
 
-export interface GameTradeImporter {
-    import(games: GameTradeInput[], options?: GameTradeOptions): Promise<void>;
+/**
+ * `abstract class` e não `interface` pelo mesmo motivo das portas de busca:
+ * precisa existir em runtime para servir de token de injeção, sem obrigar
+ * `application/` a importar `@nestjs/*`. Ver `docs/nest-conceitos.md` §3.
+ */
+export abstract class GameTradeImporter {
+    abstract import(games: GameTradeInput[], options?: GameTradeOptions): Promise<void>;
 }

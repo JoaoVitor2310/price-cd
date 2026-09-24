@@ -41,22 +41,13 @@ import { ZodError } from "zod";
  */
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
-	private readonly logger = new Logger(AllExceptionsFilter.name);
+	protected readonly logger = new Logger(AllExceptionsFilter.name);
 
 	catch(exception: unknown, host: ArgumentsHost): void {
 		const response = host.switchToHttp().getResponse<Response>();
 
 		if (exception instanceof ZodError) {
-			const details = exception.issues
-				.map((issue) => `${issue.path.join(".")}: ${issue.message}`)
-				.join(", ");
-
-			this.logger.warn(`Validation failed: ${details}`);
-			response.status(400).json({
-				success: false,
-				error: "Validation failed",
-				details,
-			});
+			this.handleZodError(exception, host);
 			return;
 		}
 
@@ -70,9 +61,38 @@ export class AllExceptionsFilter implements ExceptionFilter {
 			return;
 		}
 
-		// Erro não previsto: 500 com a mensagem, como os controllers fazem hoje.
-		// A stack vai para o log, nunca para a resposta.
+		this.handleUnknown(exception, host);
+	}
+
+	/**
+	 * 400 de validação. `protected` pelo mesmo motivo de `handleUnknown`: as
+	 * rotas que respondem a validação em outro formato sobrescrevem só isto.
+	 */
+	protected handleZodError(exception: ZodError, host: ArgumentsHost): void {
+		const response = host.switchToHttp().getResponse<Response>();
+		const details = exception.issues
+			.map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+			.join(", ");
+
+		this.logger.warn(`Validation failed: ${details}`);
+		response.status(400).json({
+			success: false,
+			error: "Validation failed",
+			details,
+		});
+	}
+
+	/**
+	 * Erro não previsto: 500 com a mensagem, como os controllers fazem hoje.
+	 * A stack vai para o log, nunca para a resposta.
+	 *
+	 * É `protected` porque cada grupo de rotas que diverge no 500 sobrescreve só
+	 * isto — 400 e `HttpException` continuam vindo daqui, sem cópia.
+	 */
+	protected handleUnknown(exception: unknown, host: ArgumentsHost): void {
+		const response = host.switchToHttp().getResponse<Response>();
 		const message = exception instanceof Error ? exception.message : "Unknown error";
+
 		this.logger.error(`Unhandled exception: ${message}`, (exception as Error)?.stack);
 
 		response.status(500).json({

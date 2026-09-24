@@ -1,5 +1,11 @@
-import type { PopularityFetcher, PriceFetcher } from "@/application/games/ports/game-search.ports.js";
-import type { GameTradeImporter, GameTradeInput } from "@/application/games/ports/game-trade-importer.port.js";
+import type {
+	PopularityFetcher,
+	PriceFetcher,
+} from "@/application/games/ports/game-search.ports.js";
+import type {
+	GameTradeImporter,
+	GameTradeInput,
+} from "@/application/games/ports/game-trade-importer.port.js";
 import { worthyByPopularity } from "@/domain/games/worthy-by-popularity.js";
 import { filterExcludedGames } from "@/domain/games/excluded-games.js";
 import { partitionByPrice } from "@/domain/games/worthy-by-price.js";
@@ -16,19 +22,33 @@ export type ResearchGamesInput = {
 	supplierSteamId?: string;
 	listCode?: string;
 	title?: string;
-	popularityFetcher: PopularityFetcher;
-	priceFetcher: PriceFetcher;
-	tradeImporter?: GameTradeImporter;
+	/**
+	 * Modo demonstração: limita a lista, devolve os jogos precificados e **não**
+	 * cria Trade no Sistema Estoque.
+	 *
+	 * É dado de entrada, não ausência de dependência. Antes o modo era inferido
+	 * de `tradeImporter === undefined`, o que fazia a dependência valer como
+	 * flag: quem esquecesse de passar o importer criava um modo demo silencioso
+	 * em vez de um erro. Agora o chamador declara a intenção.
+	 */
+	demo: boolean;
 };
 
 export class ResearchGamesUseCase {
+	constructor(
+		private readonly popularityFetcher: PopularityFetcher,
+		private readonly priceFetcher: PriceFetcher,
+		private readonly tradeImporter: GameTradeImporter,
+	) {}
+
 	// Returns null when results were sent to inventory (authenticated).
 	// Returns the priced games list when in demo mode.
 	async execute(input: ResearchGamesInput): Promise<GameTradeInput[] | null> {
-		const { minPopularity, checkGamivoOffer, minPrice, supplierSteamId, listCode, title,
-			popularityFetcher, priceFetcher, tradeImporter } = input;
+		const { minPopularity, checkGamivoOffer, minPrice, supplierSteamId, listCode, title } =
+			input;
+		const { popularityFetcher, priceFetcher, tradeImporter } = this;
 
-		const isDemo = !tradeImporter;
+		const isDemo = input.demo;
 		let uniqueNames = [...new Set(input.gameNames)];
 		if (isDemo) uniqueNames = uniqueNames.slice(0, DEMO_GAME_LIMIT);
 
