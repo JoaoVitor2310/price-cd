@@ -1,4 +1,5 @@
-import { getSuppliersSession } from "@/lib/puppeteer-browser.js";
+import { Injectable } from "@nestjs/common";
+import { getSuppliersSession } from "@/infrastructure/browser/sessions.js";
 import type { CommentPoster } from "@/application/suppliers/ports/comment-poster.port.js";
 import type { ProfitableGameResult } from "@/application/suppliers/ports/profitability-checker.port.js";
 import { PAGE_NAVIGATION_TIMEOUT, ELEMENT_WAIT_TIMEOUT } from "@/infrastructure/suppliers/steamtrades.constants.js";
@@ -42,6 +43,7 @@ export function buildCommentText(games: ProfitableGameResult[], totalTf2Price: n
  * Reutiliza o `page` original da sessão compartilhada de suppliers (mesmo padrão do bumper).
  * O cookie de autenticação é injetado pela factory antes de qualquer navegação.
  */
+@Injectable()
 export class PuppeteerCommentPoster implements CommentPoster {
     async post(tradeUrl: string, games: ProfitableGameResult[], totalTf2Price: number): Promise<void> {
         const { page } = await getSuppliersSession();

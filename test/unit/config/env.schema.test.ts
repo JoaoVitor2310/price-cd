@@ -78,6 +78,18 @@ describe("validateEnv", () => {
 		}
 	});
 
+	it.each([
+		["765a,765b", ["765a", "765b"]],
+		["765a;765b", ["765a", "765b"]],
+		["765a\n765b", ["765a", "765b"]],
+		["765a,765a", ["765a"]],
+	])("parses USER_TO_IGNORE=%s the same way the Express app does", (raw, expected) => {
+		// Uma regra própria aqui, separando só por vírgula, fazia
+		// `USER_TO_IGNORE="id1;id2"` virar um ID literal: o Nest não ignoraria
+		// ninguém e comentaria em anúncios que o Express nunca abordaria.
+		expect(validateEnv({ USER_TO_IGNORE: raw }).USER_TO_IGNORE).toEqual(expected);
+	});
+
 	it("splits USER_TO_IGNORE on commas and trims each id", () => {
 		const env = validateEnv({ USER_TO_IGNORE: " 7656119, 7656118 ,, " });
 

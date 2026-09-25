@@ -28,6 +28,7 @@ import {
 } from "@/application/games/ports/game-search.ports.js";
 import { ListTopicFetcherFactory } from "@/application/lists/ports/list-run.ports.js";
 import { LISTS_SCHEDULER } from "@/nest/lists/lists.tokens.js";
+import { SUPPLIERS_SCHEDULER } from "@/nest/suppliers/suppliers.tokens.js";
 import { RESEARCH_SCHEDULER } from "@/nest/games/games.tokens.js";
 import { AppModule } from "@/nest/app.module.js";
 import { configureNestApp } from "@/nest/configure-app.js";
@@ -54,6 +55,8 @@ async function createApp(): Promise<NestExpressApplication> {
 		.overrideProvider(LISTS_SCHEDULER)
 		.useValue(schedulerDouble())
 		.overrideProvider(RESEARCH_SCHEDULER)
+		.useValue(schedulerDouble())
+		.overrideProvider(SUPPLIERS_SCHEDULER)
 		.useValue(schedulerDouble())
 		.overrideProvider(ListTopicFetcherFactory)
 		.useValue({ create: listTopicFetcherDouble })
@@ -89,6 +92,7 @@ runApiContract({
 		"/api/games/search-id-steam",
 		"/api/games/research",
 		"/api/lists/run",
+		"/api/suppliers/find-new",
 	],
 
 	/**

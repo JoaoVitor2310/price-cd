@@ -41,6 +41,6 @@ export type ProspectResult = {
     games_changed: boolean;
 };
 
-export interface ProfitabilityChecker {
-    evaluate(supplier: SupplierInput, games: GamePriceInput[]): Promise<ProspectResult>;
+export abstract class ProfitabilityChecker {
+    abstract evaluate(supplier: SupplierInput, games: GamePriceInput[]): Promise<ProspectResult>;
 }

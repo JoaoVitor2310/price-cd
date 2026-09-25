@@ -12,26 +12,20 @@ const MAX_CONSECUTIVE_CLOSED = 5;
 const MIN_POPULARITY = 30;
 const MAX_GAMES_PER_SUPPLIER = 1000;
 
-export type FindNewSuppliersInput = {
-    paginator: TradePaginator;
-    scraper: TopicScraper;
-    commentPoster: CommentPoster;
-    profitabilityChecker: ProfitabilityChecker;
-    gameSearcher: GameSearcher;
-    /** Steam IDs a nunca abordar (ex.: as próprias listas do CarcaDeals). Vazio = ignora ninguém. */
-    ignoredSteamIds: ReadonlySet<string>;
-};
-
 export type FindNewSuppliersResult = {
     pagesVisited: number;
     topicsProcessed: number;
     suppliersCommented: number;
 };
 
-type ProcessDeps = Pick<
-    FindNewSuppliersInput,
-    "scraper" | "commentPoster" | "profitabilityChecker" | "gameSearcher" | "ignoredSteamIds"
->;
+/** Os colaboradores que o laço de tópicos usa. Vêm do construtor. */
+type ProcessDeps = {
+    scraper: TopicScraper;
+    commentPoster: CommentPoster;
+    profitabilityChecker: ProfitabilityChecker;
+    gameSearcher: GameSearcher;
+    ignoredSteamIds: ReadonlySet<string>;
+};
 
 /**
  * Varre as páginas de listagem do SteamTrades (já filtradas por `have=<termo>` na origem,
@@ -71,8 +65,18 @@ type ProcessDeps = Pick<
  * entre os coletados (sinal de que chegamos na cauda de anúncios antigos).
  */
 export class FindNewSuppliersUseCase {
-    async execute(input: FindNewSuppliersInput): Promise<FindNewSuppliersResult> {
-        const { paginator, scraper, commentPoster, profitabilityChecker, gameSearcher, ignoredSteamIds } = input;
+    constructor(
+        private readonly paginator: TradePaginator,
+        private readonly scraper: TopicScraper,
+        private readonly commentPoster: CommentPoster,
+        private readonly profitabilityChecker: ProfitabilityChecker,
+        private readonly gameSearcher: GameSearcher,
+        /** Steam IDs a nunca abordar (ex.: as próprias listas do CarcaDeals). */
+        private readonly ignoredSteamIds: ReadonlySet<string>,
+    ) {}
+
+    async execute(): Promise<FindNewSuppliersResult> {
+        const { paginator, scraper, commentPoster, profitabilityChecker, gameSearcher, ignoredSteamIds } = this;
 
         const { collectedTopics, pagesVisited } = await this.collectTopics(paginator);
 

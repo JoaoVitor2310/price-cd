@@ -1,3 +1,4 @@
+import { Injectable } from "@nestjs/common";
 import * as cheerio from "cheerio";
 import type {
 	TopicData,
@@ -6,7 +7,7 @@ import type {
 import { HaveListing } from "@/domain/lists/have-listing.js";
 import { acceptsTf2KeysFromUs } from "@/domain/suppliers/supplier-eligibility.js";
 import { PAGE_NAVIGATION_TIMEOUT } from "@/infrastructure/suppliers/steamtrades.constants.js";
-import { getSuppliersSession } from "@/lib/puppeteer-browser.js";
+import { getSuppliersSession } from "@/infrastructure/browser/sessions.js";
 
 const STEAM_ID_REGEX = /\/user\/(\d+)/i;
 
@@ -50,6 +51,7 @@ export function extractTopicData(html: string): TopicData {
  * Faz uma única navegação por tópico — extrai metadados (autor, jogos, status).
  * A decisão de comentar (histórico + mudança de jogos) é delegada ao Sistema Estoque via `ProfitabilityChecker`.
  */
+@Injectable()
 export class PuppeteerTopicScraper implements TopicScraper {
 	async scrape(url: string): Promise<TopicData> {
 		const { page } = await getSuppliersSession();

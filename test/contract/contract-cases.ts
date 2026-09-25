@@ -265,6 +265,9 @@ export const CONTRACT_CASES: ContractCase[] = [
 		// Note o ponto final em "error" — as rotas de search não o têm.
 		expectBody: { success: false, error: "Internal server error." },
 	},
+	// A ORDEM da validação é observável: a mensagem nomeia a primeira variável
+	// que faltou. Travar só a primeira deixaria as outras duas livres para
+	// divergir entre os apps.
 	{
 		route: "/api/suppliers/find-new",
 		method: "post",
@@ -272,6 +275,22 @@ export const CONTRACT_CASES: ContractCase[] = [
 		env: { STEAMTRADES_SESSION: undefined },
 		expectStatus: 500,
 		expectBody: { error: "STEAMTRADES_SESSION is not defined in .env" },
+	},
+	{
+		route: "/api/suppliers/find-new",
+		method: "post",
+		name: "names SISTEMA_ESTOQUE_URL when only that one is missing",
+		env: { SISTEMA_ESTOQUE_URL: undefined },
+		expectStatus: 500,
+		expectBody: { error: "SISTEMA_ESTOQUE_URL is not defined in .env" },
+	},
+	{
+		route: "/api/suppliers/find-new",
+		method: "post",
+		name: "names EXTERNAL_SECRET when only that one is missing",
+		env: { EXTERNAL_SECRET: undefined },
+		expectStatus: 500,
+		expectBody: { error: "EXTERNAL_SECRET is not defined in .env" },
 	},
 
 	// ------------------------------------------------------------- 404 padrão

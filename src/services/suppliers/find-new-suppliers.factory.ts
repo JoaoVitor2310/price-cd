@@ -7,7 +7,7 @@ import { HttpProfitabilityChecker } from "@/infrastructure/suppliers/http-profit
 import { PriceGames } from "@/application/games/services/price-games.js";
 import { SteamChartsPopularityFetcher } from "@/infrastructure/games/steam-charts-popularity-fetcher.js";
 import { AllKeyShopPriceFetcher } from "@/infrastructure/games/allkeyshop-price-fetcher.js";
-import { getSuppliersSession, cleanupSuppliersSession } from "@/lib/puppeteer-browser.js";
+import { getSuppliersSession, cleanupSuppliersSession } from "@/infrastructure/browser/sessions.js";
 import { LimitedConcurrencyScheduler } from "@/infrastructure/background/limited-concurrency.scheduler.js";
 import type { GameSearcher } from "@/application/lists/ports/list-run.ports.js";
 import type { FoundGames, SearchGamesRequest } from "@/application/games/game.types.js";
@@ -56,12 +56,14 @@ export function createFindNewSuppliersRunner() {
     // Aceita um ou vários Steam IDs: `USER_TO_IGNORE=765...1,765...2`.
     const ignoredSteamIds = new Set(parseEnvList(process.env.USER_TO_IGNORE));
 
-    const useCase = new FindNewSuppliersUseCase();
-    const paginator = new PuppeteerTradePaginator();
-    const scraper = new PuppeteerTopicScraper();
-    const commentPoster = new PuppeteerCommentPoster();
-    const profitabilityChecker = new HttpProfitabilityChecker(profitabilityApiUrl, externalSecret);
-    const gameSearcher = new GameSearcherAdapter();
+    const useCase = new FindNewSuppliersUseCase(
+        new PuppeteerTradePaginator(),
+        new PuppeteerTopicScraper(),
+        new PuppeteerCommentPoster(),
+        new HttpProfitabilityChecker(profitabilityApiUrl, externalSecret),
+        new GameSearcherAdapter(),
+        ignoredSteamIds,
+    );
 
     return {
         async run(): Promise<FindNewSuppliersResult> {
@@ -79,14 +81,7 @@ export function createFindNewSuppliersRunner() {
                     secure: false,
                 });
 
-                return await useCase.execute({
-                    paginator,
-                    scraper,
-                    commentPoster,
-                    profitabilityChecker,
-                    gameSearcher,
-                    ignoredSteamIds,
-                });
+                return await useCase.execute();
             } finally {
                 await cleanupSuppliersSession();
             }
@@ -108,8 +103,6 @@ function getScheduler(): BackgroundScheduler {
     return _scheduler;
 }
 
-const enqueueFindNewSuppliersUseCase = new EnqueueFindNewSuppliersUseCase();
-
 /**
  * Enfileira a descoberta de fornecedores e retorna imediatamente.
  * A montagem das dependências (e a validação das env vars) acontece aqui, ainda
@@ -117,8 +110,10 @@ const enqueueFindNewSuppliersUseCase = new EnqueueFindNewSuppliersUseCase();
  * porque depois de enfileirado não há mais ninguém para receber o erro.
  */
 export function enqueueFindNewSuppliersService(): Promise<void> {
-    return enqueueFindNewSuppliersUseCase.execute({
-        scheduler: getScheduler(),
-        runner: createFindNewSuppliersRunner(),
-    });
+    const enqueueFindNewSuppliersUseCase = new EnqueueFindNewSuppliersUseCase(
+        getScheduler(),
+        createFindNewSuppliersRunner(),
+    );
+
+    return enqueueFindNewSuppliersUseCase.execute();
 }

@@ -31,10 +31,8 @@ async function bootstrap(): Promise<void> {
 	/**
 	 * Liga os hooks de ciclo de vida do container ao SIGTERM/SIGINT do processo.
 	 *
-	 * É o que vai consertar, no PR 6, o bug de shutdown atual: hoje
-	 * `startBumpTopicsScheduler` é o único handler de SIGTERM e chama
-	 * `process.exit(0)`, matando o processo antes de `invalidateSharedSession()`
-	 * e `cleanupSuppliersSession()` rodarem — Chromium órfão, que foi o que
+	 * Sem isto o `OnApplicationShutdown` do `BrowserShutdown` nunca dispararia, e
+	 * as sessões de Chromium ficariam órfãs no desligamento — o modo de falha que
 	 * derrubou a VPS por OOM em 2026-08-24 (ver CLAUDE.md).
 	 */
 	app.enableShutdownHooks();

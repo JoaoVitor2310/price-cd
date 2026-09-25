@@ -1,5 +1,5 @@
 /** Porta responsável por paginar as listagens de trades do SteamTrades. */
-export interface TradePaginator {
+export abstract class TradePaginator {
     /**
      * Retorna os codes, URLs e status de fechamento dos tópicos encontrados numa página de
      * listagem, filtrada pelo termo de busca informado (`have=<searchTerm>` no SteamTrades —
@@ -7,5 +7,5 @@ export interface TradePaginator {
      * fornecedor pede"). `isClosed` vem do cadeado exibido direto na listagem — diferente de
      * `TopicData.isInactive`, que só é conhecido depois de abrir o tópico.
      */
-    getTopicsFromPage(page: number, searchTerm: string): Promise<Array<{ code: string; url: string; isClosed: boolean }>>;
+    abstract getTopicsFromPage(page: number, searchTerm: string): Promise<Array<{ code: string; url: string; isClosed: boolean }>>;
 }

@@ -9,10 +9,13 @@ const INTERVAL_MS = 5 * 60 * 1000; // 5 minutos
  * - Executa imediatamente ao subir e depois a cada 5 minutos.
  * - Pula o tick se a execução anterior ainda estiver em andamento.
  * - O bumper mantém um browser persistente — não abre/fecha Chrome a cada tick.
- * - Ao receber SIGTERM ou SIGINT, encerra o browser limpo via dispose().
+ * - Devolve uma função de desligamento. NÃO registra handler de sinal: quem
+ *   conhece o processo inteiro é o entrypoint (`src/server.ts` no Express,
+ *   `OnApplicationShutdown` no Nest). Registrar aqui foi a causa do bug de
+ *   shutdown descrito abaixo.
  * - Se STEAMTRADES_SESSION ou STEAM_ID não estiverem definidos, não inicia.
  */
-export function startBumpTopicsScheduler(): void {
+export function startBumpTopicsScheduler(): (() => Promise<void>) | null {
 	const steamId = process.env.STEAM_ID?.trim();
 	const bumper = createPuppeteerSteamTradesBumper();
 
@@ -20,7 +23,7 @@ export function startBumpTopicsScheduler(): void {
 		console.warn(
 			"⚠️ [BUMP] Scheduler não iniciado — defina STEAMTRADES_SESSION e STEAM_ID no .env.",
 		);
-		return;
+		return null;
 	}
 
 	const useCase = new BumpTopicsUseCase();
@@ -52,18 +55,26 @@ export function startBumpTopicsScheduler(): void {
 		}
 	};
 
-	// Encerra o browser persistente ao desligar o processo
-	const shutdown = async () => {
-		console.log("🛑 [BUMP] Encerrando browser persistente...");
-		await disposeIfPresent(bumper);
-		process.exit(0);
-	};
-
-	process.once("SIGTERM", () => void shutdown());
-	process.once("SIGINT", () => void shutdown());
-
 	void run();
-	setInterval(() => void run(), INTERVAL_MS);
+	const timer = setInterval(() => void run(), INTERVAL_MS);
 
 	console.log(`🚀 [BUMP] Scheduler iniciado — STEAM_ID: ${steamId} (intervalo: 5min)`);
+
+	/**
+	 * Encerra o browser persistente do bump.
+	 *
+	 * **Não chama `process.exit()`.** A versão anterior chamava, e era o bug: o
+	 * processo morria aqui, antes de a sessão do AllKeyShop
+	 * (`invalidateSharedSession`) e a de fornecedores (`cleanupSuppliersSession`)
+	 * serem fechadas. Os Chromium delas ficavam órfãos — o modo de falha que
+	 * derrubou a VPS por OOM em 2026-08-24.
+	 *
+	 * Agora quem decide quando o processo termina é o entrypoint, depois de
+	 * desligar tudo.
+	 */
+	return async () => {
+		console.log("🛑 [BUMP] Encerrando browser persistente...");
+		clearInterval(timer);
+		await disposeIfPresent(bumper);
+	};
 }
