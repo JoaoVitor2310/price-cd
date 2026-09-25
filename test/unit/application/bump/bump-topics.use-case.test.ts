@@ -15,7 +15,7 @@ describe("BumpTopicsUseCase", () => {
 			{ code: "BBB", success: true, message: "success" },
 		]);
 
-		const result = await new BumpTopicsUseCase().execute({ steamId: STEAM_ID, bumper });
+		const result = await new BumpTopicsUseCase(bumper).execute({ steamId: STEAM_ID });
 
 		expect(result.bumped).toEqual(["AAA", "BBB"]);
 		expect(result.cooldown).toEqual([]);
@@ -29,7 +29,7 @@ describe("BumpTopicsUseCase", () => {
 			{ code: "CCC", success: false, message: "Already bumped within the hour." },
 		]);
 
-		const result = await new BumpTopicsUseCase().execute({ steamId: STEAM_ID, bumper });
+		const result = await new BumpTopicsUseCase(bumper).execute({ steamId: STEAM_ID });
 
 		expect(result.cooldown).toEqual(["AAA", "BBB", "CCC"]);
 		expect(result.bumped).toEqual([]);
@@ -42,7 +42,7 @@ describe("BumpTopicsUseCase", () => {
 			{ code: "BBB", success: false, message: "xsrf_token not found — session may have expired" },
 		]);
 
-		const result = await new BumpTopicsUseCase().execute({ steamId: STEAM_ID, bumper });
+		const result = await new BumpTopicsUseCase(bumper).execute({ steamId: STEAM_ID });
 
 		expect(result.failed).toEqual(["AAA", "BBB"]);
 		expect(result.bumped).toEqual([]);
@@ -56,7 +56,7 @@ describe("BumpTopicsUseCase", () => {
 			{ code: "CCC", success: false, message: "Network error" },
 		]);
 
-		const result = await new BumpTopicsUseCase().execute({ steamId: STEAM_ID, bumper });
+		const result = await new BumpTopicsUseCase(bumper).execute({ steamId: STEAM_ID });
 
 		expect(result.bumped).toEqual(["AAA"]);
 		expect(result.cooldown).toEqual(["BBB"]);
@@ -66,7 +66,7 @@ describe("BumpTopicsUseCase", () => {
 	it("returns empty arrays when bumper finds no active topics", async () => {
 		const bumper = makeBumper([]);
 
-		const result = await new BumpTopicsUseCase().execute({ steamId: STEAM_ID, bumper });
+		const result = await new BumpTopicsUseCase(bumper).execute({ steamId: STEAM_ID });
 
 		expect(result.bumped).toEqual([]);
 		expect(result.cooldown).toEqual([]);
@@ -76,7 +76,7 @@ describe("BumpTopicsUseCase", () => {
 	it("calls bumper with the provided steamId", async () => {
 		const bumper = makeBumper([]);
 
-		await new BumpTopicsUseCase().execute({ steamId: STEAM_ID, bumper });
+		await new BumpTopicsUseCase(bumper).execute({ steamId: STEAM_ID });
 
 		expect(bumper.bumpUserTopics).toHaveBeenCalledWith(STEAM_ID);
 	});

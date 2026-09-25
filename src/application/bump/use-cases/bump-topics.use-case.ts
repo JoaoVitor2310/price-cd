@@ -1,8 +1,8 @@
 import type { SteamTradesBumper } from "@/application/bump/ports/steam-trades-bumper.port.js";
 
+/** Só dado: o bumper está no construtor. */
 export type BumpTopicsInput = {
 	steamId: string;
-	bumper: SteamTradesBumper;
 };
 
 export type BumpTopicsOutput = {
@@ -17,8 +17,11 @@ export type BumpTopicsOutput = {
  * ou failed (erro inesperado).
  */
 export class BumpTopicsUseCase {
+	constructor(private readonly bumper: SteamTradesBumper) {}
+
 	async execute(input: BumpTopicsInput): Promise<BumpTopicsOutput> {
-		const { steamId, bumper } = input;
+		const { steamId } = input;
+		const { bumper } = this;
 		const results = await bumper.bumpUserTopics(steamId);
 
 		const bumped: string[] = [];

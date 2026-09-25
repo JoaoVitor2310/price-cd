@@ -27,6 +27,9 @@ describe("booting without the inventory system configured", () => {
 	};
 
 	beforeEach(async () => {
+		// O agendador de bump abre um Chromium e fala com o SteamTrades no
+		// primeiro tick. Nenhum teste quer isso acontecendo por baixo.
+		process.env.BUMP_SCHEDULER_ENABLED = "false";
 		delete process.env.SISTEMA_ESTOQUE_URL;
 		delete process.env.EXTERNAL_SECRET;
 

@@ -7,6 +7,11 @@ const { connect, descendantsOf, isAlive, killPid } = vi.hoisted(() => ({
 	killPid: vi.fn(),
 }));
 
+// Este arquivo mocka o `connect` do puppeteer-real-browser, então exercita
+// `initializeBrowser` inteiro sem abrir processo nenhum. É a única exceção à
+// trava que impede a suíte de subir um browser de verdade.
+process.env.ALLOW_BROWSER_LAUNCH_IN_TESTS = "true";
+
 vi.mock("puppeteer-real-browser", () => ({ connect }));
 vi.mock("puppeteer-extra-plugin-adblocker", () => ({ default: () => ({}) }));
 vi.mock("puppeteer-extra-plugin-stealth", () => ({ default: () => ({}) }));

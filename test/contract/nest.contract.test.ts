@@ -74,6 +74,9 @@ beforeAll(async () => {
 	// Atribuição FORÇADA, igual ao `express.contract.test.ts`: a bateria não pode
 	// ter ambiente como entrada escondida. Sem isto ela passava na máquina de
 	// quem tem `.env` e quebrava no CI — foi exatamente o que aconteceu.
+		// O agendador de bump abre um Chromium e fala com o SteamTrades no
+		// primeiro tick. Nenhum teste quer isso acontecendo por baixo.
+		process.env.BUMP_SCHEDULER_ENABLED = "false";
 	process.env.SISTEMA_ESTOQUE_URL = "http://sistema-estoque.test";
 	process.env.EXTERNAL_SECRET = "contract-external-secret";
 	process.env.STEAMTRADES_SESSION = "contract-session-cookie";

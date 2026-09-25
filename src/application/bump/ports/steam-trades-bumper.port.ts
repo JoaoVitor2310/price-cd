@@ -4,6 +4,6 @@ export type BumpResult = {
 	message: string;
 };
 
-export interface SteamTradesBumper {
-	bumpUserTopics(steamId: string): Promise<BumpResult[]>;
+export abstract class SteamTradesBumper {
+	abstract bumpUserTopics(steamId: string): Promise<BumpResult[]>;
 }
