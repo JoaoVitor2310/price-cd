@@ -26,7 +26,7 @@ export function startBumpTopicsScheduler(): (() => Promise<void>) | null {
 		return null;
 	}
 
-	const useCase = new BumpTopicsUseCase();
+	const useCase = new BumpTopicsUseCase(bumper);
 	let running = false;
 
 	const run = async () => {
@@ -37,7 +37,7 @@ export function startBumpTopicsScheduler(): (() => Promise<void>) | null {
 
 		running = true;
 		try {
-			const result = await useCase.execute({ steamId, bumper });
+			const result = await useCase.execute({ steamId });
 
 			if (result.bumped.length > 0) {
 				console.log(`✅ [BUMP] Bumped: ${result.bumped.join(", ")}`);

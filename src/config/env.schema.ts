@@ -148,6 +148,31 @@ const baseEnvSchema = z.object({
 
 	// ── SteamTrades ───────────────────────────────────────────────────────────
 	STEAM_ID: optionalNonEmpty("STEAM_ID"),
+	/**
+	 * Liga o agendador de bump do app Nest. Default: **ligado**.
+	 *
+	 * Existe por um risco de negócio, não de desempenho: se o app Express e o
+	 * Nest agendarem bump ao mesmo tempo, são **dois processos comentando no
+	 * SteamTrades com a mesma conta** — caminho conhecido para ban. Enquanto os
+	 * dois coexistem (até o PR 9), quem subir os dois em dev precisa desligar um
+	 * com `BUMP_SCHEDULER_ENABLED=false`.
+	 *
+	 * O default é ligado de propósito: se fosse desligado, o cutover do PR 9
+	 * passaria e o bump simplesmente pararia de acontecer em produção, sem erro
+	 * nenhum. Perder a função em silêncio é pior que o risco em dev, onde a
+	 * pessoa vê os dois logs subindo.
+	 *
+	 * Aceita **só** `"true"` ou `"false"`, e rejeita o resto no boot. Um
+	 * `value !== "false"` faria `0`, `no`, `off` e `FALSE` significarem
+	 * **ligado** — generoso demais para um interruptor cujo erro é ban de conta.
+	 */
+	BUMP_SCHEDULER_ENABLED: z
+		.enum(["true", "false"], {
+			message: 'BUMP_SCHEDULER_ENABLED must be exactly "true" or "false"',
+		})
+		.optional()
+		.default("true")
+		.transform((value) => value === "true"),
 	/** Steam IDs a nunca abordar, separados por vírgula. */
 	/**
 	 * Steam IDs a nunca abordar.

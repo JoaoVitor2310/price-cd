@@ -2,6 +2,8 @@ import { Module } from "@nestjs/common";
 import { APP_FILTER } from "@nestjs/core";
 import { AllExceptionsFilter } from "@/nest/common/all-exceptions.filter.js";
 import { AppConfigModule } from "@/nest/config/config.module.js";
+import { ScheduleModule } from "@nestjs/schedule";
+import { BumpModule } from "@/nest/bump/bump.module.js";
 import { GamesModule } from "@/nest/games/games.module.js";
 import { ListsModule } from "@/nest/lists/lists.module.js";
 import { SuppliersModule } from "@/nest/suppliers/suppliers.module.js";
@@ -10,8 +12,8 @@ import { HealthController } from "@/nest/health/health.controller.js";
 /**
  * A raiz do app Nest — o composition root que vai substituir `src/app.ts`.
  *
- * Serve `games` (PRs 3 e 4), `lists` (PR 5) e `suppliers` (PR 6). Produção
- * segue no Express até o PR 9.
+ * Serve `games` (PRs 3 e 4), `lists` (PR 5) e `suppliers` (PR 6), mais o
+ * agendador de bump (PR 7). Produção segue no Express até o PR 9.
  *
  * O filter é registrado como provider via `APP_FILTER`, não com
  * `app.useGlobalFilters()`. A diferença importa: registrado assim ele participa
@@ -27,7 +29,16 @@ import { HealthController } from "@/nest/health/health.controller.js";
  * não é o caso.
  */
 @Module({
-	imports: [AppConfigModule, GamesModule, ListsModule, SuppliersModule],
+	imports: [
+		AppConfigModule,
+		// Habilita `@Interval()`. Sem isto o decorator não faz nada — e não
+		// avisa: o método simplesmente nunca é chamado.
+		ScheduleModule.forRoot(),
+		BumpModule,
+		GamesModule,
+		ListsModule,
+		SuppliersModule,
+	],
 	controllers: [HealthController],
 	providers: [
 		{ provide: APP_FILTER, useClass: AllExceptionsFilter },

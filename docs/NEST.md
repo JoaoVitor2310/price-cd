@@ -8,8 +8,8 @@ Os conceitos do Nest usados aqui — container, providers, tokens, escopos, pipe
 request, ciclo de vida — estão explicados em **`docs/nest-conceitos.md`**, mapeados a este
 código. Este arquivo assume esse vocabulário e trata só da sequência e da estratégia.
 
-Status: **PRs 0 a 6 entregues.** As **cinco** rotas existem nos dois apps e passam na mesma
-bateria de contrato. Produção segue no Express. Próximo: PR 7 (agendador de bump).
+Status: **PRs 0 a 7 entregues.** As cinco rotas e o agendador de bump existem nos dois apps.
+Produção segue no Express. Próximo: PR 8 (paridade de infraestrutura HTTP).
 
 ---
 
@@ -232,7 +232,7 @@ uniformizar, é um PR separado, antes ou depois, nunca durante.
 | 4 | ✅ Módulo `games`: `/research` | 3 | `useFactory`, providers com estado, por que **não** usar Guard aqui |
 | 5 | ✅ Módulo `lists` | 4 | duas instâncias da mesma classe com tokens distintos, `OnModuleDestroy` |
 | 6 | ✅ Módulo `suppliers` + ciclo de vida do browser | 5 | `exports`/`imports` vs provider duplicado, `OnApplicationShutdown` |
-| 7 | Agendador de bump | 6 | `@nestjs/schedule`, `OnApplicationBootstrap` |
+| 7 | ✅ Agendador de bump | 6 | `@nestjs/schedule`, `OnApplicationBootstrap` |
 | 8 | Paridade de infraestrutura HTTP | 3–7 | `useStaticAssets`, `setGlobalPrefix` |
 | 9 | Cutover | 8 | — |
 | 10 | Remoção do Express | 9 estável | — |
@@ -610,8 +610,10 @@ isso levaria os 10 minutos do `SERVER_TIMEOUT_MS`, tempo suficiente para o Docke
 SIGKILL e matar o Node antes dos browsers.
 
 ⚠️ **Verificação pendente.** O plano pede confirmar com `ps` que nenhum Chromium sobrevive a um
-`SIGTERM`. O que foi verificado aqui é mais fraco: o hook dispara e o processo encerra — a
-máquina de desenvolvimento não tem Chrome instalado, então nenhum browser chega a subir. **A
+`SIGTERM`. O que foi verificado aqui é mais fraco: o hook dispara e o processo encerra, sem
+nenhum browser aberto na hora. (A justificativa original — "a máquina de desenvolvimento não
+tem Chrome" — estava **errada**: em WSL o `puppeteer-real-browser` usa o Chrome do Windows via
+interop. Ver PR 7.) **A
 checagem com `ps` precisa ser feita no container**, antes do cutover do PR 9:
 `docker compose up -d`, disparar um `/api/games/search`, `docker stop`, e conferir com
 `ps aux | grep chrom` que a árvore sumiu.
@@ -645,19 +647,67 @@ ciclo da requisição, como o Express faz.
 
 ---
 
-### PR 7 — Agendador de bump
+### PR 7 — Agendador de bump ✅ **entregue**
 
-`startBumpTopicsScheduler` vira provider com `@Interval()` do `@nestjs/schedule`
-(`ScheduleModule.forRoot()` no `AppModule`). O guard `running` vira campo do provider. O
-`process.once("SIGTERM")` + `process.exit(0)` é **removido** — o PR 6 já deu o caminho certo.
+`startBumpTopicsScheduler` era uma função com `setInterval`, estado em closure e — até o
+PR 6 — um handler de `SIGTERM` próprio. Virou `BumpScheduler`, provider do `BumpModule`:
 
-Se o bump precisar rodar no boot antes do primeiro intervalo, use `OnApplicationBootstrap`
-(app já ouvindo), não `OnModuleInit` (grafo ainda subindo).
+| Antes | Agora |
+|---|---|
+| `setInterval` na função | `@Interval()` (`ScheduleModule.forRoot()` no `AppModule`) |
+| `let running` em closure | campo da classe |
+| `void run()` antes do timer | `OnApplicationBootstrap` |
+| `process.once("SIGTERM")` | `OnApplicationShutdown` |
 
-`find-new-suppliers-scheduler.ts` **não migra** — e já foi apagado no PR 6, junto com a
-chamada comentada em `src/server.ts`, quando o entrypoint foi reescrito para o desligamento
-ordenado. O item correspondente saiu do `IMPROVEMENTS.md`. Não porte código morto para a
-arquitetura nova.
+`OnApplicationBootstrap` e **não** `OnModuleInit`: o primeiro tick abre um Chromium e fala com
+o SteamTrades. `OnModuleInit` roda com o grafo ainda subindo.
+
+E **sem `await`**: um bump leva minutos com muitos anúncios, e esperá-lo no bootstrap seguraria
+a porta HTTP até lá. O agendador antigo também disparava sem esperar.
+
+#### A trava que o plano não previu: bump duplicado
+
+Enquanto Express e Nest coexistem, **os dois agendariam bump com a mesma conta do
+SteamTrades** — dois processos comentando nos mesmos anúncios. Não é desempenho, é caminho
+conhecido para ban.
+
+`BUMP_SCHEDULER_ENABLED` desliga o agendador do Nest. Default **ligado**, de propósito: se
+fosse desligado, o cutover do PR 9 passaria e o bump simplesmente pararia de acontecer em
+produção, sem erro nenhum. Perder a função em silêncio é pior que o risco em dev, onde a
+pessoa vê os dois logs subindo.
+
+Aceita **só** `"true"` ou `"false"`, rejeitando o resto no boot: um `value !== "false"` faria
+`0`, `no`, `off` e `FALSE` significarem ligado — generoso demais para um interruptor cujo erro
+é ban de conta.
+
+> **PR 9 — item de checklist:** confirmar que só um app agenda bump depois do cutover.
+
+#### O bumper mudo, pego no code review
+
+`createPuppeteerSteamTradesBumper()` devolve `null` sem `STEAMTRADES_SESSION`, e o provider cai
+num no-op para o container conseguir subir. A primeira versão checava só `STEAM_ID`: com a
+sessão ausente, o agendador ticava de 5 em 5 minutos bumpando **nada**, sem log — enquanto o
+Express, no mesmo cenário, não agenda e avisa uma vez.
+
+Era o modo de falha que este mesmo PR diz querer evitar. Agora a habilitação é resolvida **uma
+vez** no bootstrap, checa as três condições (interruptor, `STEAM_ID`, sessão) e loga o motivo
+uma vez — como o Express sempre fez.
+
+#### O acidente que virou trava permanente
+
+Registrar o tick no `OnApplicationBootstrap` fez **qualquer teste que apenas subisse o
+`AppModule`** abrir um Chromium de verdade. Uma rodada da suíte encheu a máquina de janelas do
+Chrome.
+
+Pior: em WSL isso acontece mesmo sem Chrome instalado no Linux — o `puppeteer-real-browser`
+encontra o Chrome do **Windows** via interop. Uma conclusão anterior deste plano ("a máquina
+de desenvolvimento não tem Chrome, então nenhum browser chega a subir", §PR 6) estava
+**errada** por esse motivo.
+
+A correção não foi um flag por arquivo de teste — isso depende de alguém lembrar:
+`initializeBrowser()` **recusa** rodar sob `VITEST`, com mensagem dizendo o que mockar. A
+exceção é o teste da própria função, que mocka o `connect` do `puppeteer-real-browser` e
+declara `ALLOW_BROWSER_LAUNCH_IN_TESTS=true` — um arquivo só, visível em review.
 
 ---
 

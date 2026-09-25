@@ -14,6 +14,10 @@ describe("Nest app skeleton", () => {
 	let app: NestExpressApplication;
 
 	beforeAll(async () => {
+		// O agendador de bump abre um Chromium e fala com o SteamTrades no
+		// primeiro tick. Nenhum teste quer isso acontecendo por baixo.
+		process.env.BUMP_SCHEDULER_ENABLED = "false";
+
 		const moduleRef = await Test.createTestingModule({
 			imports: [AppModule],
 		}).compile();

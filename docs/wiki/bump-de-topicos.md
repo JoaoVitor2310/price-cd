@@ -25,3 +25,5 @@ Importante: isso não tem relação com bumpar anúncio de nenhum fornecedor —
 | Parâmetro | Valor atual | O que controla |
 |---|---|---|
 | Intervalo entre tentativas | 5 minutos, fixo no código | De quanto em quanto tempo tentamos bumpar de novo — o cooldown de verdade é imposto pelo próprio SteamTrades, então tentar mais rápido não bumpa mais vezes |
+| Bump ligado ou desligado | Ligado por padrão | `BUMP_SCHEDULER_ENABLED=false` desliga o bump automático sem derrubar o resto do sistema. Existe porque, durante a migração para a arquitetura nova, os dois sistemas rodam lado a lado — e se os dois bumparem ao mesmo tempo somos **duas contas comentando nos mesmos anúncios**, o que o SteamTrades trata como abuso. Na prática, quem sobe os dois em máquina de desenvolvimento desliga um |
+| Sem sessão do SteamTrades ou sem Steam ID | Bump não é agendado | O sistema sobe normalmente e avisa no log o que falta. Ele **não** fica tentando em silêncio: um bump que não bumpa é pior que um bump que não existe, porque parece estar funcionando |

@@ -28,6 +28,7 @@
 		"@nestjs/config": "^12.0.0",
 		"@nestjs/core": "^12.0.4",
 		"@nestjs/platform-express": "^12.0.4",
+		"@nestjs/schedule": "^12.0.2",
 		"cheerio": "^1.0.0",
 		"dotenv": "^17.2.2",
 		"express": "^5.1.0",

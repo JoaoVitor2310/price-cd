@@ -106,6 +106,34 @@ describe("validateEnv", () => {
 		expect(validateEnv({}).DOCKER).toBe(false);
 	});
 
+	describe("BUMP_SCHEDULER_ENABLED", () => {
+		it("defaults to on so the bump does not vanish at the cutover", () => {
+			// Se o default fosse desligado, o cutover do PR 9 passaria e o bump
+			// simplesmente pararia de acontecer em produção, sem erro nenhum.
+			expect(validateEnv({}).BUMP_SCHEDULER_ENABLED).toBe(true);
+		});
+
+		it.each([["true", true], ["false", false]])(
+			"reads %s",
+			(raw, expected) => {
+				expect(validateEnv({ BUMP_SCHEDULER_ENABLED: raw }).BUMP_SCHEDULER_ENABLED).toBe(
+					expected,
+				);
+			},
+		);
+
+		it.each(["0", "no", "off", "FALSE", "disabled"])(
+			"refuses %s instead of silently treating it as on",
+			(raw) => {
+				// O erro desta trava é ban da conta do SteamTrades. Aceitar
+				// qualquer coisa que não seja "false" como ligado é generoso demais.
+				expect(() => validateEnv({ BUMP_SCHEDULER_ENABLED: raw })).toThrow(
+					/BUMP_SCHEDULER_ENABLED/,
+				);
+			},
+		);
+	});
+
 	it("rejects a malformed SISTEMA_ESTOQUE_URL", () => {
 		expect(() => validateEnv({ SISTEMA_ESTOQUE_URL: "nao-e-url" })).toThrow(
 			/SISTEMA_ESTOQUE_URL must be a valid URL/,

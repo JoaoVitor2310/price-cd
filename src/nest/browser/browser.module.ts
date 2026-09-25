@@ -32,7 +32,7 @@ export class BrowserShutdown implements OnApplicationShutdown {
 	) {}
 
 	async onApplicationShutdown(signal?: string): Promise<void> {
-		this.logger.log(`${signal ?? "shutdown"} recebido — encerrando browsers…`);
+		this.logger.log(`${signal ?? "shutdown"} received — closing browsers…`);
 
 		for (const [name, close] of [
 			["allkeyshop", () => this.shared.invalidate()],
@@ -41,7 +41,7 @@ export class BrowserShutdown implements OnApplicationShutdown {
 			try {
 				await close();
 			} catch (error) {
-				this.logger.error(`Falha ao encerrar ${name}`, error as Error);
+				this.logger.error(`Failed to close the ${name} browser`, error as Error);
 			}
 		}
 	}

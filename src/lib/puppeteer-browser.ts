@@ -9,7 +9,41 @@ type BrowserInstance = Awaited<ReturnType<typeof connect>>["browser"];
 const useExternalXvfb =
 	process.env.DOCKER === "true" || process.env.USE_EXTERNAL_XVFB === "true";
 
+/**
+ * Trava: nenhum teste abre browser por acidente.
+ *
+ * Sem isto, qualquer teste que apenas **suba o app** dispara o primeiro tick do
+ * agendador de bump, que abre um Chromium de verdade. Aconteceu: uma rodada da
+ * suíte encheu a máquina de janelas do Chrome. Em WSL é pior ainda, porque o
+ * `puppeteer-real-browser` encontra o Chrome do **Windows** via interop — então
+ * nem "não tenho Chrome instalado no Linux" protege.
+ *
+ * A proteção é estrutural de propósito. Um flag de ambiente que cada arquivo de
+ * teste precisa lembrar de setar não é proteção: basta um esquecimento. Aqui,
+ * esquecer produz uma falha alta e legível em vez de dezenas de janelas.
+ *
+ * Um teste que precisa exercitar código de browser mocka `initializeBrowser` —
+ * é o que os testes de `fetch-list-topic`, do bumper e das sessões já fazem.
+ *
+ * A exceção é o teste desta própria função, que mocka o `connect` do
+ * `puppeteer-real-browser` e portanto exercita tudo aqui sem abrir processo
+ * nenhum. Esse caso declara `ALLOW_BROWSER_LAUNCH_IN_TESTS=true` — explícito,
+ * um arquivo só, e visível em code review.
+ */
+function refuseToLaunchUnderTest(): void {
+	if (!process.env.VITEST) return;
+	if (process.env.ALLOW_BROWSER_LAUNCH_IN_TESTS === "true") return;
+
+	throw new Error(
+		"initializeBrowser() was called from the test suite. No test may open a " +
+			'real browser — mock "@/lib/puppeteer-browser.js", or override the port ' +
+			"or provider that reaches it.",
+	);
+}
+
 export const initializeBrowser = async () => {
+	refuseToLaunchUnderTest();
+
 	const { browser, page } = await connect({
 		headless: false,
 		args: [
