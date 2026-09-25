@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { logDiscardedByPrice } from "@/application/games/log-discarded-by-price.js";
+import { logDiscardedByPrice } from "@/application/games/services/log-discarded-by-price.js";
 
 afterEach(() => vi.restoreAllMocks());
 

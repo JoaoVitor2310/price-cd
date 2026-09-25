@@ -5,7 +5,8 @@ import type {
 	PriceFetcher,
 } from "@/application/games/ports/game-search.ports.js";
 import type { GameTradeImporter } from "@/application/games/ports/game-trade-importer.port.js";
-import { ResearchGamesUseCase } from "@/application/games/research-games.use-case.js";
+import { PriceGames } from "@/application/games/services/price-games.js";
+import { ResearchGamesUseCase } from "@/application/games/use-cases/research-games.use-case.js";
 
 const game = (name: string, GamivoPrice?: number): FoundGames => ({
 	id: 0,
@@ -22,8 +23,10 @@ const makeUseCase = (
 	tradeImporter: GameTradeImporter = { import: vi.fn().mockResolvedValue(undefined) },
 ) =>
 	new ResearchGamesUseCase(
-		{ fetch: vi.fn().mockResolvedValue(found) } as PopularityFetcher,
-		{ fetch: vi.fn().mockResolvedValue(priced) } as PriceFetcher,
+		new PriceGames(
+			{ fetch: vi.fn().mockResolvedValue(found) } as PopularityFetcher,
+			{ fetch: vi.fn().mockResolvedValue(priced) } as PriceFetcher,
+		),
 		tradeImporter,
 	);
 

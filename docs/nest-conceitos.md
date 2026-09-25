@@ -492,30 +492,60 @@ sendo o jeito certo de testá-las. **Não instancie o container para testar**
 
 ## 9. Colisão de vocabulário: "service"
 
-Nos tutoriais de Nest, `*.service.ts` é onde mora a regra de negócio: o controller chama
-`UsersService`, que fala com o banco.
+A palavra tem três significados em jogo aqui, e só um deles é o que queremos:
 
-**Aqui não.** Regra de negócio vive em `src/domain/` (funções puras) e `src/application/`
-(use cases). E `src/services/` neste repositório é outra coisa ainda: é o composition root
-manual — exatamente o que o container substitui.
+| Significado | Onde aparece | Vale neste repo? |
+|---|---|---|
+| Regra de negócio que fala com o banco | tutoriais de Nest | ❌ regra vive em `domain/` e `application/` |
+| Composition root montado à mão | `src/services/` deste repo | ⏳ **morre no PR 10**, junto com o Express |
+| Colaborador de aplicação que orquestra portas e domínio | DDD / clean architecture | ✅ **é este** |
 
-Convenção adotada na migração, para não haver ambiguidade:
+**O terceiro é o certo.** `PriceGames` é um Application Service no sentido clássico: stateless,
+orquestra portas (`PopularityFetcher`, `PriceFetcher`) e funções de domínio
+(`worthyByPopularity`, `partitionByPrice`), e não pertence a nenhuma entidade.
 
+### Como isso aparece no diretório
 
-| Nome              | Onde             | O que contém                                                   |
-| ----------------- | ---------------- | -------------------------------------------------------------- |
-| `*.use-case.ts`   | `application/`   | Orquestração de domínio e portas. Continua sendo o nome.       |
-| `*.controller.ts` | `nest/<módulo>/` | Só HTTP: parse, chamada ao use case, resposta.                 |
-| `*.module.ts`     | `nest/<módulo>/` | Só wiring.                                                     |
-| `*.service.ts`    | —                | **Não usar.** O diretório `src/services/` desaparece no PR 10. |
+A categoria é comunicada pela **pasta**, não pelo sufixo:
 
+```
+application/<módulo>/
+├── use-cases/    # objetivo completo de um ator: alguém dispara
+├── services/     # colaborador reutilizável: ninguém dispara sozinho
+└── ports/        # o que a aplicação precisa do mundo externo
+```
 
-Se em algum PR aparecer um `*.service.ts` com um `if` de regra de negócio dentro, a migração
-saiu do trilho: aquilo é um use case em `application/`.
+`application/games/services/` é inconfundível com `src/services/` — o caminho inteiro já diz
+que é camada de aplicação. Regra de dependência: `use-cases/` importa de `services/` e
+`ports/`, nunca o contrário.
+
+### Convenção de nomes
+
+| Nome | Onde | O que contém |
+|---|---|---|
+| `*.use-case.ts` | `application/<módulo>/use-cases/` | Objetivo completo de um ator |
+| sem sufixo | `application/<módulo>/services/` | Application Service. Nome é frase verbal (`price-games.ts` → `PriceGames`) |
+| `*.controller.ts` | `nest/<módulo>/` | Só HTTP: parse, chamada, resposta |
+| `*.module.ts` | `nest/<módulo>/` | Só wiring |
+| `*.service.ts` | — | **Não usar enquanto `src/services/` existir** |
+
+A proibição do sufixo `.service.ts` é **temporária e tática**, não de princípio: enquanto
+`src/services/` existir, o sufixo convida alguém a colocar o arquivo no diretório errado —
+junto do wiring que o container está substituindo. Quando esse diretório morrer no PR 10, o
+sufixo fica livre e pode ser adotado em `application/<módulo>/services/`.
+
+### O que separa use case de service
+
+Não é tamanho nem importância:
+
+- **Use case** — objetivo completo de um ator, com gatilho externo. *"Pesquisar jogos e ver a
+  análise."* Contar os arquivos em `use-cases/` responde "quantos casos de uso o sistema tem?".
+- **Service** — colaborador reutilizável, sem gatilho próprio. *"Precificar esta lista de
+  nomes."* Existe porque mais de um use case precisa.
+
+Se aparecer um `*.use-case.ts` que nenhum ator dispara, ele é um service com o nome errado.
 
 ---
-
-
 
 ## 10. O que o Nest oferece e este projeto não vai usar
 

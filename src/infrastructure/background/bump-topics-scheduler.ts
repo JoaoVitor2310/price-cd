@@ -1,4 +1,4 @@
-import { BumpTopicsUseCase } from "@/application/bump/bump-topics.use-case.js";
+import { BumpTopicsUseCase } from "@/application/bump/use-cases/bump-topics.use-case.js";
 import { disposeIfPresent } from "@/lib/dispose.js";
 import { createPuppeteerSteamTradesBumper } from "@/infrastructure/bump/puppeteer-steam-trades-bumper.js";
 

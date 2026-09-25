@@ -8,8 +8,9 @@ Os conceitos do Nest usados aqui — container, providers, tokens, escopos, pipe
 request, ciclo de vida — estão explicados em **`docs/nest-conceitos.md`**, mapeados a este
 código. Este arquivo assume esse vocabulário e trata só da sequência e da estratégia.
 
-Status: **PRs 0 a 4 entregues.** As três rotas de `games` já existem nos dois apps e passam na
-mesma bateria de contrato. Produção segue no Express. Próximo: PR 5 (`lists`).
+Status: **PRs 0 a 4.5 entregues.** As três rotas de `games` existem nos dois apps e passam na
+mesma bateria de contrato; o motor de precificação foi extraído. Produção segue no Express.
+Próximo: PR 5 (`lists`).
 
 ---
 
@@ -483,6 +484,60 @@ Agora `ResearchGamesInput.demo` é booleano explícito e o importer é sempre in
 
 ---
 
+### PR 4.5 — Extrair o motor de precificação ✅ **entregue**
+
+Não estava no plano original. Entrou porque o backlog registrava um gatilho explícito para
+isto (item já removido do `IMPROVEMENTS.md`, porque este PR o resolveu) — *"se a migração Nest for reescrever essa fiação, fazer certo sai mais barato do
+que portar o boilerplate"* — e ele disparou no PR 3.
+
+**PR próprio, e não junto do PR 5, de propósito.** Refactor e migração não se misturam: se a
+bateria de contrato ficar vermelha num PR que faz as duas coisas, não dá para saber qual
+quebrou. Este não toca uma linha de `nest/` — é mudança pura no núcleo compartilhado, provada
+pelo harness rodando contra o Express.
+
+**O problema, objetivamente.** `SearchGamesUseCase` era ao mesmo tempo o caso de uso do
+endpoint `/api/games/search` e o motor de precificação de `lists` e `suppliers`. A prova não
+era estética: a porta `GameSearcher` devolvia `GameAnalysisResult`, que carrega um `summary`
+com contagens e tempo de processamento existentes só para a resposta HTTP — e **nenhum dos
+dois consumidores lia esse campo**. O contrato compartilhado tinha a forma da apresentação de
+um terceiro.
+
+**O que mudou:**
+
+```
+PriceGames  (application/games/price-games.ts)   ← nomes → jogos precificados
+     ├── SearchGamesUseCase        envolve com summary + timing (só o endpoint)
+     ├── ResearchGamesUseCase      mapeia para GameTradeInput
+     ├── RunListsUseCase           usa direto
+     └── FindNewSuppliersUseCase   usa direto
+```
+
+A porta `GameSearcher` passou a devolver `FoundGames[]`. O `summary` saiu do contrato
+compartilhado e ficou onde serve.
+
+**A camada de aplicação ganhou estrutura no mesmo PR**, porque o layout plano fazia o motor
+parecer um use case:
+
+```
+application/<módulo>/
+├── use-cases/    # objetivo completo de um ator: alguém dispara
+├── services/     # colaborador reutilizável: ninguém dispara sozinho
+└── ports/
+```
+
+`PriceGames` é um Application Service no sentido de DDD, e agora isso é visível pelo diretório.
+O sufixo `.service.ts` segue proibido **enquanto `src/services/` existir** — o nome convidaria
+a colocar o arquivo junto do composition root que o container está substituindo. Quando aquele
+diretório morrer no PR 10, o sufixo fica livre. Ver `nest-conceitos.md` §9.
+
+Aplicado a `games`, `lists`, `suppliers` e `bump` de uma vez, e espelhado em `test/unit/`: os
+PRs 5 e 6 ficam migração pura, sem carregar reorganização junto.
+
+Efeito colateral: `SearchGamesUseCase` e `ResearchGamesUseCase` deixaram de duplicar o mesmo
+pipeline de cinco passos.
+
+---
+
 ### PR 5 — Módulo `lists`
 
 - **Duas instâncias da mesma classe, tokens distintos.** `lists` usa concorrência
@@ -549,7 +604,7 @@ O que não é rota mas é comportamento observável:
 - `express.static(public/)` → `app.useStaticAssets()` do `NestExpressApplication`.
 - `GET /` servindo `public/index.html` — **não** o texto do LinkedIn. O
   `app.use(express.static(publicDir))` vem antes do `app.get("/")` em `src/app.ts`, então o
-  estático vence e o handler de autoria é inalcançável (item 17 do IMPROVEMENTS). A ordem
+  estático vence e o handler de autoria é inalcançável (item 16 do IMPROVEMENTS). A ordem
   `useStaticAssets` vs rota precisa dar o mesmo resultado.
 - `server.setTimeout(SERVER_TIMEOUT_MS)`.
 - `app.setGlobalPrefix("api")` no lugar do `router.use("/api", ...)`.
@@ -684,7 +739,7 @@ Conforme a regra do `CLAUDE.md`, cada PR atualiza o que tornou desatualizado:
 |---|---|---|
 | `docs/adr/0004-...` | PR 0 | Decisão, sistema de módulos, fronteira de camadas, estratégia de token de porta |
 | `docs/nest-conceitos.md` | PRs 2–7 | Cada conceito passa de "vamos usar" para "está assim, aqui, por isto" |
-| `docs/IMPROVEMENTS.md` | PRs 2, 5, 7 | Fechar itens 3 e 15; abrir o que o harness revelar. Item feito sai do arquivo — o backlog só guarda o que falta |
+| `docs/IMPROVEMENTS.md` | PRs 2, 5, 7 | Fechar itens 3 e 13; abrir o que o harness revelar. Item feito sai do arquivo — o backlog só guarda o que falta |
 | `CLAUDE.md` | PRs 2, 9, 10 | Seções "Arquitetura" e "Tecnologias e Padrões" |
 | `README.md` | PRs 8, 9, 10 | Stack, árvore de diretórios, Getting Started |
 | `docs/wiki/` | PR 9 | Só se algum comportamento visível ao negócio mudar — não deveria mudar |

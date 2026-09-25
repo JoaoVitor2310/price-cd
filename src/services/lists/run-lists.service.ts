@@ -1,15 +1,16 @@
 import type { SupplierListRequest } from "@/schemas/list.schema.js";
-import { RunListsUseCase } from "@/application/lists/run-lists.use-case.js";
+import { RunListsUseCase } from "@/application/lists/use-cases/run-lists.use-case.js";
 import type { GameSearcher } from "@/application/lists/ports/list-run.ports.js";
 import { fetchListTopic } from "@/infrastructure/lists/fetch-list-topic.js";
-import { SearchGamesUseCase } from "@/application/games/search-games.use-case.js";
+import { PriceGames } from "@/application/games/services/price-games.js";
 import { SteamChartsPopularityFetcher } from "@/infrastructure/games/steam-charts-popularity-fetcher.js";
 import { AllKeyShopPriceFetcher } from "@/infrastructure/games/allkeyshop-price-fetcher.js";
 import { HttpGameTradeImporter } from "@/infrastructure/games/http-game-trade-importer.js";
-import type { GameAnalysisResult, SearchGamesRequest } from "@/application/games/game.types.js";
+import type { FoundGames, SearchGamesRequest } from "@/application/games/game.types.js";
 
 const runListsUseCase = new RunListsUseCase();
-const searchGamesUseCase = new SearchGamesUseCase(
+// `lists` consome o motor direto: nunca usou o `summary` do endpoint.
+const priceGames = new PriceGames(
 	new SteamChartsPopularityFetcher(),
 	new AllKeyShopPriceFetcher(),
 );
@@ -24,8 +25,8 @@ function getTradeImporter(): HttpGameTradeImporter {
 }
 
 class GameSearcherAdapter implements GameSearcher {
-	async search(request: SearchGamesRequest): Promise<GameAnalysisResult> {
-		return searchGamesUseCase.execute(request);
+	async search(request: SearchGamesRequest): Promise<FoundGames[]> {
+		return (await priceGames.run(request)).priced;
 	}
 }
 

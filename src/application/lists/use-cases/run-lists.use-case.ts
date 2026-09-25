@@ -48,13 +48,13 @@ export class RunListsUseCase {
 			await disposeIfPresent(fetcher);
 		}
 
-		const analysis = await gameSearcher.search({
+		const pricedByCatalog = await gameSearcher.search({
 			minPopularity: MIN_POPULARITY,
 			gameNames: allGameNames,
 			checkGamivoOffer,
 		});
 
-		const pricedGames: GameTradeInput[] = analysis.games
+		const pricedGames: GameTradeInput[] = pricedByCatalog
 			.filter((g) => g.GamivoPrice != null)
 			.map((g) => ({
 				name: g.name,

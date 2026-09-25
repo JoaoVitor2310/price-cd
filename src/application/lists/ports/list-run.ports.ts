@@ -1,6 +1,6 @@
 import type { SupplierListRequest } from "@/schemas/list.schema.js";
 import type { ListTopic } from "@/domain/lists/list-topic.js";
-import type { GameAnalysisResult, SearchGamesRequest } from "@/application/games/game.types.js";
+import type { FoundGames, SearchGamesRequest } from "@/application/games/game.types.js";
 
 /**
  * Portas (interfaces): o caso de uso depende disso; a infraestrutura implementa.
@@ -31,5 +31,14 @@ export interface RunListsRunner {
  * Quem consome não repete esses filtros; quem implementa precisa aplicá-los.
  */
 export interface GameSearcher {
-	search(request: SearchGamesRequest): Promise<GameAnalysisResult>;
+	/**
+	 * Devolve **só os jogos** precificados.
+	 *
+	 * Devolvia `GameAnalysisResult` — que carrega um `summary` com contagens e
+	 * tempo de processamento existentes apenas para a resposta de
+	 * `POST /api/games/search`. Nenhum consumidor desta porta jamais leu esse
+	 * campo: `lists` e `suppliers` acessavam `.games` e descartavam o resto. O
+	 * contrato compartilhado tinha a forma da apresentação de um terceiro.
+	 */
+	search(request: SearchGamesRequest): Promise<FoundGames[]>;
 }

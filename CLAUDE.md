@@ -92,7 +92,9 @@ src/
 ├── schemas/               # Schemas Zod + helpers de parse
 ├── services/              # Orquestração ("application services")
 │   └── lists/             # Services específicos do fluxo lists
-├── application/lists/     # Use cases + interfaces de porta (domain logic)
+├── application/<módulo>/  # Camada de aplicação, um diretório por subdomínio
+│   ├── use-cases/         # Objetivo completo de um ator (alguém dispara)
+│   ├── services/          # Application Service: colaborador reutilizável entre use cases
 │   └── ports/             # Interfaces de dependência (inversão de dependência)
 ├── domain/lists/          # Entidades de domínio (ListTopic)
 ├── infrastructure/        # Implementações concretas das portas
@@ -103,6 +105,8 @@ src/
 ├── helpers/               # Funções puras de transformação de string + constantes
 └── types/                 # Definições de tipos TypeScript
 ```
+
+A palavra "service" tem o sentido de DDD/clean architecture — colaborador que orquestra portas e domínio, como `application/games/services/price-games.ts`. **Não** o dos tutoriais de Nest (regra + banco), nem o do `src/services/` legado, que é composition root manual e desaparece no PR 10. Ver `docs/nest-conceitos.md` §9.
 
 Segue uma arquitetura hexagonal leve: o subdomínio `lists` tem interfaces de porta explícitas (`ListTopicFetcher`, `BackgroundScheduler`, `RunListsCallbackPoster`, `ListResultFormatter`, `RunListsRunner`) que são injetadas no use case via factory functions, permitindo testabilidade isolada.
 

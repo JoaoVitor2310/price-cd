@@ -15,7 +15,7 @@ import { AllExceptionsFilter } from "@/nest/common/all-exceptions.filter.js";
  * **com** ponto. Por isso herda em vez de copiar: 400 e `HttpException`
  * continuam sendo os do pai, inclusive o log de validação.
  *
- * Some no PR de uniformização (item 19 do `docs/IMPROVEMENTS.md`), que só pode
+ * Some no PR de uniformização (item 17 do `docs/IMPROVEMENTS.md`), que só pode
  * acontecer depois que o Express sair.
  */
 @Catch()
