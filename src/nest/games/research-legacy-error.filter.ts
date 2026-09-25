@@ -13,7 +13,7 @@ import { AllExceptionsFilter } from "@/nest/common/all-exceptions.filter.js";
  *
  * Feio de propósito: uniformizar isto durante a migração destruiria o único
  * instrumento que distingue "o Nest quebrou" de "eu mudei" (`docs/NEST.md` §4).
- * Some no item 19 do `docs/IMPROVEMENTS.md`, depois que o Express sair.
+ * Some no item 17 do `docs/IMPROVEMENTS.md`, depois que o Express sair.
  */
 @Catch()
 export class ResearchLegacyErrorFilter extends AllExceptionsFilter {

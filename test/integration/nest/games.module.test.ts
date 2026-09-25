@@ -8,7 +8,7 @@ import {
 	PriceFetcher,
 } from "@/application/games/ports/game-search.ports.js";
 import { GameTradeImporter } from "@/application/games/ports/game-trade-importer.port.js";
-import { SearchGamesUseCase } from "@/application/games/search-games.use-case.js";
+import { SearchGamesUseCase } from "@/application/games/use-cases/search-games.use-case.js";
 import { SteamChartsPopularityFetcher } from "@/infrastructure/games/steam-charts-popularity-fetcher.js";
 import { AppConfigModule } from "@/nest/config/config.module.js";
 import { GamesModule } from "@/nest/games/games.module.js";

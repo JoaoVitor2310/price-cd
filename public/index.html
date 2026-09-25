@@ -437,8 +437,9 @@
       font-size: 13px;
       color: var(--ink);
       background: var(--surface);
-      font-family: 'JetBrains Mono', 'Courier New', monospace;
-      line-height: 1.9;
+      font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
+        'Liberation Mono', monospace;
+      line-height: 1.7;
       resize: vertical;
       transition: border-color .15s, box-shadow .15s;
     }
@@ -861,7 +862,7 @@ Counter-Strike 2</pre>
         <div id="demoResults">
           <div class="demo-results-eyebrow">Demo results</div>
           <h3 class="demo-results-title">Research output</h3>
-          <p class="demo-results-sub">Showing up to 10 games, excluding anything priced at €0.50 or below. Provide a valid token to run the full pipeline and send results to inventory.</p>
+          <p class="demo-results-sub">Showing up to 10 games, excluding anything priced at €0.50 or below — the floor is fixed on this page for now. Provide a valid token to run the full pipeline and send results to inventory.</p>
           <div class="demo-table-wrap">
             <table>
               <thead>
@@ -983,7 +984,7 @@ Counter-Strike 2</pre>
     function renderDemoTable(games) {
       const tbody = document.getElementById("demoTableBody");
       if (games.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" class="demo-empty">No games passed the filters — either below the minimum popularity, or priced at €0.50 or below.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="4" class="demo-empty">No games passed the filters. A game can drop out for three different reasons: it was not found on SteamCharts, it is below the minimum popularity, or its best price is €0.50 or below (the fixed floor). The server log names each discarded game and why.</td></tr>`;
         return;
       }
       tbody.innerHTML = games.map(g => `

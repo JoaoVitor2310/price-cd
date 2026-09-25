@@ -1,4 +1,4 @@
-import type { FindNewSuppliersResult } from "@/application/suppliers/find-new-suppliers.use-case.js";
+import type { FindNewSuppliersResult } from "@/application/suppliers/use-cases/find-new-suppliers.use-case.js";
 
 /**
  * Porta para executar a varredura completa de descoberta de fornecedores.

@@ -4,7 +4,9 @@ import type {
 	PopularityFetcher,
 	PriceFetcher,
 } from "@/application/games/ports/game-search.ports.js";
-import { SearchGamesUseCase } from "@/application/games/search-games.use-case.js";
+import { PriceGames } from "@/application/games/services/price-games.js";
+import { SearchGamesUseCase } from "@/application/games/use-cases/search-games.use-case.js";
+
 
 const game = (name: string, GamivoPrice?: number): FoundGames => ({
 	id: 0,
@@ -32,8 +34,7 @@ describe("SearchGamesUseCase", () => {
 		];
 
 		const result = await new SearchGamesUseCase(
-			makePopularityFetcher(found),
-			makePriceFetcher(priced),
+			new PriceGames(makePopularityFetcher(found), makePriceFetcher(priced)),
 		).execute({
 			gameNames: ["Cheap", "Threshold", "Worthy"],
 			minPopularity: 100,
@@ -48,8 +49,7 @@ describe("SearchGamesUseCase", () => {
 		const priced = [game("Cheap", 0.2), game("Worthy", 1.99)];
 
 		const result = await new SearchGamesUseCase(
-			makePopularityFetcher(found),
-			makePriceFetcher(priced),
+			new PriceGames(makePopularityFetcher(found), makePriceFetcher(priced)),
 		).execute({
 			gameNames: ["Cheap", "Worthy"],
 			minPopularity: 100,
@@ -62,8 +62,10 @@ describe("SearchGamesUseCase", () => {
 
 	it("returns an empty list when every price is too low", async () => {
 		const result = await new SearchGamesUseCase(
-			makePopularityFetcher([game("Cheap")]),
-			makePriceFetcher([game("Cheap", 0.1)]),
+			new PriceGames(
+				makePopularityFetcher([game("Cheap")]),
+				makePriceFetcher([game("Cheap", 0.1)]),
+			),
 		).execute({
 			gameNames: ["Cheap"],
 			minPopularity: 100,

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { BumpTopicsUseCase } from "@/application/bump/bump-topics.use-case.js";
+import { BumpTopicsUseCase } from "@/application/bump/use-cases/bump-topics.use-case.js";
 import type { SteamTradesBumper, BumpResult } from "@/application/bump/ports/steam-trades-bumper.port.js";
 
 const STEAM_ID = "76561198000000000";

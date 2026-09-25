@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { FindNewSuppliersUseCase } from "@/application/suppliers/find-new-suppliers.use-case.js";
-import type { FindNewSuppliersInput } from "@/application/suppliers/find-new-suppliers.use-case.js";
+import { FindNewSuppliersUseCase } from "@/application/suppliers/use-cases/find-new-suppliers.use-case.js";
+import type { FindNewSuppliersInput } from "@/application/suppliers/use-cases/find-new-suppliers.use-case.js";
 import type { TopicData } from "@/application/suppliers/ports/topic-scraper.port.js";
 import type { ProspectResult } from "@/application/suppliers/ports/profitability-checker.port.js";
-import type { GameAnalysisResult } from "@/application/games/game.types.js";
+import type { FoundGames } from "@/application/games/game.types.js";
 import { TF2_SEARCH_TERMS } from "@/domain/suppliers/tf2-key-matching.js";
 
 // ---------------------------------------------------------------------------
@@ -33,11 +33,9 @@ function makeProspectResult(overrides: Partial<ProspectResult> = {}): ProspectRe
     };
 }
 
-function makeGameResult(gameOverrides: Partial<GameAnalysisResult["games"][number]> = {}): GameAnalysisResult {
-    return {
-        games: [{ id: 0, name: "Half-Life", popularity: 100, GamivoPrice: 1.5, ...gameOverrides }],
-        summary: { totalRequested: 1, foundGames: 1, worthyByPopularity: 1, foundPrices: 1, processingTimeSeconds: 0 },
-    };
+/** A porta devolve só os jogos: o `summary` saiu do contrato compartilhado. */
+function makePricedGames(gameOverrides: Partial<FoundGames> = {}): FoundGames[] {
+    return [{ id: 0, name: "Half-Life", popularity: 100, GamivoPrice: 1.5, ...gameOverrides }];
 }
 
 /** Item de listagem retornado por `TradePaginator.getTopicsFromPage`. */
@@ -54,7 +52,7 @@ function makeInput(overrides: Partial<FindNewSuppliersInput> = {}): FindNewSuppl
     const scraper = { scrape: vi.fn().mockResolvedValue(makeTopic()) };
     const commentPoster = { post: vi.fn().mockResolvedValue(undefined) };
     const profitabilityChecker = { evaluate: vi.fn().mockResolvedValue(makeProspectResult()) };
-    const gameSearcher = { search: vi.fn().mockResolvedValue(makeGameResult()) };
+    const gameSearcher = { search: vi.fn().mockResolvedValue(makePricedGames()) };
 
     return { paginator, scraper, commentPoster, profitabilityChecker, gameSearcher, ignoredSteamIds: new Set<string>(), ...overrides };
 }
@@ -119,7 +117,7 @@ describe("FindNewSuppliersUseCase", () => {
 
     it("forwards gamivo_id from the priced game to evaluate", async () => {
         const input = makeInput({
-            gameSearcher: { search: vi.fn().mockResolvedValue(makeGameResult({ gamivo_id: "144601" })) },
+            gameSearcher: { search: vi.fn().mockResolvedValue(makePricedGames({ gamivo_id: "144601" })) },
         });
 
         await useCase.execute(input);
@@ -232,7 +230,7 @@ describe("FindNewSuppliersUseCase", () => {
 
     it("skips topics where no priced games were found", async () => {
         const input = makeInput({
-            gameSearcher: { search: vi.fn().mockResolvedValue({ games: [], summary: { totalRequested: 1, foundGames: 0, worthyByPopularity: 0, foundPrices: 0, processingTimeSeconds: 0 } }) },
+            gameSearcher: { search: vi.fn().mockResolvedValue([]) },
         });
 
         await useCase.execute(input);

@@ -1,17 +1,17 @@
-import { FindNewSuppliersUseCase } from "@/application/suppliers/find-new-suppliers.use-case.js";
-import { EnqueueFindNewSuppliersUseCase } from "@/application/suppliers/enqueue-find-new-suppliers.use-case.js";
+import { FindNewSuppliersUseCase } from "@/application/suppliers/use-cases/find-new-suppliers.use-case.js";
+import { EnqueueFindNewSuppliersUseCase } from "@/application/suppliers/use-cases/enqueue-find-new-suppliers.use-case.js";
 import { PuppeteerTradePaginator } from "@/infrastructure/suppliers/puppeteer-trade-paginator.js";
 import { PuppeteerTopicScraper } from "@/infrastructure/suppliers/puppeteer-topic-scraper.js";
 import { PuppeteerCommentPoster } from "@/infrastructure/suppliers/puppeteer-comment-poster.js";
 import { HttpProfitabilityChecker } from "@/infrastructure/suppliers/http-profitability-checker.js";
-import { SearchGamesUseCase } from "@/application/games/search-games.use-case.js";
+import { PriceGames } from "@/application/games/services/price-games.js";
 import { SteamChartsPopularityFetcher } from "@/infrastructure/games/steam-charts-popularity-fetcher.js";
 import { AllKeyShopPriceFetcher } from "@/infrastructure/games/allkeyshop-price-fetcher.js";
 import { getSuppliersSession, cleanupSuppliersSession } from "@/lib/puppeteer-browser.js";
 import { LimitedConcurrencyScheduler } from "@/infrastructure/background/limited-concurrency.scheduler.js";
 import type { GameSearcher } from "@/application/lists/ports/list-run.ports.js";
-import type { GameAnalysisResult, SearchGamesRequest } from "@/application/games/game.types.js";
-import type { FindNewSuppliersResult } from "@/application/suppliers/find-new-suppliers.use-case.js";
+import type { FoundGames, SearchGamesRequest } from "@/application/games/game.types.js";
+import type { FindNewSuppliersResult } from "@/application/suppliers/use-cases/find-new-suppliers.use-case.js";
 import type { BackgroundScheduler } from "@/application/shared/ports/background-scheduler.port.js";
 import { parseEnvList } from "@/helpers/parse-env-list.js";
 
@@ -21,13 +21,14 @@ import { parseEnvList } from "@/helpers/parse-env-list.js";
  * do upload de arquivos e não compartilha estado com outras requisições.
  */
 class GameSearcherAdapter implements GameSearcher {
-    private readonly useCase = new SearchGamesUseCase(
+    // Consome o motor direto: nunca usou o `summary` do endpoint.
+    private readonly priceGames = new PriceGames(
         new SteamChartsPopularityFetcher(),
         new AllKeyShopPriceFetcher(),
     );
 
-    async search(request: SearchGamesRequest): Promise<GameAnalysisResult> {
-        return this.useCase.execute(request);
+    async search(request: SearchGamesRequest): Promise<FoundGames[]> {
+        return (await this.priceGames.run(request)).priced;
     }
 }
 

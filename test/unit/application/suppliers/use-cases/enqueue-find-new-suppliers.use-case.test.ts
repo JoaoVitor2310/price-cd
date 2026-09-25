@@ -1,19 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { EnqueueResearchGamesUseCase } from "@/application/games/enqueue-research-games.use-case.js";
-import type { ResearchGamesRequest } from "@/application/games/ports/research-games-runner.port.js";
+import { EnqueueFindNewSuppliersUseCase } from "@/application/suppliers/use-cases/enqueue-find-new-suppliers.use-case.js";
+import type { FindNewSuppliersResult } from "@/application/suppliers/use-cases/find-new-suppliers.use-case.js";
 
 // ---------------------------------------------------------------------------
 // Builders
 // ---------------------------------------------------------------------------
 
-function makeRequest(overrides: Partial<ResearchGamesRequest> = {}): ResearchGamesRequest {
+function makeResult(overrides: Partial<FindNewSuppliersResult> = {}): FindNewSuppliersResult {
     return {
-        gameNames: ["Half-Life"],
-        minPopularity: 30,
-        checkGamivoOffer: true,
-        supplierSteamId: "76561198888888888",
-        listCode: "G0eXM",
-        title: "Trade from supplier X",
+        pagesVisited: 3,
+        topicsProcessed: 10,
+        suppliersCommented: 2,
         ...overrides,
     };
 }
@@ -34,63 +31,66 @@ function makeScheduler() {
 
 // ---------------------------------------------------------------------------
 
-describe("EnqueueResearchGamesUseCase", () => {
-    // O use case nasce dentro de cada teste porque scheduler e runner agora
-    // entram pelo construtor, e cada caso monta os seus.
+describe("EnqueueFindNewSuppliersUseCase", () => {
+    let useCase: EnqueueFindNewSuppliersUseCase;
+
+    beforeEach(() => {
+        useCase = new EnqueueFindNewSuppliersUseCase();
+    });
+
     it("schedules the work instead of running it inline", async () => {
         const scheduler = makeScheduler();
-        const runner = { run: vi.fn().mockResolvedValue(undefined) };
-        const useCase = new EnqueueResearchGamesUseCase(scheduler, runner);
+        const runner = { run: vi.fn().mockResolvedValue(makeResult()) };
 
-        await useCase.execute({ request: makeRequest() });
+        await useCase.execute({ scheduler, runner });
 
         expect(scheduler.schedule).toHaveBeenCalledTimes(1);
         expect(runner.run).not.toHaveBeenCalled();
     });
 
-    it("passes the request through to the runner when the scheduled task runs", async () => {
-        const scheduler = makeScheduler();
-        const runner = { run: vi.fn().mockResolvedValue(undefined) };
-        const useCase = new EnqueueResearchGamesUseCase(scheduler, runner);
-        const request = makeRequest({ title: "Specific trade" });
-
-        await useCase.execute({ request });
-        await scheduler.runScheduledTask();
-
-        expect(runner.run).toHaveBeenCalledWith(request);
-    });
-
     it("does not wait for the runner before resolving", async () => {
         const scheduler = makeScheduler();
-        let resolveRunner: (() => void) | undefined;
+        let resolveRunner: ((result: FindNewSuppliersResult) => void) | undefined;
         const runner = {
-            run: vi.fn(() => new Promise<void>((resolve) => {
+            run: vi.fn(() => new Promise<FindNewSuppliersResult>((resolve) => {
                 resolveRunner = resolve;
             })),
         };
-        const useCase = new EnqueueResearchGamesUseCase(scheduler, runner);
 
-        await useCase.execute({ request: makeRequest() });
+        await useCase.execute({ scheduler, runner });
 
         // A execução já retornou mesmo com o runner ainda pendente.
         expect(scheduler.schedule).toHaveBeenCalledTimes(1);
 
         const pending = scheduler.runScheduledTask();
-        resolveRunner?.();
+        resolveRunner?.(makeResult());
         await pending;
     });
 
     it("swallows runner errors so the background queue is not broken", async () => {
         const scheduler = makeScheduler();
         const runner = { run: vi.fn().mockRejectedValue(new Error("scraping failed")) };
-        const useCase = new EnqueueResearchGamesUseCase(scheduler, runner);
         const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 
-        await useCase.execute({ request: makeRequest() });
+        await useCase.execute({ scheduler, runner });
 
         await expect(scheduler.runScheduledTask()).resolves.toBeUndefined();
         expect(consoleError).toHaveBeenCalled();
 
         consoleError.mockRestore();
+    });
+
+    it("logs a summary when the runner finishes successfully", async () => {
+        const scheduler = makeScheduler();
+        const result = makeResult({ pagesVisited: 5, topicsProcessed: 20, suppliersCommented: 4 });
+        const runner = { run: vi.fn().mockResolvedValue(result) };
+        const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+
+        await useCase.execute({ scheduler, runner });
+        await scheduler.runScheduledTask();
+
+        expect(consoleLog).toHaveBeenCalledWith(expect.stringContaining("5"));
+
+        consoleLog.mockRestore();
     });
 });

@@ -9,12 +9,12 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import type { Response } from "express";
-import { EnqueueResearchGamesUseCase } from "@/application/games/enqueue-research-games.use-case.js";
+import { EnqueueResearchGamesUseCase } from "@/application/games/use-cases/enqueue-research-games.use-case.js";
 import { GameTradeImporter } from "@/application/games/ports/game-trade-importer.port.js";
 import { PopularityFetcher } from "@/application/games/ports/game-search.ports.js";
-import { ResearchGamesUseCase } from "@/application/games/research-games.use-case.js";
+import { ResearchGamesUseCase } from "@/application/games/use-cases/research-games.use-case.js";
 import type { Env } from "@/config/env.schema.js";
-import { SearchGamesUseCase } from "@/application/games/search-games.use-case.js";
+import { SearchGamesUseCase } from "@/application/games/use-cases/search-games.use-case.js";
 import { GamesLegacyErrorFilter } from "@/nest/games/games-legacy-error.filter.js";
 import { ZodValidationPipe } from "@/nest/common/zod-validation.pipe.js";
 import { LazyGameTradeImporter } from "@/infrastructure/games/lazy-game-trade-importer.js";

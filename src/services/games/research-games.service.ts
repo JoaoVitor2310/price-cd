@@ -1,5 +1,6 @@
-import { ResearchGamesUseCase } from "@/application/games/research-games.use-case.js";
-import { EnqueueResearchGamesUseCase } from "@/application/games/enqueue-research-games.use-case.js";
+import { PriceGames } from "@/application/games/services/price-games.js";
+import { ResearchGamesUseCase } from "@/application/games/use-cases/research-games.use-case.js";
+import { EnqueueResearchGamesUseCase } from "@/application/games/use-cases/enqueue-research-games.use-case.js";
 import type {
 	ResearchGamesRequest,
 	ResearchGamesRunner,
@@ -12,8 +13,10 @@ import { AllKeyShopPriceFetcher } from "@/infrastructure/games/allkeyshop-price-
 import { NoopGameTradeImporter } from "@/application/games/ports/noop-game-trade-importer.js";
 import { HttpGameTradeImporter } from "@/infrastructure/games/http-game-trade-importer.js";
 
-const popularityFetcher = new SteamChartsPopularityFetcher();
-const priceFetcher = new AllKeyShopPriceFetcher();
+const priceGames = new PriceGames(
+	new SteamChartsPopularityFetcher(),
+	new AllKeyShopPriceFetcher(),
+);
 
 let _tradeImporter: HttpGameTradeImporter | undefined;
 
@@ -52,11 +55,7 @@ class ResearchGamesServiceRunner implements ResearchGamesRunner {
 		// O importer é resolvido aqui, e não no boot, porque `getTradeImporter`
 		// lê env e lança se faltar configuração — o mesmo motivo de
 		// `assertTradeImporterConfigured` existir.
-		const useCase = new ResearchGamesUseCase(
-			popularityFetcher,
-			priceFetcher,
-			getTradeImporter(),
-		);
+		const useCase = new ResearchGamesUseCase(priceGames, getTradeImporter());
 
 		await useCase.execute({ ...request, demo: false });
 	}
@@ -89,11 +88,7 @@ export const researchGamesDemoService = async (
 ): Promise<GameTradeInput[] | null> => {
 	// Null object, NÃO `getTradeImporter()`: o demo precisa rodar sem o Sistema
 	// Estoque configurado, e `getTradeImporter` lança se faltar env.
-	const useCase = new ResearchGamesUseCase(
-		popularityFetcher,
-		priceFetcher,
-		new NoopGameTradeImporter(),
-	);
+	const useCase = new ResearchGamesUseCase(priceGames, new NoopGameTradeImporter());
 
 	return useCase.execute({ ...request, demo: true });
 };

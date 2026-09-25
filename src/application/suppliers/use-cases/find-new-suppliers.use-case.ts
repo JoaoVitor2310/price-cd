@@ -181,13 +181,13 @@ export class FindNewSuppliersUseCase {
                 const gameNames = topic.games.slice(0, MAX_GAMES_PER_SUPPLIER);
                 console.log(`🔍 [SUPPLIERS] Searching prices for ${gameNames.length}/${topic.games.length} game(s) in topic ${code}...`);
 
-                const searchResult = await gameSearcher.search({
+                const pricedByCatalog = await gameSearcher.search({
                     gameNames,
                     minPopularity: MIN_POPULARITY,
                     checkGamivoOffer: true,
                 });
 
-                const gamesWithPrice: GamePriceInput[] = searchResult.games
+                const gamesWithPrice: GamePriceInput[] = pricedByCatalog
                     .filter((g) => g.GamivoPrice != null)
                     .map((g) => ({
                         name: g.name,

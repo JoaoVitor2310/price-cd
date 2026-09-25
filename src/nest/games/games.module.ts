@@ -1,6 +1,6 @@
 import { Module } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { EnqueueResearchGamesUseCase } from "@/application/games/enqueue-research-games.use-case.js";
+import { EnqueueResearchGamesUseCase } from "@/application/games/use-cases/enqueue-research-games.use-case.js";
 import {
 	PopularityFetcher,
 	PriceFetcher,
@@ -10,8 +10,9 @@ import type {
 	ResearchGamesRequest,
 	ResearchGamesRunner,
 } from "@/application/games/ports/research-games-runner.port.js";
-import { ResearchGamesUseCase } from "@/application/games/research-games.use-case.js";
-import { SearchGamesUseCase } from "@/application/games/search-games.use-case.js";
+import { ResearchGamesUseCase } from "@/application/games/use-cases/research-games.use-case.js";
+import { PriceGames } from "@/application/games/services/price-games.js";
+import { SearchGamesUseCase } from "@/application/games/use-cases/search-games.use-case.js";
 import type { BackgroundScheduler } from "@/application/shared/ports/background-scheduler.port.js";
 import type { Env } from "@/config/env.schema.js";
 import { LimitedConcurrencyScheduler } from "@/infrastructure/background/limited-concurrency.scheduler.js";
@@ -73,20 +74,27 @@ import {
 			inject: [ConfigService],
 		},
 
+		/**
+		 * O motor de precificação, compartilhado pelos dois use cases de `games`
+		 * — e, a partir dos PRs 5 e 6, por `lists` e `suppliers`. Singleton, como
+		 * todo provider: uma instância serve todos.
+		 */
 		{
-			provide: SearchGamesUseCase,
+			provide: PriceGames,
 			useFactory: (popularity: PopularityFetcher, price: PriceFetcher) =>
-				new SearchGamesUseCase(popularity, price),
+				new PriceGames(popularity, price),
 			inject: [PopularityFetcher, PriceFetcher],
 		},
 		{
+			provide: SearchGamesUseCase,
+			useFactory: (priceGames: PriceGames) => new SearchGamesUseCase(priceGames),
+			inject: [PriceGames],
+		},
+		{
 			provide: ResearchGamesUseCase,
-			useFactory: (
-				popularity: PopularityFetcher,
-				price: PriceFetcher,
-				importer: GameTradeImporter,
-			) => new ResearchGamesUseCase(popularity, price, importer),
-			inject: [PopularityFetcher, PriceFetcher, GameTradeImporter],
+			useFactory: (priceGames: PriceGames, importer: GameTradeImporter) =>
+				new ResearchGamesUseCase(priceGames, importer),
+			inject: [PriceGames, GameTradeImporter],
 		},
 
 		/**

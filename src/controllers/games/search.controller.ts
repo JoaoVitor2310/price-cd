@@ -1,7 +1,8 @@
 import type { Request, Response } from "express";
 import { ZodError } from "zod";
 import { gameSearchSchema } from "@/schemas/game.schema.js";
-import { SearchGamesUseCase } from "@/application/games/search-games.use-case.js";
+import { PriceGames } from "@/application/games/services/price-games.js";
+import { SearchGamesUseCase } from "@/application/games/use-cases/search-games.use-case.js";
 import { SteamChartsPopularityFetcher } from "@/infrastructure/games/steam-charts-popularity-fetcher.js";
 import { AllKeyShopPriceFetcher } from "@/infrastructure/games/allkeyshop-price-fetcher.js";
 
@@ -9,8 +10,7 @@ import { AllKeyShopPriceFetcher } from "@/infrastructure/games/allkeyshop-price-
 // container (`src/nest/games/games.module.ts`); aqui continua sendo à mão, até
 // o Express sair de cena.
 const searchGamesUseCase = new SearchGamesUseCase(
-	new SteamChartsPopularityFetcher(),
-	new AllKeyShopPriceFetcher(),
+	new PriceGames(new SteamChartsPopularityFetcher(), new AllKeyShopPriceFetcher()),
 );
 
 export const searchGames = async (req: Request, res: Response) => {
