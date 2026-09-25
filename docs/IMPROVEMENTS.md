@@ -38,7 +38,7 @@ Backlog de dívida técnica e melhorias identificadas no price-cd. Prioridade in
     | `/api/games/research`, `/api/lists/run` | mensagem em **`data`** — campo que em toda outra resposta significa sucesso | `error: "Internal server error."` (com ponto) + `details` |
     | `/api/suppliers/find-new` | — | `{ error }`, **sem o campo `success`** |
 
-    Além da divergência estrutural, `/api/lists/run` responde em português (`"Erro no corpo da requisição: ..."`) e todas as outras em inglês. Um cliente que trate erro de forma genérica precisa conhecer as três formas.
+    Um cliente que trate erro de forma genérica precisa conhecer as três formas. O idioma da mensagem é problema separado e independente — ver item 20, que pode ser feito sem mexer na estrutura.
 
     **Não fazer durante a migração para Nest.** A bateria em `test/contract/contract-cases.ts` congela esses formatos de propósito: enquanto Express e Nest coexistem, ela é o único instrumento que distingue "o Nest quebrou algo" de "eu mudei de propósito". Uniformizar no meio torna toda diferença ambígua e destrói o portão. Fazer **depois do PR 10** (Express removido), num PR isolado — aí é um `AllExceptionsFilter` só, sem `@UseFilters` por controller, e a bateria de contrato é atualizada no mesmo commit, deliberadamente. Ver `docs/NEST.md` §4.
 
@@ -56,3 +56,20 @@ Backlog de dívida técnica e melhorias identificadas no price-cd. Prioridade in
     **O backend já suporta.** `researchGamesBodySchema` aceita `minPrice` opcional (`0` ou maior) e `partitionByPrice` recebe o valor como argumento — foi assim que o fluxo de bundle passou a aceitar jogos abaixo do piso. Falta só o campo em `public/index.html` e repassá-lo no corpo do POST; nenhuma mudança de domínio é necessária.
 
     Enquanto não existir, `public/index.html` explica na tela que o piso é fixo, que jogo descartado **foi encontrado**, e que a API já aceita `minPrice` por requisição.
+20. **Traduzir para inglês a mensagem de erro em português** — `POST /api/lists/run` é a **única** rota que responde erro em português: `{ success: false, data: "Erro no corpo da requisição: <problemas>" }`. Todas as outras respondem em inglês. Um cliente que trate erro de forma genérica precisa lidar com dois idiomas na mesma API, e a mensagem não é traduzível do lado dele — o texto vem pronto do servidor.
+
+    A string está hoje em cinco lugares, e todos mudam juntos:
+
+    | Arquivo | Papel |
+    |---|---|
+    | `src/controllers/lists/run-lists.controller.ts` | app Express (produção) |
+    | `src/nest/lists/lists-legacy-error.filter.ts` | app Nest |
+    | `src/nest/common/legacy-data-error.filter.ts` | só um exemplo no docblock |
+    | `test/contract/contract-cases.ts` | o portão de paridade |
+    | `test/integration/nest/lists.module.test.ts` | teste de módulo |
+
+    **Não fazer durante a migração para Nest.** É mudança de contrato, e a bateria de `test/contract/` congela o formato atual de propósito: enquanto Express e Nest coexistem, ela é o que distingue "o Nest quebrou" de "eu mudei". Traduzir no meio torna qualquer diferença ambígua. Fazer **depois do PR 10**, num PR isolado, atualizando a bateria no mesmo commit — deliberadamente, não por acidente.
+
+    Independente do item 17: dá para traduzir sem mexer na estrutura (`data` continua sendo `data`), e vice-versa. Se os dois forem feitos juntos, melhor ainda — é um PR só de contrato.
+
+    Sugestão: `"Invalid request body: <problemas>"`, alinhado com o `"Invalid file content: ..."` que `/api/games/research` já usa. Quando isso acontecer, a exceção de idioma documentada no `CLAUDE.md` ("Idioma no código") deixa de ter caso real e pode sair de lá.

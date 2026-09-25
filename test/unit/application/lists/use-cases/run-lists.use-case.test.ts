@@ -27,6 +27,9 @@ const makeFetcher = (topics: ListTopic[] = [new ListTopic("http://list", "active
 	fetchList: vi.fn().mockResolvedValue(topics[0]),
 });
 
+/** O default de produção; era lido de `process.env` dentro do use case. */
+const MAX_ACTIVE_LISTS = 3;
+
 const request: SupplierListRequest = { steam_id: "76561198000000001", checkGamivoOffer: false };
 
 describe("RunListsUseCase", () => {
@@ -34,12 +37,14 @@ describe("RunListsUseCase", () => {
 		const gameSearcher: GameSearcher = { search: vi.fn().mockResolvedValue(makePricedGames()) };
 		const tradeImporter: GameTradeImporter = { import: vi.fn().mockResolvedValue(undefined) };
 
-		await new RunListsUseCase().execute({
-			supplierListRequest: request,
-			fetcher: makeFetcher(),
-			checkGamivoOffer: false,
+		await new RunListsUseCase(
+			{ create: () => makeFetcher() },
 			gameSearcher,
 			tradeImporter,
+			MAX_ACTIVE_LISTS,
+		).execute({
+			supplierListRequest: request,
+			checkGamivoOffer: false,
 		});
 
 		expect(tradeImporter.import).toHaveBeenCalledWith(
@@ -54,12 +59,14 @@ describe("RunListsUseCase", () => {
 		};
 		const tradeImporter: GameTradeImporter = { import: vi.fn().mockResolvedValue(undefined) };
 
-		await new RunListsUseCase().execute({
-			supplierListRequest: request,
-			fetcher: makeFetcher(),
-			checkGamivoOffer: false,
+		await new RunListsUseCase(
+			{ create: () => makeFetcher() },
 			gameSearcher,
 			tradeImporter,
+			MAX_ACTIVE_LISTS,
+		).execute({
+			supplierListRequest: request,
+			checkGamivoOffer: false,
 		});
 
 		const [games] = (tradeImporter.import as ReturnType<typeof vi.fn>).mock.calls[0];
@@ -73,12 +80,14 @@ describe("RunListsUseCase", () => {
 		};
 		const tradeImporter: GameTradeImporter = { import: vi.fn().mockResolvedValue(undefined) };
 
-		await new RunListsUseCase().execute({
-			supplierListRequest: request,
-			fetcher: makeFetcher(),
-			checkGamivoOffer: false,
+		await new RunListsUseCase(
+			{ create: () => makeFetcher() },
 			gameSearcher,
 			tradeImporter,
+			MAX_ACTIVE_LISTS,
+		).execute({
+			supplierListRequest: request,
+			checkGamivoOffer: false,
 		});
 
 		expect(tradeImporter.import).not.toHaveBeenCalled();
@@ -91,12 +100,14 @@ describe("RunListsUseCase", () => {
 		};
 		const tradeImporter: GameTradeImporter = { import: vi.fn().mockResolvedValue(undefined) };
 
-		await new RunListsUseCase().execute({
-			supplierListRequest: request,
-			fetcher: inactiveFetcher,
-			checkGamivoOffer: false,
+		await new RunListsUseCase(
+			{ create: () => inactiveFetcher },
 			gameSearcher,
 			tradeImporter,
+			MAX_ACTIVE_LISTS,
+		).execute({
+			supplierListRequest: request,
+			checkGamivoOffer: false,
 		});
 
 		expect(gameSearcher.search).toHaveBeenCalledWith(

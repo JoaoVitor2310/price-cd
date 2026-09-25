@@ -34,6 +34,38 @@ import * as z from "zod";
  * `.env.example` deixa quase tudo em branco, e branco significa "usa o default",
  * não "zero". Zero é valor válido — daí `nonNegative`, não `positive`.
  */
+/**
+ * Converte uma variável de ambiente em inteiro **positivo**, caindo no default
+ * quando o valor não serve (ausente, vazio, zero, negativo ou não numérico).
+ *
+ * Existe exportada porque a regra precisa ser **uma só** para os dois apps. Ela
+ * já esteve escrita em três lugares com resultados diferentes:
+ *
+ * | Entrada | Express (antes) | Nest (antes) |
+ * |---|---|---|
+ * | `RUN_LISTS_CONCURRENCY=0` | fila com 1 | **derrubava o boot** |
+ * | `MAX_ACTIVE_LISTS=0` | 3 Listas | 1 Lista |
+ *
+ * Zero é entrada sem sentido para os dois casos — fila com concorrência zero
+ * não processa nada, e zero Listas ativas não reabastece ninguém. Cair no
+ * default preserva o comportamento do Express, que é o que roda em produção.
+ */
+export function positiveIntFromEnv(
+	raw: string | undefined,
+	fallback: number,
+): number {
+	const parsed = Number(raw?.trim());
+	return Number.isInteger(parsed) && parsed >= 1 ? parsed : fallback;
+}
+
+/** Inteiro positivo com default, aplicando a mesma regra dentro do schema. */
+const positiveIntWithDefault = (fallback: number) =>
+	z
+		.string()
+		.trim()
+		.optional()
+		.transform((value) => positiveIntFromEnv(value, fallback));
+
 const nonNegativeInt = (label: string) =>
 	z
 		.string()
@@ -128,8 +160,8 @@ const baseEnvSchema = z.object({
 	STEAMTRADES_PAGE_DELAY_MS: nonNegativeInt("STEAMTRADES_PAGE_DELAY_MS"),
 
 	// ── Agendamento e concorrência ────────────────────────────────────────────
-	RUN_LISTS_CONCURRENCY: nonNegativeIntWithDefault("RUN_LISTS_CONCURRENCY", 1),
-	MAX_ACTIVE_LISTS: nonNegativeIntWithDefault("MAX_ACTIVE_LISTS", 3),
+	RUN_LISTS_CONCURRENCY: positiveIntWithDefault(1),
+	MAX_ACTIVE_LISTS: positiveIntWithDefault(3),
 	NEW_SUPPLIERS_INTERVAL_HOURS: nonNegativeIntWithDefault("NEW_SUPPLIERS_INTERVAL_HOURS", 24),
 });
 

@@ -1,6 +1,6 @@
 import type {
 	GameSearcher,
-	ListTopicFetcher,
+	ListTopicFetcherFactory,
 } from "@/application/lists/ports/list-run.ports.js";
 import type { GameTradeImporter, GameTradeInput } from "@/application/games/ports/game-trade-importer.port.js";
 import { disposeIfPresent } from "@/lib/dispose.js";
@@ -8,12 +8,10 @@ import type { SupplierListRequest } from "@/schemas/list.schema.js";
 
 const MIN_POPULARITY = 30;
 
+/** Só dado: as dependências estão no construtor. */
 export type RunListsInput = {
 	supplierListRequest: SupplierListRequest;
-	fetcher: ListTopicFetcher;
 	checkGamivoOffer: boolean;
-	gameSearcher: GameSearcher;
-	tradeImporter: GameTradeImporter;
 };
 
 /**
@@ -25,13 +23,29 @@ export type RunListsInput = {
  * 5) Push priced games directly to the inventory system via tradeImporter.
  */
 export class RunListsUseCase {
+	constructor(
+		private readonly fetcherFactory: ListTopicFetcherFactory,
+		private readonly gameSearcher: GameSearcher,
+		private readonly tradeImporter: GameTradeImporter,
+		/**
+		 * Quantas Listas ativas processar por Fornecedor.
+		 *
+		 * Era `Number(process.env.MAX_ACTIVE_LISTS) || 3` **dentro** deste
+		 * arquivo — violação de camada: um use case não conhece `process.env`.
+		 * Agora o valor chega pronto, validado no boot pelo schema de ambiente.
+		 */
+		private readonly maxActiveLists: number,
+	) {}
+
 	async execute(input: RunListsInput): Promise<void> {
-		const { supplierListRequest, fetcher, checkGamivoOffer, gameSearcher, tradeImporter } = input;
+		const { supplierListRequest, checkGamivoOffer } = input;
+		const { gameSearcher, tradeImporter, maxActiveLists } = this;
 		const steam_id = supplierListRequest.steam_id;
 
 		const allGameNames: string[] = [];
 
-		const maxActiveLists = Number(process.env.MAX_ACTIVE_LISTS) || 3;
+		// Uma sessão de browser por execução, descartada no `finally`.
+		const fetcher = this.fetcherFactory.create();
 
 		try {
 			const userLists = await fetcher.fetchUserLists(steam_id);

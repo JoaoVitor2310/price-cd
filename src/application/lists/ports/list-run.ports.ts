@@ -11,6 +11,21 @@ export interface ListTopicFetcher {
 	fetchList(userListUrl: string): Promise<ListTopic>;
 }
 
+/**
+ * Cria um `ListTopicFetcher` **por execução**.
+ *
+ * É fábrica, e não o fetcher direto, porque cada execução é dona de uma sessão
+ * de browser e a descarta no `finally` (`disposeIfPresent`). Injetar a
+ * instância faria todas as execuções compartilharem a mesma sessão — e a
+ * primeira a terminar fecharia o browser das outras.
+ *
+ * É a distinção entre **dispose por execução** e ciclo de vida do container:
+ * `OnModuleDestroy` serve ao que vive enquanto o app vive; isto aqui não vive.
+ */
+export abstract class ListTopicFetcherFactory {
+	abstract create(): ListTopicFetcher;
+}
+
 export interface InactiveListNotifier {
 	notify(inactiveLists: string[]): Promise<void>;
 }
@@ -30,7 +45,7 @@ export interface RunListsRunner {
  * popularidade mínima, jogos excluídos e Preço mínimo negociável (`partitionByPrice`).
  * Quem consome não repete esses filtros; quem implementa precisa aplicá-los.
  */
-export interface GameSearcher {
+export abstract class GameSearcher {
 	/**
 	 * Devolve **só os jogos** precificados.
 	 *
@@ -40,5 +55,5 @@ export interface GameSearcher {
 	 * campo: `lists` e `suppliers` acessavam `.games` e descartavam o resto. O
 	 * contrato compartilhado tinha a forma da apresentação de um terceiro.
 	 */
-	search(request: SearchGamesRequest): Promise<FoundGames[]>;
+	abstract search(request: SearchGamesRequest): Promise<FoundGames[]>;
 }

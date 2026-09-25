@@ -9,6 +9,23 @@ import { validateEnv } from "@/config/env.schema.js";
  * todo módulo de feature precisaria importar `ConfigModule` explicitamente, e
  * esquecer um import viraria um `ConfigService` indisponível em runtime.
  *
+ * ## Armadilha: a configuração é resolvida UMA VEZ por processo
+ *
+ * `ConfigModule.forRoot(...)` é avaliado quando **este arquivo é importado**,
+ * não a cada instanciação do módulo. O objeto validado que ele devolve é o
+ * mesmo para todo `Test.createTestingModule` do processo.
+ *
+ * Consequência prática, medida: uma variável que **existia** no ambiente na
+ * hora do import fica congelada com aquele valor; uma que **não existia** cai
+ * para leitura direta de `process.env` e acompanha mudanças. São dois
+ * comportamentos diferentes no mesmo `ConfigService`.
+ *
+ * Em produção isso é invisível — o app sobe uma vez. Em teste, significa que
+ * **reconstruir o módulo com outro ambiente não muda o valor**. Se um teste
+ * precisa variar configuração, ele tem que provar o mapeamento no schema
+ * (`test/unit/config/env.schema.test.ts`) e provar o wiring separado — não
+ * tentar as duas coisas reconstruindo o módulo.
+ *
  * `validate` roda **no boot**, uma vez. Variável malformada derruba o processo
  * com a lista completa de problemas, em vez de estourar no primeiro request —
  * que era o comportamento do Express (`Number(process.env.X) || default`
