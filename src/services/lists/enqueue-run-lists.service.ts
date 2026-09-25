@@ -11,8 +11,6 @@ class RunListsServiceRunner implements RunListsRunner {
 	}
 }
 
-const enqueueRunListsUseCase = new EnqueueRunListsUseCase();
-
 let sharedRunListsScheduler: BackgroundScheduler | undefined;
 
 function getSharedRunListsScheduler(): BackgroundScheduler {
@@ -23,9 +21,10 @@ function getSharedRunListsScheduler(): BackgroundScheduler {
 }
 
 export const enqueueRunListsService = async (supplierListRequest: SupplierListRequest) => {
-	await enqueueRunListsUseCase.execute({
-		request: supplierListRequest,
-		scheduler: getSharedRunListsScheduler(),
-		runner: new RunListsServiceRunner(),
-	});
+	const enqueueRunListsUseCase = new EnqueueRunListsUseCase(
+		getSharedRunListsScheduler(),
+		new RunListsServiceRunner(),
+	);
+
+	await enqueueRunListsUseCase.execute({ request: supplierListRequest });
 };

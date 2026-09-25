@@ -20,12 +20,13 @@ import { AllExceptionsFilter } from "@/nest/common/all-exceptions.filter.js";
  */
 @Catch()
 export class GamesLegacyErrorFilter extends AllExceptionsFilter {
-	private readonly gamesLogger = new Logger(GamesLegacyErrorFilter.name);
-
 	protected override handleUnknown(exception: unknown, host: ArgumentsHost): void {
 		const response = host.switchToHttp().getResponse<Response>();
 
-		this.gamesLogger.error(
+		// `this.constructor.name` em vez de um logger por subclasse: o pai fixa
+		// `AllExceptionsFilter.name`, e cada filho redeclarar o seu era o que
+		// gerava a repetição.
+		new Logger(this.constructor.name).error(
 			`Game search failed: ${exception instanceof Error ? exception.message : exception}`,
 			(exception as Error)?.stack,
 		);

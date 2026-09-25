@@ -1,6 +1,10 @@
+import { positiveIntFromEnv } from "@/config/env.schema.js";
 import type { SupplierListRequest } from "@/schemas/list.schema.js";
 import { RunListsUseCase } from "@/application/lists/use-cases/run-lists.use-case.js";
-import type { GameSearcher } from "@/application/lists/ports/list-run.ports.js";
+import type {
+	GameSearcher,
+	ListTopicFetcherFactory,
+} from "@/application/lists/ports/list-run.ports.js";
 import { fetchListTopic } from "@/infrastructure/lists/fetch-list-topic.js";
 import { PriceGames } from "@/application/games/services/price-games.js";
 import { SteamChartsPopularityFetcher } from "@/infrastructure/games/steam-charts-popularity-fetcher.js";
@@ -8,7 +12,6 @@ import { AllKeyShopPriceFetcher } from "@/infrastructure/games/allkeyshop-price-
 import { HttpGameTradeImporter } from "@/infrastructure/games/http-game-trade-importer.js";
 import type { FoundGames, SearchGamesRequest } from "@/application/games/game.types.js";
 
-const runListsUseCase = new RunListsUseCase();
 // `lists` consome o motor direto: nunca usou o `summary` do endpoint.
 const priceGames = new PriceGames(
 	new SteamChartsPopularityFetcher(),
@@ -30,14 +33,24 @@ class GameSearcherAdapter implements GameSearcher {
 	}
 }
 
-const gameSearcher = new GameSearcherAdapter();
+/** Uma instância por execução: cada uma é dona de uma sessão de browser. */
+const fetcherFactory: ListTopicFetcherFactory = { create: () => fetchListTopic() };
+
+/** Mesma regra do schema: o default não pode ser re-derivado por app. */
+function resolveMaxActiveLists(): number {
+	return positiveIntFromEnv(process.env.MAX_ACTIVE_LISTS, 3);
+}
 
 export const runListsService = async (supplierListRequest: SupplierListRequest): Promise<void> => {
+	const runListsUseCase = new RunListsUseCase(
+		fetcherFactory,
+		new GameSearcherAdapter(),
+		getTradeImporter(),
+		resolveMaxActiveLists(),
+	);
+
 	await runListsUseCase.execute({
 		supplierListRequest,
-		fetcher: fetchListTopic(),
 		checkGamivoOffer: supplierListRequest.checkGamivoOffer,
-		gameSearcher,
-		tradeImporter: getTradeImporter(),
 	});
 };

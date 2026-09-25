@@ -8,9 +8,9 @@ Os conceitos do Nest usados aqui — container, providers, tokens, escopos, pipe
 request, ciclo de vida — estão explicados em **`docs/nest-conceitos.md`**, mapeados a este
 código. Este arquivo assume esse vocabulário e trata só da sequência e da estratégia.
 
-Status: **PRs 0 a 4.5 entregues.** As três rotas de `games` existem nos dois apps e passam na
-mesma bateria de contrato; o motor de precificação foi extraído. Produção segue no Express.
-Próximo: PR 5 (`lists`).
+Status: **PRs 0 a 5 entregues.** As três rotas de `games` e a de `lists` existem nos dois apps
+e passam na mesma bateria de contrato. Produção segue no Express. Próximo: PR 6
+(`suppliers` + ciclo de vida do browser).
 
 ---
 
@@ -39,10 +39,11 @@ permanecem sem qualquer referência a `@nestjs/*`.
    `search.controller.ts` e `search-id-steam.controller.ts` são hoje praticamente o mesmo
    arquivo. Um `ZodValidationPipe` e um `AllExceptionsFilter` globais reduzem cada controller
    ao que ele de fato faz.
-4. **Config validada no boot.** `process.env` é lido em 14 arquivos (27 variáveis distintas),
-   inclusive **dentro do `RunListsUseCase`** (`MAX_ACTIVE_LISTS`) — violação de camada: o use
-   case não deveria conhecer `process.env`. O `ConfigModule` valida tudo uma vez, no boot, e
-   injeta valores tipados.
+4. **Config validada no boot.** `process.env` era lido em 14 arquivos (27 variáveis
+   distintas), inclusive **dentro do `RunListsUseCase`** (`MAX_ACTIVE_LISTS`) — violação de
+   camada: o use case não deveria conhecer `process.env`. O `ConfigModule` valida tudo uma
+   vez, no boot, e injeta valores tipados. A violação do `RunListsUseCase` foi corrigida no
+   PR 5; `grep -rn "process.env" src/application/` hoje devolve só comentários.
 
 ### Fronteira inegociável
 
@@ -230,7 +231,7 @@ uniformizar, é um PR separado, antes ou depois, nunca durante.
 | 2 | ✅ Esqueleto Nest + ConfigModule | 0, 1 | `NestFactory`, `@Module`, dynamic module, pipes e filters globais |
 | 3 | ✅ Módulo `games`: `/search`, `/search-id-steam` | 2 | `@Controller`, custom providers, injection tokens, `Test.createTestingModule` |
 | 4 | ✅ Módulo `games`: `/research` | 3 | `useFactory`, providers com estado, por que **não** usar Guard aqui |
-| 5 | Módulo `lists` | 4 | duas instâncias da mesma classe com tokens distintos, `OnModuleDestroy` |
+| 5 | ✅ Módulo `lists` | 4 | duas instâncias da mesma classe com tokens distintos, `OnModuleDestroy` |
 | 6 | Módulo `suppliers` + ciclo de vida do browser | 5 | `exports`/`imports` vs provider duplicado, `OnApplicationShutdown` |
 | 7 | Agendador de bump | 6 | `@nestjs/schedule`, `OnApplicationBootstrap` |
 | 8 | Paridade de infraestrutura HTTP | 3–7 | `useStaticAssets`, `setGlobalPrefix` |
@@ -538,20 +539,44 @@ pipeline de cinco passos.
 
 ---
 
-### PR 5 — Módulo `lists`
+### PR 5 — Módulo `lists` ✅ **entregue**
 
-- **Duas instâncias da mesma classe, tokens distintos.** `lists` usa concorrência
-  configurável (`RUN_LISTS_CONCURRENCY`), `research` usa 1 fixo. São dois providers
-  `LimitedConcurrencyScheduler` com tokens diferentes (`LISTS_SCHEDULER`,
-  `RESEARCH_SCHEDULER`) — e o motivo de as filas serem separadas (uma execução longa de
-  listas não pode travar uma pesquisa manual) precisa continuar verdadeiro depois da
-  migração. Um erro de wiring aqui vira regressão de comportamento silenciosa.
-- **`MAX_ACTIVE_LISTS` sai de dentro do use case.** Passa a ser injetado, corrigindo a
-  violação de camada apontada na seção 1.
-- **`Disposable` encontra `OnModuleDestroy`.** `FetchListTopic` implementa o `Disposable` do
-  projeto (`src/lib/dispose.ts`) e o `RunListsUseCase` chama `disposeIfPresent` no `finally`.
-  Isso é dispose **por execução**, não por ciclo de vida do módulo — mantenha como está e não
-  confunda os dois. `OnModuleDestroy` é para o que vive enquanto o app vive.
+- **Duas instâncias da mesma classe, tokens distintos.** `LISTS_SCHEDULER` usa
+  `RUN_LISTS_CONCURRENCY`; `RESEARCH_SCHEDULER` usa 1 fixo. As filas são separadas para que
+  uma execução longa de listas não trave uma pesquisa manual — registrar as duas sob o mesmo
+  token entregaria a mesma instância para os dois fluxos, e a regressão seria silenciosa.
+  Coberto por teste que afirma `listsQueue !== researchQueue`.
+- **`MAX_ACTIVE_LISTS` saiu de dentro do use case.** Era
+  `Number(process.env.MAX_ACTIVE_LISTS) || 3` dentro de `RunListsUseCase`. Agora vem do
+  `ConfigService` por token. `grep -rn "process.env" src/application/` devolve só comentários.
+- **Divergência do plano, deliberada.** A spec dizia "mantenha como está" sobre o
+  `Disposable`. O use case passou a receber uma **fábrica** em vez da instância — sem isso
+  ele não teria como criar um fetcher por execução com as dependências no construtor. O
+  padrão de dispose por execução, que era o ponto do item, está preservado.
+- **`Disposable` continua por execução.** `FetchListTopic` é dona de uma sessão de browser e
+  é descartada no `finally`. Por isso o use case recebe uma **fábrica**
+  (`ListTopicFetcherFactory`), não a instância: um provider singleton faria execuções
+  concorrentes compartilharem a mesma sessão, e a primeira a terminar fecharia o browser das
+  outras. `OnModuleDestroy` é para o que vive enquanto o app vive — não é o caso aqui.
+- **`GamesModule` ganhou `exports`.** `lists` importa o módulo para usar `PriceGames` e
+  `GameTradeImporter`. Redeclarar esses providers em `ListsModule` criaria instâncias
+  separadas — a armadilha do §4 de `nest-conceitos.md`, que aqui significaria dois
+  gerenciadores de sessão de browser no mesmo container.
+
+#### Armadilha encontrada: `ConfigModule` resolve a configuração uma vez por processo
+
+`ConfigModule.forRoot(...)` é avaliado quando o arquivo é **importado**, não a cada
+instanciação. Medido: uma variável que existia no ambiente na hora do import fica congelada
+com aquele valor; uma que não existia cai para leitura direta de `process.env` e acompanha
+mudanças — dois comportamentos diferentes no mesmo `ConfigService`.
+
+Em produção é invisível (o app sobe uma vez). Em teste significa que **reconstruir o módulo
+com outro ambiente não muda o valor**. Um teste que tentava provar
+`MAX_ACTIVE_LISTS=7` reconstruindo o módulo falhava por esse motivo, não por bug de wiring.
+
+Consequência para quem escrever teste daqui pra frente: prove o mapeamento ambiente → valor
+no schema (`test/unit/config/env.schema.test.ts`) e o wiring separado. Não tente as duas
+coisas reconstruindo o módulo. Documentado no docblock de `config.module.ts`.
 
 ---
 

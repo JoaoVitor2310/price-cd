@@ -60,3 +60,16 @@ export const schedulerDouble = () => {
 		},
 	};
 };
+
+/**
+ * Fetcher de Listas inerte: nunca abre browser.
+ *
+ * O `FetchListTopic` real é dono de uma sessão de Chromium. Deixá-lo passar num
+ * teste de contrato sobe um browser que ninguém fecha — o modo de falha que já
+ * derrubou a VPS por OOM.
+ */
+export const listTopicFetcherDouble = () => ({
+	fetchUserLists: async () => [],
+	fetchList: async () => ({ topicRef: "", status: "inactive" as const, gameNames: [] }),
+	dispose: async () => {},
+});

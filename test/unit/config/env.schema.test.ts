@@ -35,22 +35,46 @@ describe("validateEnv", () => {
 	});
 
 	it("rejects a negative or fractional number", () => {
-		expect(() => validateEnv({ MAX_ACTIVE_LISTS: "-1" })).toThrow(
-			/MAX_ACTIVE_LISTS/,
+		expect(() => validateEnv({ TIMEOUT: "-1" })).toThrow(/TIMEOUT/);
+		expect(() => validateEnv({ SERVER_TIMEOUT_MS: "1.5" })).toThrow(
+			/SERVER_TIMEOUT_MS/,
 		);
-		expect(() => validateEnv({ RUN_LISTS_CONCURRENCY: "1.5" })).toThrow(
-			/RUN_LISTS_CONCURRENCY/,
-		);
+	});
+
+	describe("counters that must be positive", () => {
+		// Zero não é entrada válida para nenhum dos dois: fila com concorrência
+		// zero não processa nada, e zero Listas ativas não reabastece ninguém.
+		// Cair no default é o que o app Express sempre fez — e o Nest chegou a
+		// DERRUBAR O BOOT com `RUN_LISTS_CONCURRENCY=0`.
+		it.each([
+			["RUN_LISTS_CONCURRENCY", 1],
+			["MAX_ACTIVE_LISTS", 3],
+		])("falls back to the default when %s is unusable", (key, fallback) => {
+			for (const bad of ["0", "-1", "1.5", "abc", "", "  "]) {
+				expect(validateEnv({ [key]: bad })[key as "MAX_ACTIVE_LISTS"]).toBe(
+					fallback,
+				);
+			}
+		});
+
+		it.each([
+			["RUN_LISTS_CONCURRENCY", "4", 4],
+			["MAX_ACTIVE_LISTS", "7", 7],
+		])("accepts a usable %s", (key, raw, expected) => {
+			expect(validateEnv({ [key]: raw })[key as "MAX_ACTIVE_LISTS"]).toBe(
+				expected,
+			);
+		});
 	});
 
 	it("lists every problem at once instead of stopping at the first", () => {
 		try {
-			validateEnv({ PORT: "abc", MAX_ACTIVE_LISTS: "xyz" });
+			validateEnv({ PORT: "abc", TIMEOUT: "xyz" });
 			expect.unreachable("should have thrown");
 		} catch (error) {
 			const message = (error as Error).message;
 			expect(message).toContain("PORT");
-			expect(message).toContain("MAX_ACTIVE_LISTS");
+			expect(message).toContain("TIMEOUT");
 		}
 	});
 

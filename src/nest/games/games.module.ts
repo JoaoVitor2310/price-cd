@@ -129,5 +129,16 @@ import {
 			inject: [RESEARCH_SCHEDULER, RESEARCH_RUNNER],
 		},
 	],
+	/**
+	 * O que outros módulos podem consumir importando este.
+	 *
+	 * `ListsModule` (e `SuppliersModule`, no PR 6) precisam do motor de
+	 * precificação e do importer de Trade. **Exportar é o caminho certo;
+	 * redeclarar os providers lá seria o erro** — o mesmo provider declarado em
+	 * dois módulos vira duas instâncias, e aqui isso significaria dois
+	 * gerenciadores de sessão de browser no mesmo container
+	 * (`docs/nest-conceitos.md` §4).
+	 */
+	exports: [PriceGames, GameTradeImporter],
 })
 export class GamesModule {}

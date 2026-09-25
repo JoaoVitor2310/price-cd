@@ -10,6 +10,12 @@
  * dependência de verdade, não interceptação de módulo. Os dublês são os mesmos
  * do Express, de propósito: mesmo fake, mesma entrada, a resposta HTTP tem que
  * ser idêntica.
+ *
+ * **Todo efeito externo precisa de dublê aqui, igual ao lado Express.** A
+ * primeira versão deste arquivo só substituía os fetchers de preço: o
+ * `LISTS_SCHEDULER` era a fila real e a `ListTopicFetcherFactory` era a de
+ * produção, então o caso de 202 de `/api/lists/run` disparava Puppeteer de
+ * verdade durante a suíte. Passava — e deixava um Chromium subindo.
  */
 
 import "reflect-metadata";
@@ -20,10 +26,18 @@ import {
 	PopularityFetcher,
 	PriceFetcher,
 } from "@/application/games/ports/game-search.ports.js";
+import { ListTopicFetcherFactory } from "@/application/lists/ports/list-run.ports.js";
+import { LISTS_SCHEDULER } from "@/nest/lists/lists.tokens.js";
+import { RESEARCH_SCHEDULER } from "@/nest/games/games.tokens.js";
 import { AppModule } from "@/nest/app.module.js";
 import { configureNestApp } from "@/nest/configure-app.js";
 import { runApiContract } from "./api-contract.suite.js";
-import { popularityFetcherDouble, priceFetcherDouble } from "./doubles.js";
+import {
+	listTopicFetcherDouble,
+	popularityFetcherDouble,
+	priceFetcherDouble,
+	schedulerDouble,
+} from "./doubles.js";
 
 let app: NestExpressApplication;
 
@@ -33,6 +47,16 @@ async function createApp(): Promise<NestExpressApplication> {
 		.useValue(popularityFetcherDouble())
 		.overrideProvider(PriceFetcher)
 		.useValue(priceFetcherDouble())
+		// As filas são inertes e o fetcher é dublê pelos MESMOS motivos do lado
+		// Express (`express.contract.test.ts`): o contrato de um 202 é "aceitei e
+		// enfileirei", e executar a tarefa de verdade abriria um Chromium no meio
+		// da suíte — num projeto que já caiu por browser órfão.
+		.overrideProvider(LISTS_SCHEDULER)
+		.useValue(schedulerDouble())
+		.overrideProvider(RESEARCH_SCHEDULER)
+		.useValue(schedulerDouble())
+		.overrideProvider(ListTopicFetcherFactory)
+		.useValue({ create: listTopicFetcherDouble })
 		.compile();
 
 	const created = moduleRef.createNestApplication<NestExpressApplication>();
@@ -64,6 +88,7 @@ runApiContract({
 		"/api/games/search",
 		"/api/games/search-id-steam",
 		"/api/games/research",
+		"/api/lists/run",
 	],
 
 	/**

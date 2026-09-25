@@ -1,4 +1,5 @@
 import type { BackgroundScheduler } from "@/application/shared/ports/background-scheduler.port.js";
+import { positiveIntFromEnv } from "@/config/env.schema.js";
 
 export class LimitedConcurrencyScheduler implements BackgroundScheduler {
 	private readonly queue: Array<() => Promise<void>> = [];
@@ -36,9 +37,10 @@ export class LimitedConcurrencyScheduler implements BackgroundScheduler {
 }
 
 export function createLimitedConcurrencySchedulerFromEnv(): BackgroundScheduler {
-	const raw = process.env.RUN_LISTS_CONCURRENCY?.trim();
-	const parsed = raw ? Number(raw) : NaN;
-	const concurrency = Number.isFinite(parsed) && parsed >= 1 ? parsed : 1;
-	return new LimitedConcurrencyScheduler(concurrency);
+	// Mesma regra que o schema aplica para o app Nest — uma fonte só, senão os
+	// dois apps divergem em valores de borda (foi o caso de `=0`).
+	return new LimitedConcurrencyScheduler(
+		positiveIntFromEnv(process.env.RUN_LISTS_CONCURRENCY, 1),
+	);
 }
 
