@@ -3,7 +3,7 @@ import * as cheerio from "cheerio";
 import dotenv from "dotenv";
 import { clearString, clearEdition, hasEdition, getRegion, removeRegion, clearQuantity } from "@/helpers/clear-string.js";
 import { ALLKEYSHOP_BASE_URL, ALLKEYSHOP_SEARCH_FILTERS, ALLKEYSHOP_SEARCH_URL, GAMIVO_API_PRODUCT_BY_SLUG_URL } from "@/helpers/constants.js";
-import { enqueueWithBrowser, getSharedSession, invalidateSharedSession } from "@/lib/puppeteer-browser.js";
+import { enqueueWithBrowser, getSharedSession, invalidateSharedSession } from "@/infrastructure/browser/sessions.js";
 import { bestOfferPrice, findGamivoOffer, GAMIVO_MERCHANT_NAME } from "@/domain/games/pricing-rules.js";
 import type { OfferPrice } from "@/domain/games/pricing-rules.js";
 import { scrapSearchResults, scrapGamePage, extractGamivoSlug } from "@/infrastructure/games/allkeyshop-html-parser.js";

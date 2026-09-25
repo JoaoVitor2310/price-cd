@@ -1,4 +1,5 @@
 import * as z from "zod";
+import { parseEnvList } from "@/helpers/parse-env-list.js";
 
 /**
  * O contrato do ambiente do price-cd — a única descrição executável de tudo que
@@ -148,15 +149,20 @@ const baseEnvSchema = z.object({
 	// ── SteamTrades ───────────────────────────────────────────────────────────
 	STEAM_ID: optionalNonEmpty("STEAM_ID"),
 	/** Steam IDs a nunca abordar, separados por vírgula. */
+	/**
+	 * Steam IDs a nunca abordar.
+	 *
+	 * Usa o **mesmo** `parseEnvList` do app Express: ele separa por vírgula,
+	 * ponto e vírgula OU quebra de linha, e remove duplicatas. Uma versão própria
+	 * aqui, que só separava por vírgula, fazia `USER_TO_IGNORE="id1;id2"` virar um
+	 * único ID literal — o Nest ignoraria ninguém e comentaria em anúncios que o
+	 * Express nunca abordaria.
+	 */
 	USER_TO_IGNORE: z
 		.string()
 		.optional()
-		.transform((value) =>
-			(value ?? "")
-				.split(",")
-				.map((id) => id.trim())
-				.filter(Boolean),
-		),
+		.transform((value) => parseEnvList(value)),
+
 	STEAMTRADES_PAGE_DELAY_MS: nonNegativeInt("STEAMTRADES_PAGE_DELAY_MS"),
 
 	// ── Agendamento e concorrência ────────────────────────────────────────────

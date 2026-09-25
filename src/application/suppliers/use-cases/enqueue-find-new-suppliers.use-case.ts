@@ -1,11 +1,6 @@
 import type { BackgroundScheduler } from "@/application/shared/ports/background-scheduler.port.js";
 import type { FindNewSuppliersRunner } from "@/application/suppliers/ports/find-new-suppliers-runner.port.js";
 
-export type EnqueueFindNewSuppliersInput = {
-    scheduler: BackgroundScheduler;
-    runner: FindNewSuppliersRunner;
-};
-
 /**
  * Enfileira a varredura de descoberta de fornecedores para rodar em background.
  * O cliente HTTP recebe a confirmação imediatamente; a varredura pode levar minutos
@@ -15,8 +10,13 @@ export type EnqueueFindNewSuppliersInput = {
  * aguardando a resposta neste ponto.
  */
 export class EnqueueFindNewSuppliersUseCase {
-    async execute(input: EnqueueFindNewSuppliersInput): Promise<void> {
-        const { scheduler, runner } = input;
+    constructor(
+        private readonly scheduler: BackgroundScheduler,
+        private readonly runner: FindNewSuppliersRunner,
+    ) {}
+
+    async execute(): Promise<void> {
+        const { scheduler, runner } = this;
 
         scheduler.schedule(async () => {
             try {

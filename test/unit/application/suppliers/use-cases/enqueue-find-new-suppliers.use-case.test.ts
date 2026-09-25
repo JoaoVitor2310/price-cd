@@ -32,17 +32,15 @@ function makeScheduler() {
 // ---------------------------------------------------------------------------
 
 describe("EnqueueFindNewSuppliersUseCase", () => {
-    let useCase: EnqueueFindNewSuppliersUseCase;
-
-    beforeEach(() => {
-        useCase = new EnqueueFindNewSuppliersUseCase();
-    });
+    // O use case nasce dentro de cada teste: scheduler e runner agora entram
+    // pelo construtor, e cada caso monta os seus.
 
     it("schedules the work instead of running it inline", async () => {
         const scheduler = makeScheduler();
         const runner = { run: vi.fn().mockResolvedValue(makeResult()) };
+        const useCase = new EnqueueFindNewSuppliersUseCase(scheduler, runner);
 
-        await useCase.execute({ scheduler, runner });
+        await useCase.execute();
 
         expect(scheduler.schedule).toHaveBeenCalledTimes(1);
         expect(runner.run).not.toHaveBeenCalled();
@@ -56,8 +54,9 @@ describe("EnqueueFindNewSuppliersUseCase", () => {
                 resolveRunner = resolve;
             })),
         };
+        const useCase = new EnqueueFindNewSuppliersUseCase(scheduler, runner);
 
-        await useCase.execute({ scheduler, runner });
+        await useCase.execute();
 
         // A execução já retornou mesmo com o runner ainda pendente.
         expect(scheduler.schedule).toHaveBeenCalledTimes(1);
@@ -70,9 +69,10 @@ describe("EnqueueFindNewSuppliersUseCase", () => {
     it("swallows runner errors so the background queue is not broken", async () => {
         const scheduler = makeScheduler();
         const runner = { run: vi.fn().mockRejectedValue(new Error("scraping failed")) };
+        const useCase = new EnqueueFindNewSuppliersUseCase(scheduler, runner);
         const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 
-        await useCase.execute({ scheduler, runner });
+        await useCase.execute();
 
         await expect(scheduler.runScheduledTask()).resolves.toBeUndefined();
         expect(consoleError).toHaveBeenCalled();
@@ -84,9 +84,10 @@ describe("EnqueueFindNewSuppliersUseCase", () => {
         const scheduler = makeScheduler();
         const result = makeResult({ pagesVisited: 5, topicsProcessed: 20, suppliersCommented: 4 });
         const runner = { run: vi.fn().mockResolvedValue(result) };
+        const useCase = new EnqueueFindNewSuppliersUseCase(scheduler, runner);
         const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
 
-        await useCase.execute({ scheduler, runner });
+        await useCase.execute();
         await scheduler.runScheduledTask();
 
         expect(consoleLog).toHaveBeenCalledWith(expect.stringContaining("5"));

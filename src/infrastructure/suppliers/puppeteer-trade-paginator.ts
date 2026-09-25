@@ -1,5 +1,6 @@
+import { Injectable } from "@nestjs/common";
 import * as cheerio from "cheerio";
-import { getSuppliersSession } from "@/lib/puppeteer-browser.js";
+import { getSuppliersSession } from "@/infrastructure/browser/sessions.js";
 import type { TradePaginator } from "@/application/suppliers/ports/trade-paginator.port.js";
 import { STEAMTRADES_BASE, PAGE_NAVIGATION_TIMEOUT } from "@/infrastructure/suppliers/steamtrades.constants.js";
 
@@ -46,6 +47,7 @@ function extractTopicsFromHtml(html: string): Array<{ code: string; url: string;
  * Reutiliza o browser da sessão compartilhada de suppliers — abre e fecha apenas
  * uma `page` por chamada, sem inicializar um novo processo Chrome a cada paginação.
  */
+@Injectable()
 export class PuppeteerTradePaginator implements TradePaginator {
     async getTopicsFromPage(pageNumber: number, searchTerm: string): Promise<Array<{ code: string; url: string; isClosed: boolean }>> {
         const { page } = await getSuppliersSession();

@@ -13,7 +13,7 @@ import { AllExceptionsFilter } from "@/nest/common/all-exceptions.filter.js";
  * Congelar o **formato** durante a migração é obrigatório (`docs/NEST.md` §4);
  * copiar o **código** não é. As subclasses declaram só o prefixo.
  *
- * Toda esta hierarquia some no item 17 do `docs/IMPROVEMENTS.md`, quando os
+ * Toda esta hierarquia some no item 16 do `docs/IMPROVEMENTS.md`, quando os
  * formatos forem uniformizados — o que só pode acontecer depois que o Express
  * sair de cena.
  */

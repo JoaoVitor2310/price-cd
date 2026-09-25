@@ -8,9 +8,8 @@ Os conceitos do Nest usados aqui — container, providers, tokens, escopos, pipe
 request, ciclo de vida — estão explicados em **`docs/nest-conceitos.md`**, mapeados a este
 código. Este arquivo assume esse vocabulário e trata só da sequência e da estratégia.
 
-Status: **PRs 0 a 5 entregues.** As três rotas de `games` e a de `lists` existem nos dois apps
-e passam na mesma bateria de contrato. Produção segue no Express. Próximo: PR 6
-(`suppliers` + ciclo de vida do browser).
+Status: **PRs 0 a 6 entregues.** As **cinco** rotas existem nos dois apps e passam na mesma
+bateria de contrato. Produção segue no Express. Próximo: PR 7 (agendador de bump).
 
 ---
 
@@ -232,7 +231,7 @@ uniformizar, é um PR separado, antes ou depois, nunca durante.
 | 3 | ✅ Módulo `games`: `/search`, `/search-id-steam` | 2 | `@Controller`, custom providers, injection tokens, `Test.createTestingModule` |
 | 4 | ✅ Módulo `games`: `/research` | 3 | `useFactory`, providers com estado, por que **não** usar Guard aqui |
 | 5 | ✅ Módulo `lists` | 4 | duas instâncias da mesma classe com tokens distintos, `OnModuleDestroy` |
-| 6 | Módulo `suppliers` + ciclo de vida do browser | 5 | `exports`/`imports` vs provider duplicado, `OnApplicationShutdown` |
+| 6 | ✅ Módulo `suppliers` + ciclo de vida do browser | 5 | `exports`/`imports` vs provider duplicado, `OnApplicationShutdown` |
 | 7 | Agendador de bump | 6 | `@nestjs/schedule`, `OnApplicationBootstrap` |
 | 8 | Paridade de infraestrutura HTTP | 3–7 | `useStaticAssets`, `setGlobalPrefix` |
 | 9 | Cutover | 8 | — |
@@ -580,30 +579,69 @@ coisas reconstruindo o módulo. Documentado no docblock de `config.module.ts`.
 
 ---
 
-### PR 6 — Módulo `suppliers` + ciclo de vida do browser
+### PR 6 — Módulo `suppliers` + ciclo de vida do browser ✅ **entregue**
 
-O PR de maior risco. Deixar por último não é acidente: é o fluxo mais acoplado
-(injeta cookie do SteamTrades antes de qualquer navegação, compartilha uma sessão entre
-paginator, scraper e poster, limpa no `finally`) e é onde mora o histórico de OOM.
+O PR de maior risco, e o que conserta um bug de produção.
 
-**Encapsular o estado global de `src/lib/puppeteer-browser.ts`.** Hoje `getSharedSession`,
-`invalidateSharedSession`, `enqueueWithBrowser`, `getSuppliersSession` e
-`cleanupSuppliersSession` são estado mutável de módulo — singleton por acidente de import,
-sem dono e sem desligamento coordenado. Viram duas classes com ciclo de vida explícito
-(`SharedBrowserSession`, `SuppliersBrowserSession`), providers de um `BrowserModule` que os
-**exporta**.
+**Estado global encapsulado.** `getSharedSession`, `invalidateSharedSession`,
+`enqueueWithBrowser`, `getSuppliersSession` e `cleanupSuppliersSession` eram estado mutável de
+módulo — singleton por acidente de import, sem dono. Viraram `SharedBrowserSession` e
+`SuppliersBrowserSession`, providers do `BrowserModule`, que os **exporta**. Comportamento
+idêntico: geração, reciclagem por idade, health check e fila continuam como estavam, agora
+cobertos por 9 testes próprios.
 
-⚠️ **A armadilha que custa memória:** se `SharedBrowserSession` for listado em `providers` de
-dois módulos, o Nest cria **duas instâncias** — dois gerenciadores de Chromium, dentro de um
-container com `mem_limit: 2g`. O jeito correto é declarar no `BrowserModule`, exportar de lá,
-e os outros módulos fazerem `imports: [BrowserModule]`. Detalhe em `nest-conceitos.md` §4.
+**O bug de shutdown, corrigido nos dois apps.** `startBumpTopicsScheduler` era o único handler
+de `SIGTERM` e chamava `process.exit(0)` — o processo morria antes de as sessões do AllKeyShop
+e de fornecedores serem fechadas, e os Chromium delas ficavam órfãos (OOM de 2026-08-24). Agora:
 
-**Corrigir o bug de shutdown.** Os handlers manuais de `SIGTERM`/`SIGINT` do bump scheduler
-são removidos; cada sessão implementa `OnApplicationShutdown` e o `enableShutdownHooks()` do
-PR 2 coordena. Verificar à mão com `ps` que nenhum processo Chromium sobrevive a um `SIGTERM`.
+| App | Quem desliga |
+|---|---|
+| Express | um handler só, em `src/server.ts`, fechando os **três** donos de browser |
+| Nest | `BrowserShutdown` via `OnApplicationShutdown` |
 
-Para não quebrar os 30+ call sites de uma vez, as funções exportadas hoje podem virar fachadas
-finas sobre a instância do container durante este PR, e sumir no PR 10.
+O agendador devolve uma função de desligamento e não registra sinal nenhum — quem conhece o
+processo inteiro é o entrypoint.
+
+**A ordem é fixa: parar de aceitar requisição ANTES de fechar browser.** Ao contrário, uma
+requisição que chegasse durante o teardown chamaria `getSharedSession()` e abriria um Chromium
+**depois** do `invalidate()` — recriando o vazamento que este código existe para evitar. Há
+ainda um teto de 30s: `server.close()` só devolve quando toda conexão morre, e com keep-alive
+isso levaria os 10 minutos do `SERVER_TIMEOUT_MS`, tempo suficiente para o Docker mandar
+SIGKILL e matar o Node antes dos browsers.
+
+⚠️ **Verificação pendente.** O plano pede confirmar com `ps` que nenhum Chromium sobrevive a um
+`SIGTERM`. O que foi verificado aqui é mais fraco: o hook dispara e o processo encerra — a
+máquina de desenvolvimento não tem Chrome instalado, então nenhum browser chega a subir. **A
+checagem com `ps` precisa ser feita no container**, antes do cutover do PR 9:
+`docker compose up -d`, disparar um `/api/games/search`, `docker stop`, e conferir com
+`ps aux | grep chrom` que a árvore sumiu.
+
+**`useValue`, não `useClass`.** As instâncias vêm de `infrastructure/browser/sessions.ts`, as
+mesmas que as fachadas usam. Se o container criasse as suas próprias, existiriam **dois**
+gerenciadores de Chromium num container com `mem_limit: 2g`. Há teste afirmando que dois
+grafos de módulo distintos resolvem a **mesma** instância.
+
+#### Desvio do plano, deliberado
+
+A spec dizia "cada sessão implementa `OnApplicationShutdown`". As sessões **não** implementam:
+o hook vive num provider separado, `BrowserShutdown`. O motivo é a fronteira de camadas — as
+sessões moram em `infrastructure/`, e implementar a interface obrigaria a importar
+`@nestjs/common` para algo além de `@Injectable()`, que é o teto que o ADR 0004 permite ali.
+O `BrowserShutdown` fica em `nest/`, onde conhecer o Nest é o trabalho.
+
+#### Dois erros meus, e o que os pegou
+
+**Import circular.** Pus os singletons em `lib/puppeteer-browser.ts`, que as classes de sessão
+importam — ciclo fechado. O sintoma foi `SharedBrowserSession is not a constructor`, dependendo
+da ordem de carga dos módulos. Resolvido movendo os singletons para
+`infrastructure/browser/sessions.ts`: `lib/` volta a ser a folha que só sabe abrir e fechar um
+Chromium. É também o lugar certo — gerência de sessão é infraestrutura.
+
+**Repeti o erro do PR 4.** O `ProfitabilityChecker` era construído no boot e derrubava o app
+quando faltava `SISTEMA_ESTOQUE_URL` — exatamente o que o `GameTradeImporter` fazia antes.
+Quem pegou foi o `boot-without-inventory.test.ts`, escrito no PR 4 justamente para isso.
+Resolvido com `LazyProfitabilityChecker`, e o controller passou a checar as três variáveis no
+ciclo da requisição, como o Express faz.
 
 ---
 
@@ -616,9 +654,10 @@ finas sobre a instância do container durante este PR, e sumir no PR 10.
 Se o bump precisar rodar no boot antes do primeiro intervalo, use `OnApplicationBootstrap`
 (app já ouvindo), não `OnModuleInit` (grafo ainda subindo).
 
-`find-new-suppliers-scheduler.ts` **não migra**: a chamada já está comentada em
-`src/server.ts:11` e o item 3 do `docs/IMPROVEMENTS.md` pede a remoção. Este é o PR para
-apagá-lo. Não porte código morto para a arquitetura nova.
+`find-new-suppliers-scheduler.ts` **não migra** — e já foi apagado no PR 6, junto com a
+chamada comentada em `src/server.ts`, quando o entrypoint foi reescrito para o desligamento
+ordenado. O item correspondente saiu do `IMPROVEMENTS.md`. Não porte código morto para a
+arquitetura nova.
 
 ---
 
@@ -629,7 +668,7 @@ O que não é rota mas é comportamento observável:
 - `express.static(public/)` → `app.useStaticAssets()` do `NestExpressApplication`.
 - `GET /` servindo `public/index.html` — **não** o texto do LinkedIn. O
   `app.use(express.static(publicDir))` vem antes do `app.get("/")` em `src/app.ts`, então o
-  estático vence e o handler de autoria é inalcançável (item 16 do IMPROVEMENTS). A ordem
+  estático vence e o handler de autoria é inalcançável (item 15 do IMPROVEMENTS). A ordem
   `useStaticAssets` vs rota precisa dar o mesmo resultado.
 - `server.setTimeout(SERVER_TIMEOUT_MS)`.
 - `app.setGlobalPrefix("api")` no lugar do `router.use("/api", ...)`.
@@ -764,7 +803,7 @@ Conforme a regra do `CLAUDE.md`, cada PR atualiza o que tornou desatualizado:
 |---|---|---|
 | `docs/adr/0004-...` | PR 0 | Decisão, sistema de módulos, fronteira de camadas, estratégia de token de porta |
 | `docs/nest-conceitos.md` | PRs 2–7 | Cada conceito passa de "vamos usar" para "está assim, aqui, por isto" |
-| `docs/IMPROVEMENTS.md` | PRs 2, 5, 7 | Fechar itens 3 e 13; abrir o que o harness revelar. Item feito sai do arquivo — o backlog só guarda o que falta |
+| `docs/IMPROVEMENTS.md` | PRs 2, 5, 7 | Fechar o item 12 (suíte instável); abrir o que o harness revelar. Item feito sai do arquivo — o backlog só guarda o que falta |
 | `CLAUDE.md` | PRs 2, 9, 10 | Seções "Arquitetura" e "Tecnologias e Padrões" |
 | `README.md` | PRs 8, 9, 10 | Stack, árvore de diretórios, Getting Started |
 | `docs/wiki/` | PR 9 | Só se algum comportamento visível ao negócio mudar — não deveria mudar |

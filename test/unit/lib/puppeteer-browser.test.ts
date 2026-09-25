@@ -49,6 +49,17 @@ const load = async () => {
 	return import("@/lib/puppeteer-browser.js");
 };
 
+/**
+ * As funções de sessão saíram de `lib/` para `infrastructure/browser/sessions`
+ * no PR 6: `lib/puppeteer-browser.ts` voltou a ser a folha que só sabe abrir e
+ * fechar um Chromium, e as sessões ganharam dono explícito. Estes testes
+ * continuam valendo — só mudou de onde as funções vêm.
+ */
+const loadSessions = async () => {
+	vi.resetModules();
+	return import("@/infrastructure/browser/sessions.js");
+};
+
 beforeEach(() => {
 	trace = [];
 	vi.clearAllMocks();
@@ -164,7 +175,7 @@ describe("shared session", () => {
 	it("reuses the same browser while it is alive", async () => {
 		const browser = createFakeBrowser();
 		connect.mockResolvedValue(createFakeSession(browser));
-		const { getSharedSession } = await load();
+		const { getSharedSession } = await loadSessions();
 
 		const first = await getSharedSession();
 		const second = await getSharedSession();
@@ -176,7 +187,7 @@ describe("shared session", () => {
 	it("closes the browser on invalidate instead of just dropping the reference", async () => {
 		const browser = createFakeBrowser();
 		connect.mockResolvedValue(createFakeSession(browser));
-		const { getSharedSession, invalidateSharedSession } = await load();
+		const { getSharedSession, invalidateSharedSession } = await loadSessions();
 
 		await getSharedSession();
 		await invalidateSharedSession();
@@ -191,7 +202,7 @@ describe("shared session", () => {
 		connect
 			.mockResolvedValueOnce(createFakeSession(first))
 			.mockResolvedValueOnce(createFakeSession(second));
-		const { getSharedSession, invalidateSharedSession } = await load();
+		const { getSharedSession, invalidateSharedSession } = await loadSessions();
 
 		await getSharedSession();
 		await invalidateSharedSession();
@@ -207,7 +218,7 @@ describe("shared session", () => {
 		connect
 			.mockResolvedValueOnce(createFakeSession(dead))
 			.mockResolvedValueOnce(createFakeSession(fresh));
-		const { getSharedSession } = await load();
+		const { getSharedSession } = await loadSessions();
 
 		await getSharedSession();
 		// O OOM killer levou um renderer: pages() lança, mas a árvore continua viva.
@@ -228,7 +239,7 @@ describe("shared session", () => {
 		connect
 			.mockResolvedValueOnce(createFakeSession(first))
 			.mockResolvedValueOnce(createFakeSession(second));
-		const { getSharedSession } = await load();
+		const { getSharedSession } = await loadSessions();
 
 		await getSharedSession();
 		await new Promise((resolve) => setTimeout(resolve, 5));
@@ -242,7 +253,7 @@ describe("shared session", () => {
 		process.env.BROWSER_SESSION_MAX_AGE_MS = "0";
 		const browser = createFakeBrowser();
 		connect.mockResolvedValue(createFakeSession(browser));
-		const { getSharedSession } = await load();
+		const { getSharedSession } = await loadSessions();
 
 		const first = await getSharedSession();
 		await new Promise((resolve) => setTimeout(resolve, 5));
@@ -260,7 +271,7 @@ describe("shared session", () => {
 					release = () => resolve(createFakeSession(late));
 				}),
 		);
-		const { getSharedSession, invalidateSharedSession } = await load();
+		const { getSharedSession, invalidateSharedSession } = await loadSessions();
 
 		const pending = getSharedSession().catch(() => "rejected");
 		const invalidation = invalidateSharedSession();
@@ -281,7 +292,7 @@ describe("suppliers session", () => {
 		connect
 			.mockResolvedValueOnce(createFakeSession(first))
 			.mockResolvedValueOnce(createFakeSession(second));
-		const { getSuppliersSession, cleanupSuppliersSession } = await load();
+		const { getSuppliersSession, cleanupSuppliersSession } = await loadSessions();
 
 		await getSuppliersSession();
 		await cleanupSuppliersSession();
@@ -292,7 +303,7 @@ describe("suppliers session", () => {
 	});
 
 	it("is a no-op when no suppliers session was ever opened", async () => {
-		const { cleanupSuppliersSession } = await load();
+		const { cleanupSuppliersSession } = await loadSessions();
 
 		await expect(cleanupSuppliersSession()).resolves.toBeUndefined();
 		expect(connect).not.toHaveBeenCalled();

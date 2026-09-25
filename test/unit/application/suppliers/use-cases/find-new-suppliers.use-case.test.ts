@@ -43,7 +43,17 @@ function makeTopicRef(code: string, isClosed = false) {
     return { code, url: `https://steamtrades.com/trade/${code}`, isClosed };
 }
 
-function makeInput(overrides: Partial<FindNewSuppliersInput> = {}): FindNewSuppliersInput {
+/** Os colaboradores do use case. Entram pelo construtor, não pelo `execute`. */
+type Deps = {
+    paginator: TradePaginator;
+    scraper: TopicScraper;
+    commentPoster: CommentPoster;
+    profitabilityChecker: ProfitabilityChecker;
+    gameSearcher: GameSearcher;
+    ignoredSteamIds: ReadonlySet<string>;
+};
+
+function makeDeps(overrides: Partial<Deps> = {}): Deps {
     const paginator = {
         getTopicsFromPage: vi.fn()
             .mockResolvedValueOnce([makeTopicRef("ABC")])
@@ -59,32 +69,43 @@ function makeInput(overrides: Partial<FindNewSuppliersInput> = {}): FindNewSuppl
 
 // ---------------------------------------------------------------------------
 
-describe("FindNewSuppliersUseCase", () => {
-    let useCase: FindNewSuppliersUseCase;
+/** Monta o use case com os colaboradores no construtor. */
+const build = (overrides: Partial<Deps> = {}) => {
+    const deps = makeDeps(overrides);
+    return {
+        deps,
+        useCase: new FindNewSuppliersUseCase(
+            deps.paginator,
+            deps.scraper,
+            deps.commentPoster,
+            deps.profitabilityChecker,
+            deps.gameSearcher,
+            deps.ignoredSteamIds,
+        ),
+    };
+};
 
-    beforeEach(() => {
-        useCase = new FindNewSuppliersUseCase();
-    });
+describe("FindNewSuppliersUseCase", () => {
 
     // --- should_comment ---
 
     it("comments when should_comment is true", async () => {
-        const input = makeInput({
+        const { deps: input, useCase } = build({
             profitabilityChecker: { evaluate: vi.fn().mockResolvedValue(makeProspectResult({ should_comment: true })) },
         });
 
-        const result = await useCase.execute(input);
+        const result = await useCase.execute();
 
         expect(input.commentPoster.post).toHaveBeenCalledTimes(1);
         expect(result.suppliersCommented).toBe(1);
     });
 
     it("forwards total_tf2_price from evaluate to commentPoster.post", async () => {
-        const input = makeInput({
+        const { deps: input, useCase } = build({
             profitabilityChecker: { evaluate: vi.fn().mockResolvedValue(makeProspectResult({ total_tf2_price: 12.34 })) },
         });
 
-        await useCase.execute(input);
+        await useCase.execute();
 
         expect(input.commentPoster.post).toHaveBeenCalledWith(
             expect.any(String),
@@ -94,20 +115,20 @@ describe("FindNewSuppliersUseCase", () => {
     });
 
     it("does not comment when should_comment is false", async () => {
-        const input = makeInput({
+        const { deps: input, useCase } = build({
             profitabilityChecker: { evaluate: vi.fn().mockResolvedValue(makeProspectResult({ should_comment: false })) },
         });
 
-        const result = await useCase.execute(input);
+        const result = await useCase.execute();
 
         expect(input.commentPoster.post).not.toHaveBeenCalled();
         expect(result.suppliersCommented).toBe(0);
     });
 
     it("passes list_code from the topic code to evaluate", async () => {
-        const input = makeInput();
+        const { deps: input, useCase } = build();
 
-        await useCase.execute(input);
+        await useCase.execute();
 
         expect(input.profitabilityChecker.evaluate).toHaveBeenCalledWith(
             expect.objectContaining({ list_code: "ABC" }),
@@ -116,11 +137,11 @@ describe("FindNewSuppliersUseCase", () => {
     });
 
     it("forwards gamivo_id from the priced game to evaluate", async () => {
-        const input = makeInput({
+        const { deps: input, useCase } = build({
             gameSearcher: { search: vi.fn().mockResolvedValue(makePricedGames({ gamivo_id: "144601" })) },
         });
 
-        await useCase.execute(input);
+        await useCase.execute();
 
         expect(input.profitabilityChecker.evaluate).toHaveBeenCalledWith(
             expect.any(Object),
@@ -129,9 +150,9 @@ describe("FindNewSuppliersUseCase", () => {
     });
 
     it("sends null for gamivo_id when the priced game does not have it", async () => {
-        const input = makeInput();
+        const { deps: input, useCase } = build();
 
-        await useCase.execute(input);
+        await useCase.execute();
 
         const [, games] = (input.profitabilityChecker.evaluate as ReturnType<typeof vi.fn>).mock.calls[0];
         expect(games[0].gamivo_id).toBeNull();
@@ -141,12 +162,12 @@ describe("FindNewSuppliersUseCase", () => {
 
     it("skips a topic whose steamId is in ignoredSteamIds", async () => {
         const ignoredId = "76561199999999999";
-        const input = makeInput({
+        const { deps: input, useCase } = build({
             ignoredSteamIds: new Set([ignoredId]),
             scraper: { scrape: vi.fn().mockResolvedValue(makeTopic({ steamId: ignoredId })) },
         });
 
-        const result = await useCase.execute(input);
+        const result = await useCase.execute();
 
         expect(input.commentPoster.post).not.toHaveBeenCalled();
         expect(input.profitabilityChecker.evaluate).not.toHaveBeenCalled();
@@ -155,31 +176,31 @@ describe("FindNewSuppliersUseCase", () => {
 
     it("skips a topic matching any id of a multi-id ignore list", async () => {
         const ignoredId = "76561197777777777";
-        const input = makeInput({
+        const { deps: input, useCase } = build({
             ignoredSteamIds: new Set(["76561199999999999", ignoredId, "76561198888888888"]),
             scraper: { scrape: vi.fn().mockResolvedValue(makeTopic({ steamId: ignoredId })) },
         });
 
-        await useCase.execute(input);
+        await useCase.execute();
 
         expect(input.commentPoster.post).not.toHaveBeenCalled();
     });
 
     it("does not skip a topic when ignoredSteamIds is empty", async () => {
-        const input = makeInput({ ignoredSteamIds: new Set<string>() });
+        const { deps: input, useCase } = build({ ignoredSteamIds: new Set<string>() });
 
-        await useCase.execute(input);
+        await useCase.execute();
 
         expect(input.commentPoster.post).toHaveBeenCalledTimes(1);
     });
 
     it("does not skip a topic with a steamId outside the ignore list", async () => {
-        const input = makeInput({
+        const { deps: input, useCase } = build({
             ignoredSteamIds: new Set(["76561199999999999", "76561197777777777"]),
             scraper: { scrape: vi.fn().mockResolvedValue(makeTopic({ steamId: "76561198888888888" })) },
         });
 
-        await useCase.execute(input);
+        await useCase.execute();
 
         expect(input.commentPoster.post).toHaveBeenCalledTimes(1);
     });
@@ -187,53 +208,53 @@ describe("FindNewSuppliersUseCase", () => {
     // --- early exits ---
 
     it("skips topics where wantsTf2Key is false without calling profitabilityChecker", async () => {
-        const input = makeInput({
+        const { deps: input, useCase } = build({
             scraper: { scrape: vi.fn().mockResolvedValue(makeTopic({ wantsTf2Key: false })) },
         });
 
-        const result = await useCase.execute(input);
+        const result = await useCase.execute();
 
         expect(input.profitabilityChecker.evaluate).not.toHaveBeenCalled();
         expect(result.suppliersCommented).toBe(0);
     });
 
     it("skips inactive topics without calling profitabilityChecker", async () => {
-        const input = makeInput({
+        const { deps: input, useCase } = build({
             scraper: { scrape: vi.fn().mockResolvedValue(makeTopic({ isInactive: true })) },
         });
 
-        const result = await useCase.execute(input);
+        const result = await useCase.execute();
 
         expect(input.profitabilityChecker.evaluate).not.toHaveBeenCalled();
         expect(result.suppliersCommented).toBe(0);
     });
 
     it("skips topics with no steamId", async () => {
-        const input = makeInput({
+        const { deps: input, useCase } = build({
             scraper: { scrape: vi.fn().mockResolvedValue(makeTopic({ steamId: "" })) },
         });
 
-        await useCase.execute(input);
+        await useCase.execute();
 
         expect(input.profitabilityChecker.evaluate).not.toHaveBeenCalled();
     });
 
     it("skips topics with no games in .have section", async () => {
-        const input = makeInput({
+        const { deps: input, useCase } = build({
             scraper: { scrape: vi.fn().mockResolvedValue(makeTopic({ games: [] })) },
         });
 
-        await useCase.execute(input);
+        await useCase.execute();
 
         expect(input.gameSearcher.search).not.toHaveBeenCalled();
     });
 
     it("skips topics where no priced games were found", async () => {
-        const input = makeInput({
+        const { deps: input, useCase } = build({
             gameSearcher: { search: vi.fn().mockResolvedValue([]) },
         });
 
-        await useCase.execute(input);
+        await useCase.execute();
 
         expect(input.profitabilityChecker.evaluate).not.toHaveBeenCalled();
         expect(input.commentPoster.post).not.toHaveBeenCalled();
@@ -243,11 +264,11 @@ describe("FindNewSuppliersUseCase", () => {
 
     it("passes at most 1000 games to gameSearcher even when the topic has more", async () => {
         const manyGames = Array.from({ length: 1200 }, (_, i) => `Game ${i + 1}`);
-        const input = makeInput({
+        const { deps: input, useCase } = build({
             scraper: { scrape: vi.fn().mockResolvedValue(makeTopic({ games: manyGames })) },
         });
 
-        await useCase.execute(input);
+        await useCase.execute();
 
         const calledWith = input.gameSearcher.search.mock.calls[0][0].gameNames;
         expect(calledWith).toHaveLength(1000);
@@ -257,11 +278,11 @@ describe("FindNewSuppliersUseCase", () => {
 
     it("passes all games when the topic has 1000 or fewer", async () => {
         const games = Array.from({ length: 30 }, (_, i) => `Game ${i + 1}`);
-        const input = makeInput({
+        const { deps: input, useCase } = build({
             scraper: { scrape: vi.fn().mockResolvedValue(makeTopic({ games })) },
         });
 
-        await useCase.execute(input);
+        await useCase.execute();
 
         const calledWith = input.gameSearcher.search.mock.calls[0][0].gameNames;
         expect(calledWith).toHaveLength(30);
@@ -270,7 +291,7 @@ describe("FindNewSuppliersUseCase", () => {
     // --- pagination ---
 
     it("stops pagination for each search term once a page returns no topics", async () => {
-        const input = makeInput({
+        const { deps: input, useCase } = build({
             paginator: {
                 getTopicsFromPage: vi.fn().mockImplementation(async (page: number) =>
                     page === 1 ? [makeTopicRef("T1"), makeTopicRef("T2")] : [],
@@ -278,7 +299,7 @@ describe("FindNewSuppliersUseCase", () => {
             },
         });
 
-        const result = await useCase.execute(input);
+        const result = await useCase.execute();
 
         // Uma página com tópicos + uma página vazia (que interrompe) por termo de busca.
         expect(result.pagesVisited).toBe(TF2_SEARCH_TERMS.length * 2);
@@ -286,14 +307,14 @@ describe("FindNewSuppliersUseCase", () => {
 
     it("stops processing collected topics after MAX_CONSECUTIVE_INACTIVE inactive ones", async () => {
         const topics = ["T1", "T2", "T3", "T4", "T5"].map((code) => makeTopicRef(code));
-        const input = makeInput({
+        const { deps: input, useCase } = build({
             paginator: {
                 getTopicsFromPage: vi.fn().mockImplementation(async (page: number) => (page === 1 ? topics : [])),
             },
             scraper: { scrape: vi.fn().mockResolvedValue(makeTopic({ isInactive: true })) },
         });
 
-        const result = await useCase.execute(input);
+        const result = await useCase.execute();
 
         expect(result.topicsProcessed).toBe(5);
         expect(input.commentPoster.post).not.toHaveBeenCalled();
@@ -302,7 +323,7 @@ describe("FindNewSuppliersUseCase", () => {
     // --- closed listings (cadeado na listagem, distinto de isInactive do tópico aberto) ---
 
     it("does not collect a closed topic for processing", async () => {
-        const input = makeInput({
+        const { deps: input, useCase } = build({
             paginator: {
                 getTopicsFromPage: vi.fn()
                     .mockResolvedValueOnce([makeTopicRef("CLOSED", true), makeTopicRef("OPEN", false)])
@@ -310,7 +331,7 @@ describe("FindNewSuppliersUseCase", () => {
             },
         });
 
-        await useCase.execute(input);
+        await useCase.execute();
 
         expect(input.scraper.scrape).toHaveBeenCalledTimes(1);
         expect(input.scraper.scrape).toHaveBeenCalledWith("https://steamtrades.com/trade/OPEN");
@@ -319,9 +340,9 @@ describe("FindNewSuppliersUseCase", () => {
     it("stops paginating a search term after MAX_CONSECUTIVE_CLOSED closed listings in a row, without fetching further pages", async () => {
         const closedTopics = Array.from({ length: 5 }, (_, i) => makeTopicRef(`CLOSED${i + 1}`, true));
         const getTopicsFromPage = vi.fn().mockResolvedValue(closedTopics);
-        const input = makeInput({ paginator: { getTopicsFromPage } });
+        const { deps: input, useCase } = build({ paginator: { getTopicsFromPage } });
 
-        const result = await useCase.execute(input);
+        const result = await useCase.execute();
 
         // Um fetch por termo — os 5 fechados já vêm na primeira página, então a segunda nunca é buscada.
         expect(getTopicsFromPage).toHaveBeenCalledTimes(TF2_SEARCH_TERMS.length);
@@ -341,13 +362,13 @@ describe("FindNewSuppliersUseCase", () => {
             makeTopicRef("C7", true),
             makeTopicRef("C8", true),
         ];
-        const input = makeInput({
+        const { deps: input, useCase } = build({
             paginator: {
                 getTopicsFromPage: vi.fn().mockResolvedValueOnce(topics).mockResolvedValue([]),
             },
         });
 
-        await useCase.execute(input);
+        await useCase.execute();
 
         // Nenhuma sequência bate 5 fechados seguidos (o OPEN no meio zera o contador).
         expect(input.scraper.scrape).toHaveBeenCalledTimes(1);
@@ -358,9 +379,9 @@ describe("FindNewSuppliersUseCase", () => {
 
     it("queries the paginator once per TF2 search-term variant, not just a literal 'tf2' substring", async () => {
         const getTopicsFromPage = vi.fn().mockResolvedValue([]);
-        const input = makeInput({ paginator: { getTopicsFromPage } });
+        const { deps: input, useCase } = build({ paginator: { getTopicsFromPage } });
 
-        await useCase.execute(input);
+        await useCase.execute();
 
         const termsQueried = new Set(getTopicsFromPage.mock.calls.map(([, searchTerm]) => searchTerm));
         expect(termsQueried).toEqual(new Set(TF2_SEARCH_TERMS));
@@ -385,9 +406,9 @@ describe("FindNewSuppliersUseCase", () => {
                 return makeTopic();
             }),
         };
-        const input = makeInput({ paginator, scraper });
+        const { deps: input, useCase } = build({ paginator, scraper });
 
-        await useCase.execute(input);
+        await useCase.execute();
 
         const firstScrapeIndex = callOrder.findIndex((entry) => entry.startsWith("scrape:"));
         const pageEntries = callOrder.filter((entry) => entry.startsWith("page:"));
@@ -404,9 +425,9 @@ describe("FindNewSuppliersUseCase", () => {
                 page === 1 ? [makeTopicRef("DUP")] : [],
             ),
         };
-        const input = makeInput({ paginator });
+        const { deps: input, useCase } = build({ paginator });
 
-        await useCase.execute(input);
+        await useCase.execute();
 
         expect(input.scraper.scrape).toHaveBeenCalledTimes(1);
     });

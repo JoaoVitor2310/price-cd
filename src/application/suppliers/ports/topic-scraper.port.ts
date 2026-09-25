@@ -18,7 +18,7 @@ export type TopicData = {
 };
 
 /** Porta responsável por extrair os dados relevantes de um tópico de trade. */
-export interface TopicScraper {
+export abstract class TopicScraper {
     /** Navega até `url` e retorna os dados estruturados do tópico. */
-    scrape(url: string): Promise<TopicData>;
+    abstract scrape(url: string): Promise<TopicData>;
 }

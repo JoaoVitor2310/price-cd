@@ -33,7 +33,9 @@ vi.mock("@/infrastructure/suppliers/http-profitability-checker.js", () => ({
 	})),
 }));
 
-vi.mock("@/lib/puppeteer-browser.js", () => ({
+// As funções de sessão saíram de `lib/` para `infrastructure/browser/sessions`
+// no PR 6, quando as sessões ganharam dono explícito.
+vi.mock("@/infrastructure/browser/sessions.js", () => ({
 	getSuppliersSession: vi.fn().mockResolvedValue({
 		page: { browserContext: () => ({ setCookie: vi.fn().mockResolvedValue(undefined) }) },
 	}),
