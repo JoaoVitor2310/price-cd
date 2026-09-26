@@ -70,6 +70,10 @@ export const schedulerDouble = () => {
  */
 export const listTopicFetcherDouble = () => ({
 	fetchUserLists: async () => [],
-	fetchList: async () => ({ topicRef: "", status: "inactive" as const, gameNames: [] }),
+	fetchList: async () => ({
+		topicRef: "",
+		status: "inactive" as const,
+		gameNames: [],
+	}),
 	dispose: async () => {},
 });

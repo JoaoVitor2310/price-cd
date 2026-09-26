@@ -25,25 +25,17 @@ export type ContractApp = {
 		env: Record<string, string | undefined>,
 		run: () => Promise<T>,
 	) => Promise<T>;
-	/**
-	 * Rotas a cobrir. Omitido = todas. O app Nest começa com uma lista curta e
-	 * ela cresce a cada PR de módulo; quando puder ser removida, a paridade está
-	 * provada.
-	 */
-	only?: string[];
 };
 
-export function runApiContract({ getServer, withEnv, only }: ContractApp): void {
-	const cases = CONTRACT_CASES.filter(
-		(contractCase) => !only || only.includes(contractCase.route),
-	);
-
-	if (cases.length === 0) {
-		throw new Error(
-			`No contract case matched only=${JSON.stringify(only)}. ` +
-				"Misspelled route? See CONTRACT_ROUTES.",
-		);
-	}
+export function runApiContract({
+	getServer,
+	withEnv,
+	only,
+}: ContractApp): void {
+	// Sem opt-in por rota: os dois apps são cobrados pela bateria inteira.
+	// O parâmetro `only` existiu dos PRs 3 a 7, enquanto o Nest só podia
+	// responder pelas rotas já migradas, e foi removido no PR 8 — o git guarda.
+	const cases = CONTRACT_CASES;
 
 	describe.each(cases)("$method $route — $name", (contractCase) => {
 		it("matches the contract", async () => {

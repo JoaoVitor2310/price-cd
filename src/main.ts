@@ -1,9 +1,9 @@
 import "reflect-metadata";
-import dotenv from "dotenv";
 import { Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { NestFactory } from "@nestjs/core";
 import type { NestExpressApplication } from "@nestjs/platform-express";
+import dotenv from "dotenv";
 import type { Env } from "@/config/env.schema.js";
 import { AppModule } from "@/nest/app.module.js";
 import { configureNestApp } from "@/nest/configure-app.js";
@@ -39,10 +39,6 @@ async function bootstrap(): Promise<void> {
 
 	const port = config.get("PORT_NEST", { infer: true });
 	await app.listen(port);
-
-	// Equivalente ao `server.setTimeout(SERVER_TIMEOUT_MS)` do server.ts —
-	// scraping de uma lista grande passa fácil do default de 2min do Node.
-	app.getHttpServer().setTimeout(config.get("SERVER_TIMEOUT_MS", { infer: true }));
 
 	new Logger("Bootstrap").log(`Nest app ouvindo em http://localhost:${port}`);
 }
