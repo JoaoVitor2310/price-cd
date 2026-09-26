@@ -8,8 +8,9 @@ Os conceitos do Nest usados aqui — container, providers, tokens, escopos, pipe
 request, ciclo de vida — estão explicados em **`docs/nest-conceitos.md`**, mapeados a este
 código. Este arquivo assume esse vocabulário e trata só da sequência e da estratégia.
 
-Status: **PRs 0 a 7 entregues.** As cinco rotas e o agendador de bump existem nos dois apps.
-Produção segue no Express. Próximo: PR 8 (paridade de infraestrutura HTTP).
+Status: **PRs 0 a 8 entregues — paridade provada.** A bateria de contrato roda contra os dois
+apps **sem lista de exclusão**, e um teste separado afirma que eles expõem as mesmas rotas.
+Produção segue no Express. Próximo: PR 9, o cutover.
 
 ---
 
@@ -194,14 +195,21 @@ E dois arquivos que o consomem:
 // test/contract/express.contract.test.ts
 runApiContract(() => expressApp);
 
-// test/contract/nest.contract.test.ts  — a lista `only` cresce a cada PR de módulo
-runApiContract(() => nestApp.getHttpServer(), ["/api/games/search"]);
+// test/contract/nest.contract.test.ts  — durante os PRs 3 a 7, a lista `only`
+// crescia a cada módulo entregue. Desde o PR 8 ela não existe mais.
+runApiContract({ getServer: () => nestApp.getHttpServer(), withEnv });
 ```
 
-Propriedades que fazem esse harness valer o esforço:
+> **Estado atual (PR 8):** o `only` foi **aposentado**. Ele serviu dos PRs 3 a 7, enquanto o
+> app Nest só podia ser cobrado pelas rotas já migradas. Hoje `nest.contract.test.ts` roda a
+> bateria inteira, e `route-parity.contract.test.ts` afirma que os dois apps expõem as mesmas
+> rotas. O parâmetro continua no harness porque é o mecanismo certo para o próximo strangler,
+> mas reintroduzi-lo é um passo atrás e precisa de justificativa.
 
-- **Opt-in por rota.** O Nest só é cobrado pelas rotas cujo módulo já foi entregue. Nada de
-  CI vermelho durante a migração.
+Propriedades que fizeram esse harness valer o esforço:
+
+- **Opt-in por rota.** O Nest só era cobrado pelas rotas cujo módulo já tinha sido entregue.
+  Nada de CI vermelho durante a migração.
 - **Um caso de teste, dois apps.** Impossível corrigir um e esquecer o outro.
 - **É o critério de pronto.** Quando a lista `only` cobre todas as rotas do Express, a
   paridade está provada.
@@ -233,7 +241,7 @@ uniformizar, é um PR separado, antes ou depois, nunca durante.
 | 5 | ✅ Módulo `lists` | 4 | duas instâncias da mesma classe com tokens distintos, `OnModuleDestroy` |
 | 6 | ✅ Módulo `suppliers` + ciclo de vida do browser | 5 | `exports`/`imports` vs provider duplicado, `OnApplicationShutdown` |
 | 7 | ✅ Agendador de bump | 6 | `@nestjs/schedule`, `OnApplicationBootstrap` |
-| 8 | Paridade de infraestrutura HTTP | 3–7 | `useStaticAssets`, `setGlobalPrefix` |
+| 8 | ✅ Paridade de infraestrutura HTTP | 3–7 | `useStaticAssets`, `setGlobalPrefix` |
 | 9 | Cutover | 8 | — |
 | 10 | Remoção do Express | 9 estável | — |
 
@@ -711,21 +719,54 @@ declara `ALLOW_BROWSER_LAUNCH_IN_TESTS=true` — um arquivo só, visível em rev
 
 ---
 
-### PR 8 — Paridade de infraestrutura HTTP
+### PR 8 — Paridade de infraestrutura HTTP ✅ **entregue**
 
-O que não é rota mas é comportamento observável:
+**`nest.contract.test.ts` roda sem `only`.** É o marco: as cinco rotas, o `GET /` e o 404
+respondem igual nos dois apps, contra os mesmos dublês.
 
-- `express.static(public/)` → `app.useStaticAssets()` do `NestExpressApplication`.
-- `GET /` servindo `public/index.html` — **não** o texto do LinkedIn. O
-  `app.use(express.static(publicDir))` vem antes do `app.get("/")` em `src/app.ts`, então o
-  estático vence e o handler de autoria é inalcançável (item 15 do IMPROVEMENTS). A ordem
-  `useStaticAssets` vs rota precisa dar o mesmo resultado.
-- `server.setTimeout(SERVER_TIMEOUT_MS)`.
-- `app.setGlobalPrefix("api")` no lugar do `router.use("/api", ...)`.
-- `search-id-steam.route.ts` deixa de existir como arquivo de rota — vira um `@Post()` no
-  `GamesController`, junto de `/search`.
+A maior parte dos itens já tinha sido feita nos PRs anteriores — `useStaticAssets` e
+`setGlobalPrefix` no PR 2, `search-id-steam` como `@Post()` no PR 3.
 
-Ao final deste PR, `nest.contract.test.ts` roda **sem `only`**. É o marco de paridade.
+Uma ressalva sobre esse último: o plano dizia que `search-id-steam.route.ts` "deixa de
+existir". Ele **continua lá**, servindo o app Express, que é quem roda em produção. Some no
+PR 10, com o resto de `routes/`.
+
+O que faltava de fato:
+
+- **`server.setTimeout` entrou no bootstrap compartilhado.** Estava só no `main.ts`, fora do
+  `configureNestApp`, então o portão não o cobria — o mesmo tipo de buraco que o
+  `configureNestApp` foi criado para fechar.
+
+  A primeira tentativa recebia o timeout como **parâmetro opcional**, e nenhum teste o
+  passava: o ramo que o aplica nunca rodava na suíte, recriando o buraco em vez de fechá-lo.
+  A função voltou a não ter parâmetros — tudo que ela precisa vem do container.
+
+#### O que "paridade provada" significa, e o que não
+
+A bateria compara **status e forma do corpo**. Não compara tudo, e vale ter isso explícito
+antes do cutover:
+
+- O corpo do **404** diverge — Express devolve HTML, Nest devolve JSON. Registrado e aceito no
+  item 18 do `IMPROVEMENTS.md`, junto com o JSON malformado. O caso de contrato compara só o
+  status, e o nome dele diz isso.
+- Os casos cobrem os endpoints documentados no `README.md`. Uma rota que existisse só no
+  Express e que ninguém tivesse coberto não apareceria — é a limitação do teste de rotas
+  abaixo, e o motivo de o PR 9 ter revisão manual no checklist.
+
+#### Paridade de rotas, não só de respostas
+
+A bateria de contrato prova que as rotas **com caso escrito** respondem igual. Não prova que
+os dois apps expõem o mesmo conjunto de rotas — uma rota que só um deles tivesse passaria
+despercebida e apareceria no cutover como 404.
+
+`test/contract/route-parity.test.ts` cobre isso: lê as rotas que o Nest registrou e afirma que
+cada uma existe no Express e tem caso de contrato. `/api/health` é a exceção declarada — é um
+liveness probe que o Express nunca teve.
+
+Ele lê o lado Nest e prova o lado Express **por comportamento**, porque o router do Express 5
+guarda `matchers` compilados sem o caminho de montagem: a lista sairia como `/find-new` em vez
+de `/api/suppliers/find-new`. O que fica de fora é uma rota que só o Express tenha e para a
+qual ninguém escreveu caso — essa depende do `README.md` e da revisão do PR 9.
 
 ---
 

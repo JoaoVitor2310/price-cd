@@ -1,3 +1,5 @@
+import { expect } from "vitest";
+
 /**
  * O contrato HTTP da API, como ele é HOJE — não como ele deveria ser.
  *
@@ -84,7 +86,12 @@ export const CONTRACT_CASES: ContractCase[] = [
 		name: "empty gameNames returns 400 with error and details",
 		body: { ...VALID_SEARCH_BODY, gameNames: [] },
 		expectStatus: 400,
-		expectBody: { success: false, error: "Validation failed" },
+		expectBody: {
+			success: false,
+			error: "Validation failed",
+			// O nome promete `details`; sem afirmá-lo, o campo poderia sumir.
+			details: "gameNames: At least one game name is required",
+		},
 	},
 	{
 		route: "/api/games/search",
@@ -117,6 +124,19 @@ export const CONTRACT_CASES: ContractCase[] = [
 		method: "post",
 		name: "empty games returns 400 with error and details",
 		body: { games: [] },
+		expectStatus: 400,
+		expectBody: {
+			success: false,
+			error: "Validation failed",
+			details: "games: At least one game is required",
+		},
+	},
+
+	{
+		route: "/api/games/search-id-steam",
+		method: "post",
+		name: "empty body returns 400",
+		body: {},
 		expectStatus: 400,
 		expectBody: { success: false, error: "Validation failed" },
 	},
@@ -183,7 +203,11 @@ export const CONTRACT_CASES: ContractCase[] = [
 		name: "empty body returns 400 prefixed with 'Invalid file content:'",
 		body: {},
 		expectStatus: 400,
-		expectBody: { success: false },
+		expectBody: {
+			success: false,
+			// O prefixo está no nome do caso; verificá-lo é o mínimo.
+			data: expect.stringContaining("Invalid file content:"),
+		},
 	},
 
 	// -------------------------------------------------- POST /api/lists/run
@@ -215,7 +239,10 @@ export const CONTRACT_CASES: ContractCase[] = [
 		name: "empty body returns 400",
 		body: {},
 		expectStatus: 400,
-		expectBody: { success: false },
+		expectBody: {
+			success: false,
+			data: expect.stringContaining("Erro no corpo da requisição:"),
+		},
 	},
 
 	// --------------------------------------------- POST /api/suppliers/find-new
@@ -297,7 +324,11 @@ export const CONTRACT_CASES: ContractCase[] = [
 	{
 		route: "/api/does-not-exist",
 		method: "post",
-		name: "unknown route returns the Express 404 with no JSON error body",
+		// Só o status é comparado, e o nome diz isso. O CORPO do 404 diverge
+		// entre os apps — Express devolve HTML, Nest devolve JSON — e essa
+		// divergência está registrada e aceita no item 18 do IMPROVEMENTS.
+		// Um nome prometendo "no JSON error body" mentiria.
+		name: "unknown route returns 404 (body differs between the apps, by decision)",
 		body: {},
 		expectStatus: 404,
 	},

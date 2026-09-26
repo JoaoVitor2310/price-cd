@@ -10,13 +10,13 @@
  */
 
 import { beforeAll, vi } from "vitest";
+import { runApiContract } from "./api-contract.suite.js";
 import {
 	popularityFetcherDouble,
 	priceFetcherDouble,
 	schedulerDouble,
 	tradeImporterDouble,
 } from "./doubles.js";
-import { runApiContract } from "./api-contract.suite.js";
 
 vi.mock("@/infrastructure/games/steam-charts-popularity-fetcher.js", () => ({
 	SteamChartsPopularityFetcher: vi.fn(popularityFetcherDouble),
@@ -40,7 +40,11 @@ vi.mock("@/infrastructure/background/limited-concurrency.scheduler.js", () => ({
 // são importados na montagem — então precisam existir sem abrir browser.
 vi.mock("@/infrastructure/lists/fetch-list-topic.js", () => ({
 	FetchListTopic: vi.fn(() => ({
-		fetchList: async () => ({ topicRef: "", status: "inactive", gameNames: [] }),
+		fetchList: async () => ({
+			topicRef: "",
+			status: "inactive",
+			gameNames: [],
+		}),
 		dispose: async () => {},
 	})),
 }));
