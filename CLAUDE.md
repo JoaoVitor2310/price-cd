@@ -66,9 +66,12 @@ Esse sistema é um projeto que apenas dá suporte ao sistema princial **Sistema-
 ## Arquitetura
 
 > **Migração em andamento.** O projeto está sendo migrado para Nest.js pelo padrão Strangler
-> Fig: dois entrypoints coexistem sobre um núcleo compartilhado até o cutover. Produção roda
-> o Express. Plano em `docs/NEST.md`, conceitos em `docs/nest-conceitos.md`, decisão em
-> `docs/adr/0004-nest-como-camada-de-apresentacao.md`.
+> Fig: dois entrypoints coexistem sobre um núcleo compartilhado. **Qual deles sobe é o
+> `APP_ENTRYPOINT`** (`express` | `nest`), lido pelos dois entrypoints de container
+> (`docker/start.sh` e `start.dev.sh`) — é o cutover e o
+> rollback ao mesmo tempo: trocar o valor e reiniciar o container, sem rebuild. Produção
+> roda o Express. Plano e runbook da troca em `docs/NEST.md`, conceitos em
+> `docs/nest-conceitos.md`, decisão em `docs/adr/0004-nest-como-camada-de-apresentacao.md`.
 >
 > A fronteira de camadas é inegociável: `domain/`, `application/` e `helpers/` **nunca**
 > importam `@nestjs/*`; `infrastructure/` e `lib/` no máximo `@Injectable()`; regra de
