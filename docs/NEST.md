@@ -8,9 +8,9 @@ Os conceitos do Nest usados aqui — container, providers, tokens, escopos, pipe
 request, ciclo de vida — estão explicados em **`docs/nest-conceitos.md`**, mapeados a este
 código. Este arquivo assume esse vocabulário e trata só da sequência e da estratégia.
 
-Status: **PRs 0 a 8 entregues — paridade provada.** A bateria de contrato roda contra os dois
-apps **sem lista de exclusão**, e um teste separado afirma que eles expõem as mesmas rotas.
-Produção segue no Express. Próximo: PR 9, o cutover.
+Status: **PRs 0 a 9 entregues.** O mecanismo de cutover existe (`APP_ENTRYPOINT`), mas
+**produção continua no Express**: o merge não troca nada, a troca é feita na VPS
+deliberadamente, com o runbook do PR 9. Próximo: PR 10, depois de 1–2 semanas observando.
 
 ---
 
@@ -242,7 +242,7 @@ uniformizar, é um PR separado, antes ou depois, nunca durante.
 | 6 | ✅ Módulo `suppliers` + ciclo de vida do browser | 5 | `exports`/`imports` vs provider duplicado, `OnApplicationShutdown` |
 | 7 | ✅ Agendador de bump | 6 | `@nestjs/schedule`, `OnApplicationBootstrap` |
 | 8 | ✅ Paridade de infraestrutura HTTP | 3–7 | `useStaticAssets`, `setGlobalPrefix` |
-| 9 | Cutover | 8 | — |
+| 9 | ✅ Cutover (mecanismo) | 8 | — |
 | 10 | Remoção do Express | 9 estável | — |
 
 Todo PR é individualmente reversível e deixa a `main` deployável. Nenhum quebra produção
@@ -772,18 +772,120 @@ qual ninguém escreveu caso — essa depende do `README.md` e da revisão do PR 
 
 ### PR 9 — Cutover
 
-PR pequeno, desenhado para ser revertido em um comando:
+PR pequeno, desenhado para ser revertido em um comando.
 
-- `docker/start.sh`: `exec node dist/main.js` em vez de `dist/server.js`, **atrás de**
-  `APP_ENTRYPOINT=nest|express` — default `express` no merge, virado para `nest` na VPS
-  depois de observar.
-- Rollback = mudar a env e reiniciar o container. Sem rebuild, sem revert de commit.
-- Manter por 1–2 semanas.
+`docker/start.sh` escolhe o entrypoint por `APP_ENTRYPOINT`:
 
-⚠️ **Não subir os dois apps simultaneamente em produção.** O container tem `mem_limit: 2g` e
-`pids_limit: 512` justamente por causa do incidente de 2026-08-24; dois processos Node com
-Chromium próprio dentro desse teto é convite para repetir o OOM. Comparação lado a lado
-acontece no CI (harness do PR 1) e em dev — nunca na VPS.
+| Valor | Roda |
+|---|---|
+| `express` (default) | `dist/server.js` |
+| `nest` | `dist/main.js` |
+| qualquer outro | falha alto, sem subir nada |
+
+O valor é normalizado para minúsculas — quem edita isso no compose da VPS não
+deve ser punido por digitar `Nest`. Conteúdo desconhecido continua falhando.
+
+**O merge deste PR não muda nada em produção.** O `docker-compose.yml` lê
+`${APP_ENTRYPOINT:-express}`: sem a variável definida, sobe o Express. A troca é feita na VPS,
+deliberadamente.
+
+⚠️ **Um app por container, sempre.** O `mem_limit: 2g` e o `pids_limit: 512`
+existem por causa do OOM de 2026-08-24; dois processos Node com Chromium
+próprio dentro desse teto repetem o incidente. Comparação lado a lado acontece
+no CI e em dev — nunca na VPS.
+
+#### Runbook do cutover
+
+**As duas verificações pendentes dos PRs 6 e 7 foram feitas**, em container, com a imagem de
+produção e `APP_ENTRYPOINT=nest`.
+
+| O que foi medido | Resultado |
+|---|---|
+| O app Nest responde na porta publicada? | `GET :5555/api/health` → **200**, `{"app":"nest","env":"production"}` |
+| O desligamento é ordenado? | `docker stop` retorna em **1s**, com timeout de 30s |
+| Os hooks de shutdown disparam? | **sim**, os dois |
+| Sobra Chromium depois? | **não** (10 → 0) |
+
+```
+[BumpScheduler]    Closing the bump browser…
+[BrowserShutdown]  SIGTERM received — closing browsers…
+```
+
+#### O que essa evidência prova, e o que não prova
+
+**A medida que vale é o tempo, não a contagem de processos.** `docker stop` manda `SIGTERM`,
+espera o timeout, e só então manda `SIGKILL`. Retornar em **1 segundo com 30 de folga** é o que
+prova que o app encerrou sozinho — se ele ignorasse o sinal, o comando levaria os 30s inteiros.
+
+A contagem "10 → 0" é **consistente** com isso, mas não prova nada sozinha: quando o container
+sai, o Docker limpa o cgroup inteiro e os processos somem de qualquer jeito. Duas armadilhas
+que eu caí antes de entender isso:
+
+1. **`docker compose stop` sempre zera a contagem.** Desligamento ordenado e `SIGKILL` dão o
+   mesmo número.
+2. **Matar o processo do app não mantém o container de pé.** Com `init: true`, o tini sai
+   quando o filho sai — o container encerra e o `restart: unless-stopped` o recria. Tentei
+   usar isso para isolar a medição e o `docker compose ps` mostrou "Up 2 seconds": eu estava
+   medindo um container **novo**.
+
+Quem prova o desligamento ordenado em si é `test/integration/nest/browser-shutdown.test.ts`,
+com as sessões dubladas: lá dá para afirmar que cada uma foi fechada, e que falhar em uma não
+impede a outra. O teste em container prova o que o unitário não alcança — que os hooks estão
+ligados a um `SIGTERM` de verdade, e que o app sai antes do timeout.
+
+**Na VPS**, repita as duas medições que importam:
+
+```bash
+docker compose up -d price-researcher
+curl -s localhost:5555/api/health          # o app certo, na porta certa
+
+time docker compose stop -t 30 price-researcher
+# ~1s = encerrou sozinho. ~30s = ignorou o SIGTERM e levou SIGKILL.
+docker compose logs price-researcher | grep -i "closing browsers"
+```
+
+**A troca** — no `.env` da VPS, não no arquivo versionado:
+
+```bash
+echo "APP_ENTRYPOINT=nest" >> .env
+docker compose up -d --force-recreate price-researcher
+docker compose logs price-researcher | grep -i "Starting the"   # "nest app"
+curl -s localhost:5555/api/health        # o app certo responde na porta certa
+```
+
+**O rollback** — e é por isso que o PR é desenhado assim:
+
+```bash
+sed -i 's/^APP_ENTRYPOINT=.*/APP_ENTRYPOINT=express/' .env
+grep '^APP_ENTRYPOINT=' .env            # confirme ANTES de recriar: o sed é
+                                        # silencioso se a linha não casar
+docker compose up -d --force-recreate price-researcher
+docker compose logs price-researcher | grep -i "Starting the"   # "express app"
+```
+
+Sem rebuild, sem revert de commit, sem deploy, sem editar arquivo versionado —
+o que evitaria drift entre o repo e a máquina. A imagem contém os dois apps.
+
+> **Duas formas de definir, e as duas funcionam.** O compose lê
+> `${APP_ENTRYPOINT:-express}`, e a interpolação enxerga tanto a variável do shell quanto o
+> `.env` do diretório:
+>
+> ```bash
+> APP_ENTRYPOINT=nest docker compose up -d price-researcher   # pontual, não persiste
+> echo "APP_ENTRYPOINT=nest" >> .env                          # persiste entre restarts
+> ```
+>
+> Na VPS use o `.env`: o shell não sobrevive a um reboot nem a um `docker compose up` feito
+> por outra pessoa. O `.env` é o que torna a escolha durável sem editar arquivo versionado.
+>
+> (Uma versão anterior deste documento afirmava que a variável do shell **não** funcionava.
+> Era verdade quando o compose tinha `APP_ENTRYPOINT: express` literal — `environment:` com
+> valor fixo ignora o shell. Deixou de ser quando passou a interpolar.)
+
+**Observar por 1–2 semanas** antes do PR 10. O que olhar: memória do container
+(o Nest carrega o container de DI, o Express não), Chromium órfão depois de
+restart, e se o bump continua acontecendo — é a função mais fácil de parar em
+silêncio, porque ninguém reclama quando ela não roda.
 
 ---
 

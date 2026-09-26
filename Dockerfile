@@ -119,7 +119,8 @@ COPY --from=builder /app/dist ./dist
 # Express serve arquivos estáticos a partir de public/ (ver src/app.ts).
 COPY public ./public
 
-# Script de entrada: sobe Xvfb e depois node dist/server.js.
+# Script de entrada: sobe Xvfb e depois o app escolhido por APP_ENTRYPOINT
+# (`express` → dist/server.js, `nest` → dist/main.js). Ver docker/start.sh.
 COPY docker/start.sh /app/start.sh
 RUN chmod +x /app/start.sh
 
