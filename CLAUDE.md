@@ -65,17 +65,17 @@ Esse sistema é um projeto que apenas dá suporte ao sistema princial **Sistema-
 
 ## Arquitetura
 
-> **Migração em andamento.** O projeto está sendo migrado para Nest.js pelo padrão Strangler
-> Fig: dois entrypoints coexistem sobre um núcleo compartilhado. **Qual deles sobe é o
-> `APP_ENTRYPOINT`** (`express` | `nest`), lido pelos dois entrypoints de container
-> (`docker/start.sh` e `start.dev.sh`) — é o cutover e o
-> rollback ao mesmo tempo: trocar o valor e reiniciar o container, sem rebuild. Produção
-> roda o Express. Plano e runbook da troca em `docs/NEST.md`, conceitos em
+> **Migração concluída.** O Nest.js é a camada de apresentação e o composition root; o
+> Express foi removido. A troca foi feita pelo padrão Strangler Fig, com dois entrypoints
+> coexistindo sobre um núcleo compartilhado e um switch de ambiente (`APP_ENTRYPOINT`) como
+> cutover e rollback — nada disso existe mais. Conceitos do Nest mapeados a este código em
 > `docs/nest-conceitos.md`, decisão em `docs/adr/0004-nest-como-camada-de-apresentacao.md`.
 >
-> A fronteira de camadas é inegociável: `domain/`, `application/` e `helpers/` **nunca**
-> importam `@nestjs/*`; `infrastructure/` e `lib/` no máximo `@Injectable()`; regra de
-> negócio nunca vive em `nest/`.
+> A fronteira de camadas é inegociável. `test/unit/architecture/layer-boundary.test.ts`
+> verifica a parte automatizável: `domain/`, `application/` e `helpers/` **nunca** importam
+> `@nestjs/*`; `infrastructure/` e `lib/` no máximo `@nestjs/common` (para `@Injectable()`).
+> "Regra de negócio nunca vive em `nest/`" continua sendo regra de code review — nenhum teste
+> sabe distinguir orquestração de regra.
 >
 > Consequência prática no wiring: portas são `abstract class` (existem em runtime, então
 > servem de token de injeção sem decorator); adapters de `infrastructure/` são registrados
@@ -85,33 +85,31 @@ Esse sistema é um projeto que apenas dá suporte ao sistema princial **Sistema-
 
 ```
 src/
-├── server.ts              # Entrypoint Express (produção hoje)
-├── main.ts                # Entrypoint Nest (PORT_NEST, não serve rota de negócio ainda)
-├── app.ts                 # Express setup, rotas, static files
-├── config/                # Schema Zod do ambiente — compartilhado pelos dois apps
-├── nest/                  # Apresentação Nest: módulos, filter, pipe. ZERO regra de negócio
-├── routes/                # Roteamento HTTP (thin wrappers)
-├── controllers/           # Parse de request, validação, formatação de response
+├── main.ts                # Entrypoint único: boota o container Nest (porta PORT)
+├── config/                # Schema Zod do ambiente, validado uma vez no boot
+├── nest/                  # Apresentação + wiring: módulos, controllers, filters, pipes
+│   ├── common/            # AllExceptionsFilter, ZodValidationPipe
+│   ├── browser/           # BrowserModule — dono das sessões de Chromium
+│   └── bump/              # BumpScheduler (@Interval + hooks de ciclo de vida)
 ├── schemas/               # Schemas Zod + helpers de parse
-├── services/              # Orquestração ("application services")
-│   └── lists/             # Services específicos do fluxo lists
 ├── application/<módulo>/  # Camada de aplicação, um diretório por subdomínio
 │   ├── use-cases/         # Objetivo completo de um ator (alguém dispara)
 │   ├── services/          # Application Service: colaborador reutilizável entre use cases
-│   └── ports/             # Interfaces de dependência (inversão de dependência)
-├── domain/lists/          # Entidades de domínio (ListTopic)
+│   └── ports/             # Portas de dependência (abstract class, inversão de dependência)
+├── domain/                # Regras puras: games, lists (ListTopic), suppliers
 ├── infrastructure/        # Implementações concretas das portas
 │   ├── background/        # Schedulers
-│   ├── http/              # HTTP callback poster (native fetch)
+│   ├── browser/           # SharedBrowserSession, SuppliersBrowserSession
+│   ├── bump/              # Bumper do SteamTrades
 │   └── lists/             # SteamTrades fetcher + formatador de resultado
-├── lib/                   # Utilidades compartilhadas (puppeteer factory, dispose)
+├── lib/                   # Utilidades compartilhadas (puppeteer factory, process tree, dispose)
 ├── helpers/               # Funções puras de transformação de string + constantes
 └── types/                 # Definições de tipos TypeScript
 ```
 
-A palavra "service" tem o sentido de DDD/clean architecture — colaborador que orquestra portas e domínio, como `application/games/services/price-games.ts`. **Não** o dos tutoriais de Nest (regra + banco), nem o do `src/services/` legado, que é composition root manual e desaparece no PR 10. Ver `docs/nest-conceitos.md` §9.
+A palavra "service" tem o sentido de DDD/clean architecture — colaborador que orquestra portas e domínio, como `application/games/services/price-games.ts`. **Não** o dos tutoriais de Nest (regra + banco), nem o do `src/services/` legado, que era composition root manual e foi removido junto com o Express. Ver `docs/nest-conceitos.md` §9.
 
-Segue uma arquitetura hexagonal leve: o subdomínio `lists` tem interfaces de porta explícitas (`ListTopicFetcher`, `BackgroundScheduler`, `RunListsCallbackPoster`, `ListResultFormatter`, `RunListsRunner`) que são injetadas no use case via factory functions, permitindo testabilidade isolada.
+Segue uma arquitetura hexagonal leve: o subdomínio `lists` declara portas explícitas (`ListTopicFetcher`, `BackgroundScheduler`, `RunListsCallbackPoster`, `ListResultFormatter`, `RunListsRunner`) injetadas no use case pelo container, permitindo testabilidade isolada.
 
 ---
 
@@ -120,7 +118,7 @@ Segue uma arquitetura hexagonal leve: o subdomínio `lists` tem interfaces de po
 | Tecnologia | Uso |
 |---|---|
 | Node.js 22 + TypeScript 5 | Runtime e linguagem |
-| Express 5 | HTTP server |
+| Express 5 | HTTP server, por baixo do Nest (`@nestjs/platform-express`) — não é dependência direta |
 | Zod 4 | Validação de input (body e conteúdo do arquivo) |
 | Native fetch (Node 22) | HTTP client (callback posts, integração com Sistema Estoque) |
 | Cheerio | Parse HTML via seletores jQuery-like |
@@ -128,9 +126,9 @@ Segue uma arquitetura hexagonal leve: o subdomínio `lists` tem interfaces de po
 | puppeteer-extra-plugin-stealth | Esconde fingerprint do Puppeteer |
 | puppeteer-extra-plugin-adblocker | Bloqueia ads para reduzir ruído e acelerar scraping |
 | Biome | Linter + formatter (substitui ESLint + Prettier) |
-| Nest.js 12 | Camada de apresentação do app novo (`src/main.ts`), em migração |
-| tsx / tsc-alias | Execução em dev do Express e resolução de aliases no build |
-| SWC | Transform dos testes (`unplugin-swc`) e do `dev:nest`. **Obrigatório**: o esbuild do Vitest e o `tsx` não emitem `design:paramtypes`, e sem essa metadata o Nest injeta `undefined` sem erro no boot — ver ADR 0004 |
+| Nest.js 12 | Camada de apresentação e composition root (`src/main.ts`) |
+| tsc-alias | Resolução dos aliases `@/*` no build |
+| SWC | Transform dos testes (`unplugin-swc`) e do `npm run dev` (`@swc-node/register`). **Obrigatório**: o esbuild do Vitest e o `tsx` não emitem `design:paramtypes`, e sem essa metadata o Nest injeta `undefined` sem erro no boot — ver ADR 0004 |
 | Xvfb (Docker) | Display virtual para Chromium headed em containers Linux |
 
 ### Padrões de Concorrência
@@ -162,14 +160,16 @@ O módulo `clear-string.ts` é a camada central de normalização usada em todo 
 
 ### Tratamento de Erros
 
-- Controllers Express tratam `ZodError` (400) separado de `Error` genérico (500). No app Nest isso é um arquivo só, `src/nest/common/all-exceptions.filter.ts`, registrado via `APP_FILTER` (provider do container, não `useGlobalFilters`, para poder injetar dependências).
-- O formato de erro **não é uniforme entre as rotas** e está congelado assim de propósito durante a migração: `test/contract/contract-cases.ts` trava o contrato como ele é, para que qualquer diferença do app Nest seja bug, não melhoria acidental. Uniformizar é PR próprio, antes ou depois — nunca durante.
+- `ZodError` (400) e `Error` genérico (500) são tratados num arquivo só, `src/nest/common/all-exceptions.filter.ts`, registrado via `APP_FILTER` (provider do container, não `useGlobalFilters`, para poder injetar dependências). Os controllers Express faziam esse `try/catch` cinco vezes.
+- O formato de erro **não é uniforme entre as rotas**: ficou congelado durante a migração para que qualquer diferença do app Nest fosse bug, não melhoria acidental. `test/contract/contract-cases.ts` continua travando o contrato como ele é. Uniformizar é o item 14 do `docs/IMPROVEMENTS.md` — PR próprio, agora desbloqueado.
 - Funções de service retornam `null` em falhas individuais de jogo (não fatais), permitindo que o batch continue.
+- **`biome check --write` quebra a injeção de dependência.** A regra `style/useImportType` converte `import { SharedBrowserSession }` em `import type { ... }`, o import é apagado na compilação, e o `design:paramtypes` do decorator passa a registrar nada — o Nest injeta `undefined` **sem erro no boot**, exatamente o modo de falha do ADR 0004. Aconteceu nos quatro adapters que recebem sessão de browser pelo construtor. `biome.json` desliga a regra em `src/infrastructure/**` e `src/nest/**`; os testes de módulo (`test/integration/nest/*.module.test.ts`) são o que pega se alguém religar.
+- **Variável com default no schema não é configurável pelo `.env` se o dotenv chegar tarde.** `ConfigModule.forRoot()` valida o ambiente no **import** do arquivo, e import de ESM é hoisted: por isso `src/main.ts` faz `import "dotenv/config"` antes de qualquer outro import, e `test/unit/config/dotenv-order.test.ts` trava essa ordem. Na suíte, o equivalente é `test/setup.ts` — `setupFiles` roda antes do grafo de imports. Era isso que fazia `BUMP_SCHEDULER_ENABLED=false` num `beforeAll` não desligar nada.
 - **Nenhum teste abre browser.** `initializeBrowser()` recusa rodar sob `VITEST` — esquecer de mockar produz falha legível, não dezenas de janelas do Chrome. A única exceção é `test/unit/lib/puppeteer-browser.test.ts`, que mocka o `connect` do `puppeteer-real-browser` e declara `ALLOW_BROWSER_LAUNCH_IN_TESTS=true`. Em WSL a trava é essencial: o Chrome do Windows é encontrado via interop, então não ter Chrome no Linux não protege.
-- **Bump agendado por um app só.** Express e Nest agendando ao mesmo tempo são dois processos comentando no SteamTrades com a mesma conta — risco de ban. `BUMP_SCHEDULER_ENABLED=false` desliga o do Nest; o default é ligado para o bump não sumir em silêncio no cutover.
-- **Desligamento ordenado:** existem três donos de Chromium — o browser persistente do bump, a sessão do AllKeyShop e a da Descoberta de Fornecedores. No Express há **um** ponto de desligamento, `src/server.ts`, que fecha os três. No Nest cada dono implementa o próprio `OnApplicationShutdown` (`BrowserShutdown` para as duas sessões, `BumpScheduler` para o browser do bump) e o container coordena — é o `enableShutdownHooks()` do `main.ts` que faz isso acontecer. A diferença entre os dois é deliberada: sem container, alguém precisa conhecer a lista inteira; com container, quem é dono declara. A ordem é fixa: parar de aceitar requisição **antes** de fechar browser, senão uma requisição em voo abre um Chromium depois do cleanup. Nenhum outro módulo registra handler de sinal — o agendador de bump fazia isso e chamava `process.exit(0)`, matando o processo antes de as outras duas sessões fecharem. As sessões vivem em `src/infrastructure/browser/`, com instância única por processo (`sessions.ts`); o `BrowserModule` as registra com `useValue` para que o container não crie uma segunda.
+- **Bump agendado por um processo só.** Duas instâncias agendando ao mesmo tempo comentam no SteamTrades com a mesma conta — risco de ban. `BUMP_SCHEDULER_ENABLED=false` desliga o agendador; o default é ligado para o bump não sumir em silêncio.
+- **Desligamento ordenado:** existem três donos de Chromium — o browser persistente do bump, a sessão do AllKeyShop e a da Descoberta de Fornecedores. Cada dono implementa o próprio `OnApplicationShutdown` (`BrowserShutdown` para as duas sessões, `BumpScheduler` para o browser do bump) e o container coordena — é o `enableShutdownHooks()` do `main.ts` que faz isso acontecer. O Express tinha **um** ponto de desligamento, `src/server.ts`, que conhecia a lista inteira; com container, quem é dono declara. A ordem é fixa: parar de aceitar requisição **antes** de fechar browser, senão uma requisição em voo abre um Chromium depois do cleanup. Nenhum outro módulo registra handler de sinal — o agendador de bump fazia isso e chamava `process.exit(0)`, matando o processo antes de as outras duas sessões fecharem. As sessões vivem em `src/infrastructure/browser/` e quem é dono delas é o container: **só o `BrowserModule` as declara**, e quem precisa faz `imports: [BrowserModule]`. Declarar o mesmo provider num segundo módulo cria uma segunda instância — logo um segundo Chromium. `test/integration/nest/browser-shutdown.test.ts` trava isso comparando a sessão que cada adapter recebeu.
 - **Ciclo de vida do Chromium** (`src/lib/puppeteer-browser.ts` + `src/lib/process-tree.ts`): quem abre um browser é responsável por fechá-lo — nenhum caminho de erro pode zerar a referência sem encerrar o processo. `cleanupBrowser` fecha as páginas, faz `browser.close()` com timeout (`BROWSER_CLOSE_TIMEOUT_MS`, default 15s) e **só depois** parte para sinal: SIGTERM em toda a árvore de processos, janela de graça (`BROWSER_KILL_GRACE_MS`, default 3s), SIGKILL nos sobreviventes. A ordem não é negociável — o `close()` via CDP é o único caminho que derruba renderers, GPU process e zygote; matar o processo principal antes órfã a árvore (foi o que derrubou a VPS por OOM em 2026-08-24). Por isso a árvore é fotografada com `descendantsOf` **antes** do close: depois que o pai morre, os filhos são reparentados para o `init` e viram irrastreáveis. `cleanupBrowser` nunca lança. Derrubar a árvore é só metade do trabalho: os netos do Chromium morrem já reparentados para o PID 1, e o Node não colhe órfãos (o libuv só dá `waitpid` nos filhos que ele mesmo criou). Por isso os serviços do `docker-compose.yml` rodam com `init: true` — sem ele os zumbis enchem o `pids_limit` até todo `fork()` falhar com `Cannot fork` (produção, 2026-09-18). Ver `docs/adr/0005-container-precisa-de-init-para-colher-zumbis.md`.
-- `invalidateSharedSession()` é assíncrona e **fecha** a sessão antes de zerar as referências; o call site (`searchAllKeyShop`) precisa dar `await` antes do rethrow. `getSharedSession` limpa a sessão morta no `catch` do health check e recicla a sessão por idade (`BROWSER_SESSION_MAX_AGE_MS`, default 30min; `0` desliga).
+- `SharedBrowserSession.invalidate()` é assíncrona e **fecha** a sessão antes de zerar as referências; o call site (`searchAllKeyShop`) precisa dar `await` antes do rethrow. `.get()` limpa a sessão morta no `catch` do health check e recicla a sessão por idade (`BROWSER_SESSION_MAX_AGE_MS`, default 30min; `0` desliga). A sessão chega aos adapters pelo construtor, injetada pelo `BrowserModule` — as fachadas de módulo e o singleton em `sessions.ts` saíram com o Express, e a idade máxima passou a vir do `ConfigService` em vez de um `Number(process.env...)` lido à mão.
 - `FetchListTopic` implementa o padrão `Disposable` (`src/lib/dispose.ts`); `RunListsUseCase` chama `disposeIfPresent(fetcher)` em bloco `finally`.
 
 ---

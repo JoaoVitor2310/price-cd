@@ -9,14 +9,18 @@ import { AllExceptionsFilter } from "@/nest/common/all-exceptions.filter.js";
  * o campo `success`**, que todas as outras rotas têm, e com a mensagem crua em
  * vez de um texto genérico.
  *
- * Congelado de propósito (`docs/NEST.md` §4). Some no item 16 do
- * `docs/IMPROVEMENTS.md`, depois que o Express sair.
+ * Congelado de propósito durante a migração. Some no item 14 do
+ * `docs/IMPROVEMENTS.md`, agora desbloqueado.
  */
 @Catch()
 export class SuppliersLegacyErrorFilter extends AllExceptionsFilter {
-	protected override handleUnknown(exception: unknown, host: ArgumentsHost): void {
+	protected override handleUnknown(
+		exception: unknown,
+		host: ArgumentsHost,
+	): void {
 		const response = host.switchToHttp().getResponse<Response>();
-		const message = exception instanceof Error ? exception.message : "Unknown error";
+		const message =
+			exception instanceof Error ? exception.message : "Unknown error";
 
 		new Logger(this.constructor.name).error(
 			`Error queuing suppliers search: ${message}`,

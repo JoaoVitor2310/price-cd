@@ -37,17 +37,17 @@ vi.mock("@/infrastructure/lists/fetch-list-topic.js", () => ({
 	fetchListTopic: vi.fn(listTopicFetcherDouble),
 	FetchListTopic: vi.fn(listTopicFetcherDouble),
 }));
+
 import { RequestMethod } from "@nestjs/common";
 import { METHOD_METADATA, PATH_METADATA } from "@nestjs/common/constants";
 import { DiscoveryService, MetadataScanner } from "@nestjs/core";
 import type { NestExpressApplication } from "@nestjs/platform-express";
-import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { CONTRACT_ROUTES } from "./contract-cases.js";
 import { createContractNestApp, setContractEnv } from "./nest-app.js";
 
-/** Rota que só o app Nest tem: liveness probe, o Express nunca teve. */
-const NEST_ONLY = "/api/health";
+/** Liveness probe: existe para o Docker, não para clientes da API. */
+const HEALTH_ROUTE = "/api/health";
 
 /** O prefixo global aplicado por `configureNestApp`. */
 const GLOBAL_PREFIX = "/api";
@@ -92,75 +92,53 @@ function declaredRoutes(app: NestExpressApplication): string[] {
 }
 
 /**
- * Paridade de ROTAS.
+ * Cobertura de ROTAS pela bateria de contrato.
  *
- * A bateria de contrato prova que as rotas **com caso escrito** respondem igual.
- * Isto prova algo complementar: que toda rota que o Nest expõe existe no Express
- * e tem caso de contrato. Uma rota que o Nest ganhasse por acidente — um
- * `@Controller` novo, um prefixo trocado — apareceria aqui, não no cutover.
+ * A bateria prova que as rotas **com caso escrito** respondem conforme o
+ * contrato. Isto prova o complemento: que **toda** rota exposta tem caso. Uma
+ * rota nova — um `@Controller` acrescentado, um `@Post` a mais — entraria no ar
+ * sem ninguém ter escrito o contrato dela, e este teste é quem acusa.
  *
- * O que isto **não** cobre: uma rota que só o Express tenha e para a qual
- * ninguém escreveu caso de contrato. Essa fica com o `README.md`, que lista os
- * endpoints, e com a revisão do PR 9.
+ * Este arquivo se chamava `route-parity` e comparava as rotas do Nest contra as
+ * do Express. Com o Express removido não há contra o que comparar; o que
+ * sobrevive é a cobertura, que nunca dependeu dos dois apps.
  */
-describe("route parity between the two apps", () => {
-	let nestApp: NestExpressApplication;
-	let expressApp: Awaited<typeof import("@/app.js")>["default"];
+describe("contract coverage of the exposed routes", () => {
+	let app: NestExpressApplication;
 	let routes: string[];
 
 	beforeAll(async () => {
 		setContractEnv();
-		nestApp = await createContractNestApp();
-		expressApp = (await import("@/app.js")).default;
-		routes = declaredRoutes(nestApp);
+		app = await createContractNestApp();
+		routes = declaredRoutes(app);
 	});
 
 	afterAll(async () => {
-		await nestApp?.close();
+		await app?.close();
 	});
 
-	it("reads the routes the Nest controllers declare", () => {
+	it("reads the routes the controllers declare", () => {
 		// Sem isto, os testes abaixo passariam varrendo uma lista vazia — e a
 		// leitura depende de metadata, que some se o transform perder decorators.
-		expect(routes).toContain(`GET ${NEST_ONLY}`);
+		expect(routes).toContain(`GET ${HEALTH_ROUTE}`);
 		expect(routes.length).toBeGreaterThan(1);
 	});
 
-	it("serves every Nest route on the Express app, with the same method", async () => {
-		for (const entry of routes.filter((r) => !r.endsWith(NEST_ONLY))) {
-			const [method, path] = entry.split(" ");
-			const response = await request(expressApp)
-				[method.toLowerCase() as "get" | "post"](path)
-				.send({});
-
-			// 404 = a rota não existe. 405 = existe com outro método, que num
-			// cutover quebra o cliente do mesmo jeito.
-			expect(
-				response.status,
-				`${entry} is missing from the Express app`,
-			).not.toBe(404);
-			expect(
-				response.status,
-				`${entry} exists on Express with a different method`,
-			).not.toBe(405);
-		}
-	});
-
-	it("applies the same HTTP server timeout the Express app uses", () => {
+	it("applies the configured HTTP server timeout", () => {
 		// `configureNestApp` aplica isto lendo do ConfigService. Sem afirmar
 		// aqui, a configuração poderia sumir e só apareceria em produção: uma
 		// lista grande estourando o default de 2 minutos do Node.
 		const expected = Number(process.env.SERVER_TIMEOUT_MS) || 10 * 60 * 1000;
 
-		expect(nestApp.getHttpServer().timeout).toBe(expected);
+		expect(app.getHttpServer().timeout).toBe(expected);
 	});
 
 	it("has a contract case for every business route", () => {
-		// Uma rota sem caso de contrato é uma rota cuja paridade ninguém provou.
+		// Uma rota sem caso de contrato é uma rota cujo comportamento ninguém fixou.
 		const covered = new Set(CONTRACT_ROUTES);
 		const uncovered = routes
 			.map((entry) => entry.split(" ")[1])
-			.filter((path) => path !== NEST_ONLY && !covered.has(path));
+			.filter((path) => path !== HEALTH_ROUTE && !covered.has(path));
 
 		expect(uncovered).toEqual([]);
 	});

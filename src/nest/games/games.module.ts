@@ -1,6 +1,5 @@
 import { Module } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { EnqueueResearchGamesUseCase } from "@/application/games/use-cases/enqueue-research-games.use-case.js";
 import {
 	PopularityFetcher,
 	PriceFetcher,
@@ -10,8 +9,9 @@ import type {
 	ResearchGamesRequest,
 	ResearchGamesRunner,
 } from "@/application/games/ports/research-games-runner.port.js";
-import { ResearchGamesUseCase } from "@/application/games/use-cases/research-games.use-case.js";
 import { PriceGames } from "@/application/games/services/price-games.js";
+import { EnqueueResearchGamesUseCase } from "@/application/games/use-cases/enqueue-research-games.use-case.js";
+import { ResearchGamesUseCase } from "@/application/games/use-cases/research-games.use-case.js";
 import { SearchGamesUseCase } from "@/application/games/use-cases/search-games.use-case.js";
 import type { BackgroundScheduler } from "@/application/shared/ports/background-scheduler.port.js";
 import type { Env } from "@/config/env.schema.js";
@@ -20,6 +20,7 @@ import { AllKeyShopPriceFetcher } from "@/infrastructure/games/allkeyshop-price-
 import { HttpGameTradeImporter } from "@/infrastructure/games/http-game-trade-importer.js";
 import { LazyGameTradeImporter } from "@/infrastructure/games/lazy-game-trade-importer.js";
 import { SteamChartsPopularityFetcher } from "@/infrastructure/games/steam-charts-popularity-fetcher.js";
+import { BrowserModule } from "@/nest/browser/browser.module.js";
 import { GamesController } from "@/nest/games/games.controller.js";
 import {
 	RESEARCH_RUNNER,
@@ -45,6 +46,11 @@ import {
  *   informação, escrita à mão.
  */
 @Module({
+	// `AllKeyShopPriceFetcher` recebe a `SharedBrowserSession` pelo construtor;
+	// quem é dono dela é o `BrowserModule`. Importar é obrigatório — redeclarar
+	// o provider aqui criaria uma SEGUNDA sessão de Chromium
+	// (`docs/nest-conceitos.md` §4).
+	imports: [BrowserModule],
 	controllers: [GamesController],
 	providers: [
 		{ provide: PopularityFetcher, useClass: SteamChartsPopularityFetcher },
@@ -66,8 +72,10 @@ import {
 					const baseUrl = config.get("SISTEMA_ESTOQUE_URL", { infer: true });
 					const secret = config.get("EXTERNAL_SECRET", { infer: true });
 
-					if (!baseUrl) throw new Error("SISTEMA_ESTOQUE_URL is not defined in .env");
-					if (!secret) throw new Error("EXTERNAL_SECRET is not defined in .env");
+					if (!baseUrl)
+						throw new Error("SISTEMA_ESTOQUE_URL is not defined in .env");
+					if (!secret)
+						throw new Error("EXTERNAL_SECRET is not defined in .env");
 
 					return new HttpGameTradeImporter(baseUrl, secret);
 				}),
@@ -87,7 +95,8 @@ import {
 		},
 		{
 			provide: SearchGamesUseCase,
-			useFactory: (priceGames: PriceGames) => new SearchGamesUseCase(priceGames),
+			useFactory: (priceGames: PriceGames) =>
+				new SearchGamesUseCase(priceGames),
 			inject: [PriceGames],
 		},
 		{
@@ -107,7 +116,10 @@ import {
 		 * Concorrência fixa em 1, não configurável: o scraping do AllKeyShop já é
 		 * serializado pelo browser compartilhado.
 		 */
-		{ provide: RESEARCH_SCHEDULER, useValue: new LimitedConcurrencyScheduler(1) },
+		{
+			provide: RESEARCH_SCHEDULER,
+			useValue: new LimitedConcurrencyScheduler(1),
+		},
 
 		/**
 		 * O que a fila executa. É só composição — nenhuma regra de negócio mora
@@ -124,8 +136,10 @@ import {
 		},
 		{
 			provide: EnqueueResearchGamesUseCase,
-			useFactory: (scheduler: BackgroundScheduler, runner: ResearchGamesRunner) =>
-				new EnqueueResearchGamesUseCase(scheduler, runner),
+			useFactory: (
+				scheduler: BackgroundScheduler,
+				runner: ResearchGamesRunner,
+			) => new EnqueueResearchGamesUseCase(scheduler, runner),
 			inject: [RESEARCH_SCHEDULER, RESEARCH_RUNNER],
 		},
 	],

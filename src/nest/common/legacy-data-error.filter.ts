@@ -10,19 +10,21 @@ import { AllExceptionsFilter } from "@/nest/common/all-exceptions.filter.js";
  * usando `data`, o mesmo campo que numa resposta de sucesso carrega o
  * resultado. Só o prefixo da mensagem difere entre elas.
  *
- * Congelar o **formato** durante a migração é obrigatório (`docs/NEST.md` §4);
- * copiar o **código** não é. As subclasses declaram só o prefixo.
+ * Congelar o **formato** era obrigatório durante a migração; copiar o **código**
+ * não. As subclasses declaram só o prefixo.
  *
- * Toda esta hierarquia some no item 16 do `docs/IMPROVEMENTS.md`, quando os
- * formatos forem uniformizados — o que só pode acontecer depois que o Express
- * sair de cena.
+ * Toda esta hierarquia some no item 14 do `docs/IMPROVEMENTS.md`, quando os
+ * formatos forem uniformizados. Com o Express fora, isso está desbloqueado.
  */
 @Catch()
 export abstract class LegacyDataErrorFilter extends AllExceptionsFilter {
 	/** Ex.: `"Invalid file content"`, `"Erro no corpo da requisição"`. */
 	protected abstract readonly messagePrefix: string;
 
-	protected override handleZodError(exception: ZodError, host: ArgumentsHost): void {
+	protected override handleZodError(
+		exception: ZodError,
+		host: ArgumentsHost,
+	): void {
 		const response = host.switchToHttp().getResponse<Response>();
 		// Só a mensagem, sem o caminho do campo — diferente do filter global,
 		// que prefixa cada problema com `path`.

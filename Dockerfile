@@ -1,7 +1,7 @@
-# Imagem em três estágios: (1) builder — compila TS, (2) prod — runtime mínimo, (3) dev — hot-reload com tsx watch.
+# Imagem em três estágios: (1) builder — compila TS, (2) prod — runtime mínimo, (3) dev — hot-reload com node --watch.
 
 # ---------------------------------------------------------------------------
-# Estágio dev: hot-reload via tsx watch + src/ montado como volume
+# Estágio dev: hot-reload via node --watch (SWC no require hook) + src/ montado como volume
 # ---------------------------------------------------------------------------
 FROM node:22-bookworm-slim AS dev
 
@@ -32,7 +32,7 @@ ENV DOCKER=true
 ENV DISPLAY=:99
 ENV CHROME_PATH=/usr/bin/chromium
 
-# Instala todas as dependências (incluindo devDependencies para tsx/typescript)
+# Instala todas as dependências (incluindo devDependencies para o watch/typescript)
 RUN npm ci
 
 COPY docker/start.dev.sh /app/start.dev.sh
@@ -116,11 +116,10 @@ RUN npm prune --omit=dev
 # Artefatos já compilados no estágio builder (não copiamos src/ nem node de dev).
 COPY --from=builder /app/dist ./dist
 
-# Express serve arquivos estáticos a partir de public/ (ver src/app.ts).
+# O app serve arquivos estáticos a partir de public/ (ver src/nest/configure-app.ts).
 COPY public ./public
 
-# Script de entrada: sobe Xvfb e depois o app escolhido por APP_ENTRYPOINT
-# (`express` → dist/server.js, `nest` → dist/main.js). Ver docker/start.sh.
+# Script de entrada: sobe Xvfb e depois `exec node dist/main.js`. Ver docker/start.sh.
 COPY docker/start.sh /app/start.sh
 RUN chmod +x /app/start.sh
 

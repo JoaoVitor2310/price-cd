@@ -7,7 +7,7 @@ import type { Env } from "@/config/env.schema.js";
  *
  * Existe por duas razões, além do óbvio: é o primeiro teste de que a cadeia de
  * DI funciona (injeção por tipo depende de `design:paramtypes` — ver ADR 0004),
- * e dá ao Docker um alvo de healthcheck quando o cutover chegar no PR 9.
+ * e dá ao Docker um alvo de healthcheck.
  */
 @Controller("health")
 export class HealthController {

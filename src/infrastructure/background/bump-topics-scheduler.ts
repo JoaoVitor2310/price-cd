@@ -1,6 +1,6 @@
 import { BumpTopicsUseCase } from "@/application/bump/use-cases/bump-topics.use-case.js";
-import { disposeIfPresent } from "@/lib/dispose.js";
 import { createPuppeteerSteamTradesBumper } from "@/infrastructure/bump/puppeteer-steam-trades-bumper.js";
+import { disposeIfPresent } from "@/lib/dispose.js";
 
 const INTERVAL_MS = 5 * 60 * 1000; // 5 minutos
 
@@ -10,9 +10,9 @@ const INTERVAL_MS = 5 * 60 * 1000; // 5 minutos
  * - Pula o tick se a execução anterior ainda estiver em andamento.
  * - O bumper mantém um browser persistente — não abre/fecha Chrome a cada tick.
  * - Devolve uma função de desligamento. NÃO registra handler de sinal: quem
- *   conhece o processo inteiro é o entrypoint (`src/server.ts` no Express,
- *   `OnApplicationShutdown` no Nest). Registrar aqui foi a causa do bug de
- *   shutdown descrito abaixo.
+ *   conhece o processo inteiro é o container (`OnApplicationShutdown` do
+ *   `BumpScheduler`). Registrar aqui foi a causa do bug de shutdown descrito
+ *   abaixo.
  * - Se STEAMTRADES_SESSION ou STEAM_ID não estiverem definidos, não inicia.
  */
 export function startBumpTopicsScheduler(): (() => Promise<void>) | null {
@@ -31,7 +31,9 @@ export function startBumpTopicsScheduler(): (() => Promise<void>) | null {
 
 	const run = async () => {
 		if (running) {
-			console.log("⏭️ [BUMP] Tick ignorado — execução anterior ainda em andamento.");
+			console.log(
+				"⏭️ [BUMP] Tick ignorado — execução anterior ainda em andamento.",
+			);
 			return;
 		}
 
@@ -58,7 +60,9 @@ export function startBumpTopicsScheduler(): (() => Promise<void>) | null {
 	void run();
 	const timer = setInterval(() => void run(), INTERVAL_MS);
 
-	console.log(`🚀 [BUMP] Scheduler iniciado — STEAM_ID: ${steamId} (intervalo: 5min)`);
+	console.log(
+		`🚀 [BUMP] Scheduler iniciado — STEAM_ID: ${steamId} (intervalo: 5min)`,
+	);
 
 	/**
 	 * Encerra o browser persistente do bump.

@@ -13,9 +13,10 @@ describe("validateEnv", () => {
 		expect(env.NODE_ENV).toBe("development");
 	});
 
-	it("gives Nest a different default port so both apps run side by side", () => {
-		expect(validateEnv({}).PORT_NEST).toBe(5557);
-		expect(validateEnv({}).PORT_NEST).not.toBe(validateEnv({}).PORT);
+	// `PORT_NEST` existia para o app Nest não colidir com o Express em dev. Com o
+	// Express removido sobrou uma porta só, e o nome convencional é `PORT`.
+	it("no longer exposes the coexistence-only port", () => {
+		expect(validateEnv({})).not.toHaveProperty("PORT_NEST");
 	});
 
 	it("treats an empty string as absent, not as zero", () => {
@@ -31,7 +32,9 @@ describe("validateEnv", () => {
 	});
 
 	it("rejects a non-numeric value and names the variable", () => {
-		expect(() => validateEnv({ PORT: "abc" })).toThrow(/PORT must be an integer/);
+		expect(() => validateEnv({ PORT: "abc" })).toThrow(
+			/PORT must be an integer/,
+		);
 	});
 
 	it("rejects a negative or fractional number", () => {
@@ -83,12 +86,17 @@ describe("validateEnv", () => {
 		["765a;765b", ["765a", "765b"]],
 		["765a\n765b", ["765a", "765b"]],
 		["765a,765a", ["765a"]],
-	])("parses USER_TO_IGNORE=%s the same way the Express app does", (raw, expected) => {
-		// Uma regra própria aqui, separando só por vírgula, fazia
-		// `USER_TO_IGNORE="id1;id2"` virar um ID literal: o Nest não ignoraria
-		// ninguém e comentaria em anúncios que o Express nunca abordaria.
-		expect(validateEnv({ USER_TO_IGNORE: raw }).USER_TO_IGNORE).toEqual(expected);
-	});
+	])(
+		"parses USER_TO_IGNORE=%s the same way the Express app does",
+		(raw, expected) => {
+			// Uma regra própria aqui, separando só por vírgula, fazia
+			// `USER_TO_IGNORE="id1;id2"` virar um ID literal: o Nest não ignoraria
+			// ninguém e comentaria em anúncios que o Express nunca abordaria.
+			expect(validateEnv({ USER_TO_IGNORE: raw }).USER_TO_IGNORE).toEqual(
+				expected,
+			);
+		},
+	);
 
 	it("splits USER_TO_IGNORE on commas and trims each id", () => {
 		const env = validateEnv({ USER_TO_IGNORE: " 7656119, 7656118 ,, " });
@@ -101,26 +109,30 @@ describe("validateEnv", () => {
 	});
 
 	it("reads USE_EXTERNAL_XVFB and DOCKER as strict 'true' flags", () => {
-		expect(validateEnv({ USE_EXTERNAL_XVFB: "true" }).USE_EXTERNAL_XVFB).toBe(true);
-		expect(validateEnv({ USE_EXTERNAL_XVFB: "1" }).USE_EXTERNAL_XVFB).toBe(false);
+		expect(validateEnv({ USE_EXTERNAL_XVFB: "true" }).USE_EXTERNAL_XVFB).toBe(
+			true,
+		);
+		expect(validateEnv({ USE_EXTERNAL_XVFB: "1" }).USE_EXTERNAL_XVFB).toBe(
+			false,
+		);
 		expect(validateEnv({}).DOCKER).toBe(false);
 	});
 
 	describe("BUMP_SCHEDULER_ENABLED", () => {
 		it("defaults to on so the bump does not vanish at the cutover", () => {
-			// Se o default fosse desligado, o cutover do PR 9 passaria e o bump
+			// Se o default fosse desligado, o cutover para o Nest passaria e o bump
 			// simplesmente pararia de acontecer em produção, sem erro nenhum.
 			expect(validateEnv({}).BUMP_SCHEDULER_ENABLED).toBe(true);
 		});
 
-		it.each([["true", true], ["false", false]])(
-			"reads %s",
-			(raw, expected) => {
-				expect(validateEnv({ BUMP_SCHEDULER_ENABLED: raw }).BUMP_SCHEDULER_ENABLED).toBe(
-					expected,
-				);
-			},
-		);
+		it.each([
+			["true", true],
+			["false", false],
+		])("reads %s", (raw, expected) => {
+			expect(
+				validateEnv({ BUMP_SCHEDULER_ENABLED: raw }).BUMP_SCHEDULER_ENABLED,
+			).toBe(expected);
+		});
 
 		it.each(["0", "no", "off", "FALSE", "disabled"])(
 			"refuses %s instead of silently treating it as on",

@@ -27,9 +27,9 @@ describe("booting without the inventory system configured", () => {
 	};
 
 	beforeEach(async () => {
-		// O agendador de bump abre um Chromium e fala com o SteamTrades no
-		// primeiro tick. Nenhum teste quer isso acontecendo por baixo.
-		process.env.BUMP_SCHEDULER_ENABLED = "false";
+		// O agendador de bump fica desligado pela suíte inteira, em
+		// `test/setup.ts` — setar `BUMP_SCHEDULER_ENABLED` aqui não teria efeito,
+		// porque o schema tem default e o valor congela no import do módulo.
 		delete process.env.SISTEMA_ESTOQUE_URL;
 		delete process.env.EXTERNAL_SECRET;
 
@@ -60,7 +60,11 @@ describe("booting without the inventory system configured", () => {
 	it("still serves the demo path", async () => {
 		const response = await request(app.getHttpServer())
 			.post("/api/games/research")
-			.send({ minPopularity: 0, gameNames: ["Hades"], checkGamivoOffer: false });
+			.send({
+				minPopularity: 0,
+				gameNames: ["Hades"],
+				checkGamivoOffer: false,
+			});
 
 		expect(response.status).toBe(200);
 		expect(response.body.demo).toBe(true);
