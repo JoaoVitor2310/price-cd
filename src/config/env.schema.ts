@@ -6,9 +6,9 @@ import { parseEnvList } from "@/helpers/parse-env-list.js";
  * o processo lê de `process.env`.
  *
  * Vive em `src/config/` (não em `src/nest/`) porque não é detalhe de
- * apresentação: descreve o processo, é consumido pelo `ConfigModule` do Nest
- * hoje e pode ser consumido pelo Express enquanto os dois coexistirem
- * (`docs/NEST.md` §3). Não conhece HTTP nem framework.
+ * apresentação: descreve o processo. O `ConfigModule` do Nest o consome, mas o
+ * schema não conhece HTTP nem framework — foi o que permitiu compartilhá-lo com
+ * o Express durante a migração, e é o que o mantém testável sem container.
  *
  * ## Por que quase nada é obrigatório
  *
@@ -112,14 +112,18 @@ const baseEnvSchema = z.object({
 		.default("development"),
 
 	// ── Servidor ──────────────────────────────────────────────────────────────
-	/** Porta do app Express, o que serve produção hoje. */
-	PORT: nonNegativeIntWithDefault("PORT", 5555),
 	/**
-	 * Porta do app Nest. Default diferente do Express de propósito: durante a
-	 * coexistência os dois sobem em dev ao mesmo tempo e não podem colidir.
+	 * Porta em que o app escuta.
+	 *
+	 * Durante a coexistência com o Express havia um `PORT_NEST` separado, com
+	 * default 5557, para os dois subirem em dev sem colidir. Sobrou um app: a
+	 * porta volta a ter um nome só.
 	 */
-	PORT_NEST: nonNegativeIntWithDefault("PORT_NEST", 5557),
-	SERVER_TIMEOUT_MS: nonNegativeIntWithDefault("SERVER_TIMEOUT_MS", 10 * 60 * 1000),
+	PORT: nonNegativeIntWithDefault("PORT", 5555),
+	SERVER_TIMEOUT_MS: nonNegativeIntWithDefault(
+		"SERVER_TIMEOUT_MS",
+		10 * 60 * 1000,
+	),
 
 	// ── Puppeteer e Chromium ──────────────────────────────────────────────────
 	TIMEOUT: nonNegativeInt("TIMEOUT"),
@@ -153,11 +157,12 @@ const baseEnvSchema = z.object({
 	 *
 	 * Existe por um risco de negócio, não de desempenho: se o app Express e o
 	 * Nest agendarem bump ao mesmo tempo, são **dois processos comentando no
-	 * SteamTrades com a mesma conta** — caminho conhecido para ban. Enquanto os
-	 * dois coexistem (até o PR 9), quem subir os dois em dev precisa desligar um
-	 * com `BUMP_SCHEDULER_ENABLED=false`.
+	 * SteamTrades com a mesma conta** — caminho conhecido para ban. Nasceu da
+	 * coexistência com o Express e continua valendo: quem subir uma segunda
+	 * instância (dev junto da produção) desliga o agendador nela com
+	 * `BUMP_SCHEDULER_ENABLED=false`.
 	 *
-	 * O default é ligado de propósito: se fosse desligado, o cutover do PR 9
+	 * O default é ligado de propósito: se fosse desligado, o cutover para o Nest
 	 * passaria e o bump simplesmente pararia de acontecer em produção, sem erro
 	 * nenhum. Perder a função em silêncio é pior que o risco em dev, onde a
 	 * pessoa vê os dois logs subindo.
@@ -193,7 +198,10 @@ const baseEnvSchema = z.object({
 	// ── Agendamento e concorrência ────────────────────────────────────────────
 	RUN_LISTS_CONCURRENCY: positiveIntWithDefault(1),
 	MAX_ACTIVE_LISTS: positiveIntWithDefault(3),
-	NEW_SUPPLIERS_INTERVAL_HOURS: nonNegativeIntWithDefault("NEW_SUPPLIERS_INTERVAL_HOURS", 24),
+	NEW_SUPPLIERS_INTERVAL_HOURS: nonNegativeIntWithDefault(
+		"NEW_SUPPLIERS_INTERVAL_HOURS",
+		24,
+	),
 });
 
 /** O que, faltando em produção, faz o serviço subir sem poder fazer nada. */
@@ -231,7 +239,9 @@ export function validateEnv(raw: Record<string, unknown>): Env {
 
 	if (!result.success) {
 		const problems = result.error.issues
-			.map((issue) => `  - ${issue.path.join(".") || "(root)"}: ${issue.message}`)
+			.map(
+				(issue) => `  - ${issue.path.join(".") || "(root)"}: ${issue.message}`,
+			)
 			.join("\n");
 		throw new Error(`Invalid environment configuration:\n${problems}`);
 	}

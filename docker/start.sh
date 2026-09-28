@@ -26,42 +26,5 @@ Xvfb ":${DISPLAY_NUM}" -screen 0 1920x1080x24 -ac +extension GLX +render -norese
 # Pequena pausa para o socket do display existir antes do Node abrir o browser.
 sleep 2
 
-# ---------------------------------------------------------------------------
-# Qual app sobe: o Express (atual) ou o Nest (migração — docs/NEST.md).
-#
-# O cutover é esta variável, e o rollback também: trocar o valor e reiniciar o
-# container. Sem rebuild, sem revert de commit, sem deploy. É o que torna a
-# troca reversível em um comando — e a razão de ela não ser um `exec` fixo.
-#
-# Default `express` de propósito: o merge deste PR não muda nada em produção.
-# A troca acontece na VPS, deliberadamente, e é observada por 1–2 semanas antes
-# de o Express ser removido (PR 10).
-#
-# ⚠️ Um app por container, sempre. O `mem_limit: 2g` e o `pids_limit: 512` do
-# docker-compose existem por causa do OOM de 2026-08-24; dois processos Node com
-# Chromium próprio dentro desse teto é convite para repetir o incidente.
-# Comparação lado a lado acontece no CI e em dev, nunca aqui.
-# ---------------------------------------------------------------------------
-# Minúsculas: quem edita isto no `.env` da VPS não deve ser punido por digitar
-# "Nest". Valor desconhecido continua falhando alto — a tolerância é com a
-# caixa, não com o conteúdo.
-#
-# `${var,,}` é expansão do bash, não `echo | tr`: sem subshell, e sem o risco de
-# um valor como `-n` ser engolido como flag do `echo` (viraria string vazia, e a
-# mensagem de erro sairia sem dizer o que estava errado).
-APP_ENTRYPOINT="${APP_ENTRYPOINT:-express}"
-APP_ENTRYPOINT="${APP_ENTRYPOINT,,}"
-
-case "${APP_ENTRYPOINT}" in
-	express) ENTRYPOINT_FILE="dist/server.js" ;;
-	nest)    ENTRYPOINT_FILE="dist/main.js" ;;
-	*)
-		echo "❌ Invalid APP_ENTRYPOINT: '${APP_ENTRYPOINT}'. Use 'express' or 'nest'." >&2
-		exit 1
-		;;
-esac
-
-echo "🚀 Starting the ${APP_ENTRYPOINT} app (${ENTRYPOINT_FILE})"
-
 # exec substitui o processo do shell pelo Node: o Node vira PID 1 (sinais SIGTERM chegam certo no app).
-exec node "${ENTRYPOINT_FILE}"
+exec node dist/main.js

@@ -5,12 +5,10 @@ projeto**, com a armadilha correspondente. Não substitui a documentação ofici
 o tutorial genérico de blog, que ensina o Nest com um CRUD e não com um scraper que segura
 processos de Chromium.
 
-O plano de migração está em `docs/NEST.md`; a decisão e seus trade-offs, em
-`docs/adr/0004-nest-como-camada-de-apresentacao.md`.
-
-Enquanto a migração corre, este arquivo é escrito no futuro do pretérito ("vai ser").
-Conforme cada PR fecha, a seção correspondente é reescrita no presente, descrevendo o que
-o código faz — é documentação viva, não anotação de estudo.
+A decisão e seus trade-offs estão em
+`docs/adr/0004-nest-como-camada-de-apresentacao.md`. O plano da migração vivia em
+`docs/NEST.md`, apagado ao fim dela — descrevia uma transição que acabou; o histórico
+está no `git log`.
 
 ---
 
@@ -25,10 +23,10 @@ O container mantém um **grafo de dependências**. Você declara *o que existe* 
 *quem precisa de quê* (parâmetros de construtor); o container descobre a ordem de construção,
 instancia uma vez, e entrega a mesma instância a todo mundo que pedir.
 
-É exatamente o que `src/services/` faz hoje, à mão:
+É exatamente o que o antigo `src/services/` fazia à mão, em cada fluxo:
 
 ```ts
-// src/services/games/research-games.service.ts — hoje
+// src/services/games/research-games.service.ts — removido junto com o Express
 let _scheduler: BackgroundScheduler | undefined;
 function getScheduler(): BackgroundScheduler {
   if (!_scheduler) _scheduler = new LimitedConcurrencyScheduler(1);
@@ -36,10 +34,10 @@ function getScheduler(): BackgroundScheduler {
 }
 ```
 
-Esse padrão — singleton preguiçoso com variável de módulo — se repete em
-`research-games.service.ts`, `enqueue-run-lists.service.ts` e `find-new-suppliers.factory.ts`.
-Funciona, mas: a ordem de construção é implícita (depende de quem importa primeiro), não há
-ponto único para desligar nada, e testar exige `vi.mock` no módulo inteiro.
+Esse padrão — singleton preguiçoso com variável de módulo — se repetia em três arquivos.
+Funcionava, mas: a ordem de construção era implícita (dependia de quem importasse
+primeiro), não havia ponto único para desligar nada, e testar exigia `vi.mock` no módulo
+inteiro. É a dor que o container resolve por definição.
 
 Três blocos, e a divisão de trabalho entre eles:
 
@@ -70,7 +68,7 @@ Consequências práticas:
 provider. Mas coloque mesmo assim: no dia em que ela ganhar uma dependência, ninguém vai
 lembrar do porquê da omissão.
 - Isso depende de `emitDecoratorMetadata: true` no `tsconfig.json` **e** de um transform que
-preserve metadata. O esbuild do Vitest não preserva — daí o risco 7.2 do `NEST.md`.
+preserve metadata. O esbuild do Vitest não preserva — por isso os testes rodam sob SWC (`unplugin-swc`).
 
 ---
 
@@ -96,8 +94,8 @@ esbarra nele. Existem três saídas.
 > `@nestjs/*` — nem `@Injectable()`. Então o use case é registrado com **opção C**
 > (`useFactory` + `inject`). As duas convivem no mesmo módulo, e é assim de propósito:
 > B para o token, C para o wiring de tudo que mora em `application/`.
-> Vitest (risco 7.2 do `NEST.md`), e nesse caso só nos use cases afetados — não é licença para
-> misturar as duas estratégias por gosto.
+> Vitest, e nesse caso só nos use cases afetados — não é licença para misturar as duas
+> estratégias por gosto.
 >
 > A decisão e seus trade-offs estão em `docs/adr/0004-nest-como-camada-de-apresentacao.md`;
 > aqui fica só o que ela significa na prática de cada porta.
@@ -219,8 +217,9 @@ export class BrowserModule {}
 @Module({ imports: [BrowserModule] })  export class SuppliersModule {}
 ```
 
-Vale para tudo que tem estado: sessões de browser, filas, caches. Está no checklist do
-critério de conclusão (`NEST.md` §8).
+Vale para tudo que tem estado: sessões de browser, filas, caches. É a armadilha mais
+cara do repo: duas instâncias de `SharedBrowserSession` são dois Chromium, e o container
+tem `mem_limit: 2g`.
 
 ### `@Global()`
 
@@ -286,7 +285,7 @@ A ordem importa e é fixa:
 
 ```
 requisição
-   → middleware        (nível Express; configurado em configure(consumer))
+   → middleware        (nível da plataforma HTTP; configurado em configure(consumer))
    → guards            (autorização: retorna true/false)
    → interceptors      (antes do handler)
    → pipes             (validação e transformação do input)
@@ -329,7 +328,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
 ```
 
 ⚠️ Exceções lançadas em **middleware** não passam pelos filters do Nest — caem no tratamento
-de erro do Express. Trate ali mesmo, se um dia houver middleware.
+de erro do Express, que é a plataforma HTTP por baixo. Trate ali mesmo, se um dia houver
+middleware.
 
 ### `useGlobalPipes()` vs `APP_PIPE`
 
@@ -359,7 +359,7 @@ const games = await demo(request);  res.status(200)...
 Um Guard que retorna `false` para token errado mudaria o contrato público e quebraria o
 harness de contrato. Se quiser usar o conceito mesmo assim, o caminho honesto é um Guard que
 **sempre** retorna `true` e apenas anota `request.isAuthenticated` — decisão de gosto, não de
-arquitetura, e o `NEST.md` PR 4 registra qual foi escolhida.
+arquitetura. O que foi escolhido: nada de Guard, a checagem fica no controller.
 
 Esse é o tipo de coisa que vale ter visto: nem todo endpoint com token é "autorização".
 
@@ -497,7 +497,7 @@ A palavra tem três significados em jogo aqui, e só um deles é o que queremos:
 | Significado | Onde aparece | Vale neste repo? |
 |---|---|---|
 | Regra de negócio que fala com o banco | tutoriais de Nest | ❌ regra vive em `domain/` e `application/` |
-| Composition root montado à mão | `src/services/` deste repo | ⏳ **morre no PR 10**, junto com o Express |
+| Composition root montado à mão | `src/services/`, que existia neste repo | ❌ removido junto com o Express; o container faz esse papel |
 | Colaborador de aplicação que orquestra portas e domínio | DDD / clean architecture | ✅ **é este** |
 
 **O terceiro é o certo.** `PriceGames` é um Application Service no sentido clássico: stateless,
@@ -515,7 +515,7 @@ application/<módulo>/
 └── ports/        # o que a aplicação precisa do mundo externo
 ```
 
-`application/games/services/` é inconfundível com `src/services/` — o caminho inteiro já diz
+`application/games/services/` era inconfundível com o antigo `src/services/` — o caminho já dizia
 que é camada de aplicação. Regra de dependência: `use-cases/` importa de `services/` e
 `ports/`, nunca o contrário.
 
@@ -527,12 +527,13 @@ que é camada de aplicação. Regra de dependência: `use-cases/` importa de `se
 | sem sufixo | `application/<módulo>/services/` | Application Service. Nome é frase verbal (`price-games.ts` → `PriceGames`) |
 | `*.controller.ts` | `nest/<módulo>/` | Só HTTP: parse, chamada, resposta |
 | `*.module.ts` | `nest/<módulo>/` | Só wiring |
-| `*.service.ts` | — | **Não usar enquanto `src/services/` existir** |
+| `*.service.ts` | `application/<módulo>/services/` | Liberado: o `src/services/` que o tornava ambíguo não existe mais |
 
-A proibição do sufixo `.service.ts` é **temporária e tática**, não de princípio: enquanto
-`src/services/` existir, o sufixo convida alguém a colocar o arquivo no diretório errado —
-junto do wiring que o container está substituindo. Quando esse diretório morrer no PR 10, o
-sufixo fica livre e pode ser adotado em `application/<módulo>/services/`.
+O sufixo `.service.ts` foi proibido por um tempo, e era proibição **tática**, não de
+princípio: enquanto `src/services/` existia, o sufixo convidava a colocar o arquivo no
+diretório errado — junto do wiring que o container substituiu. Aquele diretório foi
+removido com o Express, então o sufixo está livre. Os arquivos já escritos sem ele
+(`price-games.ts`) ficam como estão: renomear por consistência é churn sem ganho.
 
 ### O que separa use case de service
 
@@ -561,8 +562,8 @@ Saber o que ficou de fora, e por quê, vale tanto quanto saber o que entrou.
 | CQRS module                             | Não há separação leitura/escrita a fazer num scraper sem banco.                                                                                                                              |
 | Guards para autenticação                | O contrato do modo demo exige 200 com token errado. Ver §6.                                                                                                                                  |
 | Interceptors                            | Nenhum caso hoje. Candidatos futuros em §6.                                                                                                                                                  |
-| Fastify adapter                         | O Express platform é o que preserva paridade de comportamento durante o strangler. Trocar depois, se houver motivo medido — não há.                                                          |
-| BullMQ (`@nestjs/bullmq`)               | A fila in-process resolve hoje. Vira candidato se os itens 4 e 5 do `IMPROVEMENTS.md` exigirem sobreviver a restart — e aí o `BackgroundScheduler` já é uma porta, então troca-se o adapter. |
+| Fastify adapter                         | O Express platform foi o que preservou paridade de comportamento durante o strangler, e nenhuma medição pede mais throughput. Trocar só com motivo medido.                                   |
+| BullMQ (`@nestjs/bullmq`)               | A fila in-process resolve hoje. Vira candidato se os itens 3 e 4 do `IMPROVEMENTS.md` exigirem sobreviver a restart — e aí o `BackgroundScheduler` já é uma porta, então troca-se o adapter. |
 
 
 A última linha é o argumento de que a arquitetura atual estava certa: adotar Nest não obriga

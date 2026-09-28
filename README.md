@@ -90,7 +90,7 @@ This allows the tool to be publicly accessible for demonstration while keeping t
 | Layer | Technology |
 |---|---|
 | Runtime | Node.js 22 + TypeScript 5 |
-| HTTP Server | Express 5 |
+| HTTP Server | Nest.js 12 (Express platform) |
 | Validation | Zod 4 |
 | Scraping | Puppeteer Real Browser + stealth/adblocker plugins |
 | HTTP Client | Native fetch (Node.js 22) |
@@ -106,31 +106,51 @@ This allows the tool to be publicly accessible for demonstration while keeping t
 
 ```
 src/
-├── routes/            # Thin HTTP routing (method + path only)
-├── controllers/       # Request parsing, Zod validation, auth, response shaping
+├── main.ts            # Process entrypoint: boots the Nest container
+├── config/            # Zod schema for the environment, validated once at boot
+├── nest/              # Presentation + wiring: modules, controllers, filters, pipes
+│   ├── common/        #   AllExceptionsFilter, ZodValidationPipe
+│   ├── config/        #   ConfigModule with the validated schema
+│   ├── games/         #   GamesController and its module
+│   ├── lists/         #   ListsController and its module
+│   ├── suppliers/     #   SuppliersController and its module
+│   ├── bump/          #   BumpScheduler (@Interval + lifecycle hooks)
+│   ├── browser/       #   BrowserModule — owns the shared Chromium sessions
+│   └── health/        #   Liveness probe
 ├── schemas/           # Zod schemas + parse helpers
 ├── application/       # Application layer, one directory per subdomain
-│   └── games/
+│   ├── games/
 │   │   ├── use-cases/ #   SearchGamesUseCase, ResearchGamesUseCase
 │   │   ├── services/  #   PriceGames — the pricing engine shared by every flow
 │   │   └── ports/     #   PopularityFetcher, PriceFetcher, GameTradeImporter
-│   └── lists/
-│       └── use-cases/ #   RunListsUseCase, EnqueueRunListsUseCase
+│   ├── lists/         #   RunListsUseCase, EnqueueRunListsUseCase
+│   ├── suppliers/     #   FindNewSuppliersUseCase
+│   └── bump/          #   BumpTopicsUseCase
 ├── domain/            # Pure business rules (no Node, no HTTP)
-│   └── games/         #   worthyByPopularity, partitionByPrice, filterExcludedGames
-│   └── lists/         #   ListTopic entity
+│   ├── games/         #   worthyByPopularity, partitionByPrice, filterExcludedGames
+│   ├── lists/         #   ListTopic entity
+│   └── suppliers/     #   HaveListing parsing
 ├── infrastructure/    # Concrete adapters implementing port interfaces
-│   ├── games/         #   HttpGameTradeImporter
+│   ├── games/         #   AllKeyShopPriceFetcher, HttpGameTradeImporter
 │   ├── background/    #   LimitedConcurrencyScheduler
-│   ├── http/          #   AxiosRunListsCallbackPoster
-│   └── lists/         #   FetchListTopic (Puppeteer), FormatListResult
-├── services/          # Application service orchestration
+│   ├── browser/       #   SharedBrowserSession, SuppliersBrowserSession
+│   ├── bump/          #   PuppeteerSteamTradesBumper
+│   ├── lists/         #   FetchListTopic (Puppeteer), FormatListResult
+│   └── suppliers/     #   Puppeteer paginator, topic scraper, comment poster
 ├── helpers/           # Pure string-transformation utilities (clear-string.ts)
-├── lib/               # Shared infrastructure (Puppeteer factory, Disposable)
+├── lib/               # Shared infrastructure (Puppeteer factory, process tree, Disposable)
 └── types/             # TypeScript type definitions
 ```
 
-The `lists` subdomain exposes explicit port interfaces (`ListTopicFetcher`, `BackgroundScheduler`, `RunListsCallbackPoster`, `RunListsRunner`) injected via factory functions — every use case is testable with zero infrastructure.
+Layer boundary. `test/unit/architecture/layer-boundary.test.ts` enforces the part a test can
+check: `domain/`, `application/` and `helpers/` never import `@nestjs/*`; `infrastructure/`
+and `lib/` at most `@nestjs/common` (for `@Injectable()`). "Business rules never live in
+`nest/`" stays a review rule — no test tells orchestration from a rule.
+
+Ports are `abstract class`es, not interfaces: they survive compilation, so they double as the
+injection token without a decorator. The `lists` subdomain declares `ListTopicFetcher`,
+`BackgroundScheduler`, `RunListsCallbackPoster` and `RunListsRunner` — every use case is
+testable with zero infrastructure.
 
 ---
 
@@ -156,13 +176,6 @@ docker compose up price-researcher-dev
 npm test
 ```
 
-**Run the Nest app (migration in progress):**
-```bash
-npm run dev:nest   # port 5557, alongside the Express app on 5555
-```
-The project is being migrated to Nest.js with the Strangler Fig pattern — both entrypoints
-coexist over a shared core until the cutover. Production runs Express. See `docs/NEST.md`.
-
 ---
 
 ## API Endpoints
@@ -174,7 +187,7 @@ coexist over a shared core until the cutover. Production runs Express. See `docs
 | `POST` | `/api/games/search-id-steam` | Resolve Steam IDs for a list of games |
 | `POST` | `/api/lists/run` | Async: crawl a Steam user's trade lists and run full analysis |
 | `POST` | `/api/suppliers/find-new` | Async, queued: scan SteamTrades for new suppliers offering games for TF2 keys |
-| `GET` | `/api/health` | **Nest app only** (`npm run dev:nest`, port 5557). Liveness probe — not served by the Express app in production |
+| `GET` | `/api/health` | Liveness probe |
 
 <details>
 <summary><strong>POST /api/games/research — request body</strong></summary>

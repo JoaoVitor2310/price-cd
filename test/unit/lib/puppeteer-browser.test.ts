@@ -41,28 +41,9 @@ const createFakeBrowser = (pid: number | undefined = 4242) => {
 	};
 };
 
-const createFakeSession = (browser: FakeBrowser) => ({
-	browser,
-	page: {
-		setViewport: vi.fn().mockResolvedValue(undefined),
-		setDefaultTimeout: vi.fn(),
-	},
-});
-
 const load = async () => {
 	vi.resetModules();
 	return import("@/lib/puppeteer-browser.js");
-};
-
-/**
- * As funções de sessão saíram de `lib/` para `infrastructure/browser/sessions`
- * no PR 6: `lib/puppeteer-browser.ts` voltou a ser a folha que só sabe abrir e
- * fechar um Chromium, e as sessões ganharam dono explícito. Estes testes
- * continuam valendo — só mudou de onde as funções vêm.
- */
-const loadSessions = async () => {
-	vi.resetModules();
-	return import("@/infrastructure/browser/sessions.js");
 };
 
 beforeEach(() => {
@@ -176,141 +157,33 @@ describe("cleanupBrowser", () => {
 	});
 });
 
-describe("shared session", () => {
-	it("reuses the same browser while it is alive", async () => {
+/**
+ * Esta função era exercitada de lado, pelos testes das sessões que viviam aqui.
+ * Eles saíram para `test/unit/infrastructure/browser/`, contra as classes direto
+ * — então a cobertura de `initializeBrowser` passou a ser explícita.
+ */
+describe("initializeBrowser", () => {
+	it("configures the page it hands back", async () => {
+		process.env.TIMEOUT = "7000";
 		const browser = createFakeBrowser();
-		connect.mockResolvedValue(createFakeSession(browser));
-		const { getSharedSession } = await loadSessions();
+		const session = {
+			browser,
+			page: {
+				setViewport: vi.fn().mockResolvedValue(undefined),
+				setDefaultTimeout: vi.fn(),
+			},
+		};
+		connect.mockResolvedValue(session);
+		const { initializeBrowser } = await load();
 
-		const first = await getSharedSession();
-		const second = await getSharedSession();
+		const opened = await initializeBrowser();
 
-		expect(first).toBe(second);
-		expect(connect).toHaveBeenCalledTimes(1);
-	});
-
-	it("closes the browser on invalidate instead of just dropping the reference", async () => {
-		const browser = createFakeBrowser();
-		connect.mockResolvedValue(createFakeSession(browser));
-		const { getSharedSession, invalidateSharedSession } = await loadSessions();
-
-		await getSharedSession();
-		await invalidateSharedSession();
-
-		// Era este o vazamento: `_session = null` sem fechar o Chromium.
-		expect(browser.close).toHaveBeenCalledTimes(1);
-	});
-
-	it("opens a fresh browser after an invalidation", async () => {
-		const first = createFakeBrowser();
-		const second = createFakeBrowser();
-		connect
-			.mockResolvedValueOnce(createFakeSession(first))
-			.mockResolvedValueOnce(createFakeSession(second));
-		const { getSharedSession, invalidateSharedSession } = await loadSessions();
-
-		await getSharedSession();
-		await invalidateSharedSession();
-		const session = await getSharedSession();
-
-		expect(connect).toHaveBeenCalledTimes(2);
-		expect(session.browser).toBe(second);
-	});
-
-	it("reaps the dead session when the health check fails", async () => {
-		const dead = createFakeBrowser(4242);
-		const fresh = createFakeBrowser(4343);
-		connect
-			.mockResolvedValueOnce(createFakeSession(dead))
-			.mockResolvedValueOnce(createFakeSession(fresh));
-		const { getSharedSession } = await loadSessions();
-
-		await getSharedSession();
-		// O OOM killer levou um renderer: pages() lança, mas a árvore continua viva.
-		dead.pages.mockRejectedValue(new Error("Target closed"));
-		isAlive.mockImplementation((pid: number) => pid === 4242);
-
-		const session = await getSharedSession();
-
-		expect(session.browser).toBe(fresh);
-		expect(dead.close).toHaveBeenCalledTimes(1);
-		expect(killPid).toHaveBeenCalledWith(4242, "SIGKILL");
-	});
-
-	it("recycles the session once it is older than the configured max age", async () => {
-		process.env.BROWSER_SESSION_MAX_AGE_MS = "1";
-		const first = createFakeBrowser();
-		const second = createFakeBrowser();
-		connect
-			.mockResolvedValueOnce(createFakeSession(first))
-			.mockResolvedValueOnce(createFakeSession(second));
-		const { getSharedSession } = await loadSessions();
-
-		await getSharedSession();
-		await new Promise((resolve) => setTimeout(resolve, 5));
-		const session = await getSharedSession();
-
-		expect(first.close).toHaveBeenCalledTimes(1);
-		expect(session.browser).toBe(second);
-	});
-
-	it("keeps the session when recycling is disabled", async () => {
-		process.env.BROWSER_SESSION_MAX_AGE_MS = "0";
-		const browser = createFakeBrowser();
-		connect.mockResolvedValue(createFakeSession(browser));
-		const { getSharedSession } = await loadSessions();
-
-		const first = await getSharedSession();
-		await new Promise((resolve) => setTimeout(resolve, 5));
-
-		expect(await getSharedSession()).toBe(first);
-		expect(connect).toHaveBeenCalledTimes(1);
-	});
-
-	it("closes a browser that finishes opening after an invalidation", async () => {
-		const late = createFakeBrowser();
-		let release: (() => void) | undefined;
-		connect.mockImplementation(
-			() =>
-				new Promise((resolve) => {
-					release = () => resolve(createFakeSession(late));
-				}),
-		);
-		const { getSharedSession, invalidateSharedSession } = await loadSessions();
-
-		const pending = getSharedSession().catch(() => "rejected");
-		const invalidation = invalidateSharedSession();
-		release?.();
-
-		await invalidation;
-		// Sem o controle de geração, este browser tardio sobrescreveria a
-		// referência zerada e ficaria vivo para sempre.
-		await expect(pending).resolves.toBe("rejected");
-		expect(late.close).toHaveBeenCalledTimes(1);
-	});
-});
-
-describe("suppliers session", () => {
-	it("closes the browser and lets the next run open a new one", async () => {
-		const first = createFakeBrowser();
-		const second = createFakeBrowser();
-		connect
-			.mockResolvedValueOnce(createFakeSession(first))
-			.mockResolvedValueOnce(createFakeSession(second));
-		const { getSuppliersSession, cleanupSuppliersSession } = await loadSessions();
-
-		await getSuppliersSession();
-		await cleanupSuppliersSession();
-		const session = await getSuppliersSession();
-
-		expect(first.close).toHaveBeenCalledTimes(1);
-		expect(session.browser).toBe(second);
-	});
-
-	it("is a no-op when no suppliers session was ever opened", async () => {
-		const { cleanupSuppliersSession } = await loadSessions();
-
-		await expect(cleanupSuppliersSession()).resolves.toBeUndefined();
-		expect(connect).not.toHaveBeenCalled();
+		expect(opened.browser).toBe(browser);
+		expect(session.page.setViewport).toHaveBeenCalledWith({
+			width: 1920,
+			height: 1080,
+		});
+		expect(session.page.setDefaultTimeout).toHaveBeenCalledWith(7000);
+		delete process.env.TIMEOUT;
 	});
 });

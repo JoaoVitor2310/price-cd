@@ -24,7 +24,16 @@ import { validateEnv } from "@/config/env.schema.js";
  * **reconstruir o módulo com outro ambiente não muda o valor**. Se um teste
  * precisa variar configuração, ele tem que provar o mapeamento no schema
  * (`test/unit/config/env.schema.test.ts`) e provar o wiring separado — não
- * tentar as duas coisas reconstruindo o módulo.
+ * tentar as duas coisas reconstruindo o módulo. O que precisa valer para a
+ * suíte inteira vai em `test/setup.ts`, que roda antes de qualquer import.
+ *
+ * Duas consequências que já morderam:
+ *
+ * 1. O `.env` só chega em tempo se for carregado **antes** deste arquivo. É por
+ *    isso que `src/main.ts` faz `import "dotenv/config"` na primeira linha, e
+ *    `test/unit/config/dotenv-order.test.ts` trava essa ordem.
+ * 2. Quatro arquivos de teste setavam `BUMP_SCHEDULER_ENABLED = "false"` num
+ *    `beforeAll` e o agendador rodava mesmo assim.
  *
  * `validate` roda **no boot**, uma vez. Variável malformada derruba o processo
  * com a lista completa de problemas, em vez de estourar no primeiro request —
@@ -52,7 +61,7 @@ import { validateEnv } from "@/config/env.schema.js";
 			 *
 			 * O `.env` continua valendo em dev: quem o carrega é o `dotenv.config()`
 			 * do `src/main.ts`, que **não** sobrescreve variável já definida — a
-			 * precedência correta, e a mesma que o Express já usa via `src/app.ts`.
+			 * precedência correta.
 			 */
 			ignoreEnvFile: true,
 		}),

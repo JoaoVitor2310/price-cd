@@ -6,8 +6,11 @@ import type {
 } from "@/application/suppliers/ports/topic-scraper.port.js";
 import { HaveListing } from "@/domain/lists/have-listing.js";
 import { acceptsTf2KeysFromUs } from "@/domain/suppliers/supplier-eligibility.js";
+// Import de VALOR, não `import type`: a classe é o token de injeção, então
+// precisa existir em runtime para o `design:paramtypes` do decorator
+// registrá-la. Com `import type` o Nest injeta `undefined` — ver ADR 0004.
+import { SuppliersBrowserSession } from "@/infrastructure/browser/suppliers-browser-session.js";
 import { PAGE_NAVIGATION_TIMEOUT } from "@/infrastructure/suppliers/steamtrades.constants.js";
-import { getSuppliersSession } from "@/infrastructure/browser/sessions.js";
 
 const STEAM_ID_REGEX = /\/user\/(\d+)/i;
 
@@ -53,8 +56,11 @@ export function extractTopicData(html: string): TopicData {
  */
 @Injectable()
 export class PuppeteerTopicScraper implements TopicScraper {
+	/** A sessão vem do container: o `BrowserModule` é dono dela. */
+	constructor(private readonly session: SuppliersBrowserSession) {}
+
 	async scrape(url: string): Promise<TopicData> {
-		const { page } = await getSuppliersSession();
+		const { page } = await this.session.get();
 		await page.goto(url, {
 			waitUntil: "domcontentloaded",
 			timeout: PAGE_NAVIGATION_TIMEOUT,

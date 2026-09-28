@@ -2,10 +2,13 @@
 
 O price-cd adota Nest 12 como camada de apresentação e composition root, substituindo
 `src/app.ts`, `src/routes/`, `src/controllers/` e `src/services/`. A migração acontece pelo
-padrão Strangler Fig dentro da `main`, com os dois apps sobre um núcleo compartilhado
-(`docs/NEST.md`).
+padrão Strangler Fig dentro da `main`, com os dois apps sobre um núcleo compartilhado. O
+plano e o runbook viviam em `docs/NEST.md`, apagado quando a migração terminou — era
+documentação de transição, e o histórico está no `git log`.
 
-A fronteira não é negociável e é verificável por `grep` no CI:
+A fronteira não é negociável. A direção dos imports é verificada por
+`test/unit/architecture/layer-boundary.test.ts`; a ausência de regra de negócio em `nest/`
+não é automatizável e fica para o code review:
 
 | Camada | Pode importar `@nestjs/*`? |
 |---|---|

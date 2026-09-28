@@ -20,7 +20,7 @@ import type { Env } from "@/config/env.schema.js";
  * `enableShutdownHooks`.
  */
 export function configureNestApp(app: NestExpressApplication): void {
-	// Paridade com `src/app.ts`: o estático é registrado ANTES das rotas, e é o
+	// O estático é registrado ANTES das rotas, e é o
 	// que faz `GET /` servir `public/index.html` em vez do handler de autoria.
 	app.useStaticAssets(path.join(process.cwd(), "public"));
 	app.setGlobalPrefix("api", { exclude: ["/"] });

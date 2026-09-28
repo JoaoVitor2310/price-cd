@@ -22,6 +22,9 @@ export default defineConfig({
 	},
 	test: {
 		globals: true,
+		// Roda antes do grafo de imports de cada arquivo: é o único momento em que
+		// dá para mexer numa variável com default no schema. Ver test/setup.ts.
+		setupFiles: ["test/setup.ts"],
 		include: [
 			"test/unit/**/*.test.ts",
 			"test/integration/**/*.test.ts",

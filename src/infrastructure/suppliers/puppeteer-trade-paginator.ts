@@ -1,8 +1,14 @@
 import { Injectable } from "@nestjs/common";
 import * as cheerio from "cheerio";
-import { getSuppliersSession } from "@/infrastructure/browser/sessions.js";
 import type { TradePaginator } from "@/application/suppliers/ports/trade-paginator.port.js";
-import { STEAMTRADES_BASE, PAGE_NAVIGATION_TIMEOUT } from "@/infrastructure/suppliers/steamtrades.constants.js";
+// Import de VALOR, não `import type`: a classe é o token de injeção, então
+// precisa existir em runtime para o `design:paramtypes` do decorator
+// registrá-la. Com `import type` o Nest injeta `undefined` — ver ADR 0004.
+import { SuppliersBrowserSession } from "@/infrastructure/browser/suppliers-browser-session.js";
+import {
+	PAGE_NAVIGATION_TIMEOUT,
+	STEAMTRADES_BASE,
+} from "@/infrastructure/suppliers/steamtrades.constants.js";
 
 /**
  * `have=<searchTerm>` filtra, no próprio SteamTrades, listas cujo `.want` casa com o termo —
@@ -12,7 +18,7 @@ import { STEAMTRADES_BASE, PAGE_NAVIGATION_TIMEOUT } from "@/infrastructure/supp
  * `src/domain/suppliers/tf2-key-matching.ts`) porque a busca do site é por substring exata.
  */
 function buildPageUrl(page: number, searchTerm: string): string {
-    return `${STEAMTRADES_BASE}/trades/search?have=${encodeURIComponent(searchTerm)}&page=${page}`;
+	return `${STEAMTRADES_BASE}/trades/search?have=${encodeURIComponent(searchTerm)}&page=${page}`;
 }
 
 /**
@@ -22,24 +28,26 @@ function buildPageUrl(page: number, searchTerm: string): string {
  * sinal diferente de `TopicData.isInactive` (que só existe dentro da página do próprio tópico,
  * via `.notification.yellow`) — este aqui é visível direto na listagem, sem precisar abrir nada.
  */
-function extractTopicsFromHtml(html: string): Array<{ code: string; url: string; isClosed: boolean }> {
-    const $ = cheerio.load(html);
-    const topics: Array<{ code: string; url: string; isClosed: boolean }> = [];
+function extractTopicsFromHtml(
+	html: string,
+): Array<{ code: string; url: string; isClosed: boolean }> {
+	const $ = cheerio.load(html);
+	const topics: Array<{ code: string; url: string; isClosed: boolean }> = [];
 
-    $(".row_trade_name").each((_, row) => {
-        const $h2 = $(row).find("h2");
-        const href = $h2.find("a").attr("href") ?? "";
-        const match = href.match(/\/trade\/([^/]+)/);
-        if (!match) return;
+	$(".row_trade_name").each((_, row) => {
+		const $h2 = $(row).find("h2");
+		const href = $h2.find("a").attr("href") ?? "";
+		const match = href.match(/\/trade\/([^/]+)/);
+		if (!match) return;
 
-        topics.push({
-            code: match[1],
-            url: `${STEAMTRADES_BASE}${href}`,
-            isClosed: $h2.find("svg.fa-lock").length > 0,
-        });
-    });
+		topics.push({
+			code: match[1],
+			url: `${STEAMTRADES_BASE}${href}`,
+			isClosed: $h2.find("svg.fa-lock").length > 0,
+		});
+	});
 
-    return topics;
+	return topics;
 }
 
 /**
@@ -49,13 +57,22 @@ function extractTopicsFromHtml(html: string): Array<{ code: string; url: string;
  */
 @Injectable()
 export class PuppeteerTradePaginator implements TradePaginator {
-    async getTopicsFromPage(pageNumber: number, searchTerm: string): Promise<Array<{ code: string; url: string; isClosed: boolean }>> {
-        const { page } = await getSuppliersSession();
-        const url = buildPageUrl(pageNumber, searchTerm);
-        await page.goto(url, { waitUntil: "domcontentloaded", timeout: PAGE_NAVIGATION_TIMEOUT });
-        const html = await page.content();
-        return extractTopicsFromHtml(html);
-    }
+	/** A sessão vem do container: o `BrowserModule` é dono dela. */
+	constructor(private readonly session: SuppliersBrowserSession) {}
+
+	async getTopicsFromPage(
+		pageNumber: number,
+		searchTerm: string,
+	): Promise<Array<{ code: string; url: string; isClosed: boolean }>> {
+		const { page } = await this.session.get();
+		const url = buildPageUrl(pageNumber, searchTerm);
+		await page.goto(url, {
+			waitUntil: "domcontentloaded",
+			timeout: PAGE_NAVIGATION_TIMEOUT,
+		});
+		const html = await page.content();
+		return extractTopicsFromHtml(html);
+	}
 }
 
 export { extractTopicsFromHtml, buildPageUrl };

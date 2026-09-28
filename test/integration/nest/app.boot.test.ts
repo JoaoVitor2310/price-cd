@@ -1,12 +1,12 @@
 import "reflect-metadata";
 import { ConfigService } from "@nestjs/config";
 import { APP_FILTER } from "@nestjs/core";
-import { Test } from "@nestjs/testing";
 import type { NestExpressApplication } from "@nestjs/platform-express";
+import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { AllExceptionsFilter } from "@/nest/common/all-exceptions.filter.js";
 import { AppModule } from "@/nest/app.module.js";
+import { AllExceptionsFilter } from "@/nest/common/all-exceptions.filter.js";
 import { configureNestApp } from "@/nest/configure-app.js";
 import { HealthController } from "@/nest/health/health.controller.js";
 
@@ -14,9 +14,9 @@ describe("Nest app skeleton", () => {
 	let app: NestExpressApplication;
 
 	beforeAll(async () => {
-		// O agendador de bump abre um Chromium e fala com o SteamTrades no
-		// primeiro tick. Nenhum teste quer isso acontecendo por baixo.
-		process.env.BUMP_SCHEDULER_ENABLED = "false";
+		// O agendador de bump fica desligado pela suíte inteira, em
+		// `test/setup.ts` — setar `BUMP_SCHEDULER_ENABLED` aqui não teria efeito,
+		// porque o schema tem default e o valor congela no import do módulo.
 
 		const moduleRef = await Test.createTestingModule({
 			imports: [AppModule],
@@ -31,13 +31,32 @@ describe("Nest app skeleton", () => {
 		await app?.close();
 	});
 
+	it("runs with the bump scheduler off, as the whole suite does", () => {
+		// Se `setupFiles` sair do vitest.config.ts, o primeiro tick do bump volta a
+		// rodar em todo teste que suba o AppModule — e o sintoma é uma linha de
+		// ERROR no meio da saída, fácil de ler como ruído. Aconteceu.
+		//
+		// Não dá para afirmar isso mexendo em `process.env` aqui: o valor congela
+		// no import do ConfigModule. Por isso a asserção é sobre o que o
+		// ConfigService realmente resolveu.
+		expect(
+			app.get(ConfigService).get("BUMP_SCHEDULER_ENABLED", { infer: true }),
+		).toBe(false);
+	});
+
 	it("emits design:paramtypes — without it the container injects undefined silently", () => {
 		// A asserção direta, sem intermediários. No spike do PR 0 um teste que só
 		// resolvia o provider pelo token passava mesmo COM a metadata ausente:
 		// é por isso que esta checagem existe separada da de HTTP.
-		const paramTypes = Reflect.getMetadata("design:paramtypes", HealthController);
+		const paramTypes = Reflect.getMetadata(
+			"design:paramtypes",
+			HealthController,
+		);
 
-		expect(paramTypes, "metadata missing: the transform is not SWC").toBeDefined();
+		expect(
+			paramTypes,
+			"metadata missing: the transform is not SWC",
+		).toBeDefined();
 		expect(paramTypes[0]).toBe(ConfigService);
 	});
 

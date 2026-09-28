@@ -41,16 +41,11 @@ services:
       DOCKER: "true"
       NODE_ENV: development
 
-      # Mesmo interruptor do serviço de produção: "express" ou "nest".
-      # Runbook e motivação em docs/NEST.md, PR 9.
-      APP_ENTRYPOINT: ${APP_ENTRYPOINT:-express}
 
-      # Dentro do container roda UM app só, então ele usa a porta publicada.
-      # O default de `PORT_NEST` é 5557 para que, em dev no host, `npm run dev`
-      # e `npm run dev:nest` coexistam sem colidir — aqui isso não se aplica, e
-      # deixar 5557 subiria o Nest numa porta que o container não publica:
-      # app "up", 502 para quem consome.
-      PORT_NEST: ${PORT_NEST:-5555}
+      # Fixo, não interpolado do .env: o lado container do mapeamento de portas
+      # acima é 5555 literal, então deixar o .env escolher outra porta só
+      # produziria um container que publica uma porta onde ninguém escuta.
+      PORT: 5555
       CHROME_PATH: /usr/bin/chromium
 
     volumes:
@@ -100,27 +95,11 @@ services:
       # Modo produção para Node (menos verbosidade, algumas libs mudam comportamento).
       NODE_ENV: production
 
-      # Qual app sobe: "express" (atual) ou "nest" (migração — ver docs/NEST.md).
-      #
-      # ESTE É O CUTOVER, E TAMBÉM O ROLLBACK. O valor vem do `.env` da VPS:
-      #
-      #   APP_ENTRYPOINT=nest      # no .env
-      #   docker compose up -d --force-recreate price-researcher
-      #
-      # Sem rebuild, sem revert de commit, sem editar arquivo versionado — o
-      # que evitaria drift entre o repo e a máquina. Ausente = express, então
-      # o merge deste arquivo não muda nada.
-      #
-      # Um app por container, sempre: dois processos Node com Chromium próprio
-      # estouram o mem_limit abaixo.
-      APP_ENTRYPOINT: ${APP_ENTRYPOINT:-express}
 
-      # Dentro do container roda UM app só, então ele usa a porta publicada.
-      # O default de `PORT_NEST` é 5557 para que, em dev no host, `npm run dev`
-      # e `npm run dev:nest` coexistam sem colidir — aqui isso não se aplica, e
-      # deixar 5557 subiria o Nest numa porta que o container não publica:
-      # app "up", 502 para quem consome.
-      PORT_NEST: ${PORT_NEST:-5555}
+      # Fixo, não interpolado do .env: o lado container do mapeamento de portas
+      # acima é 5555 literal, então deixar o .env escolher outra porta só
+      # produziria um container que publica uma porta onde ninguém escuta.
+      PORT: 5555
 
       # Caminho do Chromium instalado via apt na imagem. O chrome-launcher / fluxo real-browser usa isso em vez do Chrome baixado pelo Puppeteer.
       CHROME_PATH: /usr/bin/chromium

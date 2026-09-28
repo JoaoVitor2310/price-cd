@@ -1,10 +1,10 @@
 /**
  * Dublês dos adaptadores de infraestrutura usados pela bateria de contrato.
  *
- * A costura é `infrastructure/` de propósito: é a camada que **não** migra
- * (`docs/NEST.md` §2), então os mesmos dublês servem ao app Express e ao app
- * Nest sem duplicação. Mockar `controllers/` ou `services/` não serviria — eles
- * morrem no PR 10.
+ * A costura é `infrastructure/` de propósito: é a camada que não mudou na
+ * migração, então os mesmos dublês serviram ao app Express e ao app Nest sem
+ * duplicação. Mockar as camadas de cima não teria servido — `controllers/` e
+ * `services/` foram removidos junto com o Express.
  *
  * Nada aqui abre browser: a bateria de contrato roda em milissegundos e não
  * depende de rede, porque o que ela verifica é forma de resposta HTTP, não

@@ -1,12 +1,16 @@
 import {
 	Injectable,
+	Logger,
 	Module,
 	type OnApplicationShutdown,
 } from "@nestjs/common";
-import { Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import type { Env } from "@/config/env.schema.js";
 import { SharedBrowserSession } from "@/infrastructure/browser/shared-browser-session.js";
 import { SuppliersBrowserSession } from "@/infrastructure/browser/suppliers-browser-session.js";
-import { sharedBrowserSession, suppliersBrowserSession } from "@/infrastructure/browser/sessions.js";
+
+/** Reciclagem preventiva a cada 30 min; `0` desliga (ver `.env.example`). */
+const DEFAULT_SESSION_MAX_AGE_MS = 30 * 60 * 1000;
 
 /**
  * Fecha todo Chromium quando o app desliga.
@@ -41,7 +45,10 @@ export class BrowserShutdown implements OnApplicationShutdown {
 			try {
 				await close();
 			} catch (error) {
-				this.logger.error(`Failed to close the ${name} browser`, error as Error);
+				this.logger.error(
+					`Failed to close the ${name} browser`,
+					error as Error,
+				);
 			}
 		}
 	}
@@ -50,24 +57,41 @@ export class BrowserShutdown implements OnApplicationShutdown {
 /**
  * O dono das sessões de Chromium do processo.
  *
- * ⚠️ **As instâncias entram com `useValue`, não `useClass`.** Durante a
- * coexistência Express/Nest as duas apresentações chegam às mesmas instâncias
- * de `infrastructure/browser/sessions.ts`; se o container criasse as suas próprias
- * instâncias, existiriam **dois** gerenciadores de Chromium num container com
- * `mem_limit: 2g`. `useValue` amarra o container à mesma instância que as
- * fachadas usam.
- *
- * Pela mesma razão, quem precisar destas sessões faz `imports: [BrowserModule]`
- * — declarar os providers de novo em outro módulo criaria instâncias separadas
+ * ⚠️ **Exatamente um módulo declara estes providers, e é este.** O container
+ * garante uma instância por token — mas só por token **dentro do módulo que o
+ * declara**. Declarar `SharedBrowserSession` de novo em outro módulo criaria uma
+ * segunda instância, e cada instância é um gerenciador de Chromium num container
+ * com `mem_limit: 2g`. Quem precisa de uma sessão faz `imports: [BrowserModule]`
  * (`docs/nest-conceitos.md` §4).
  *
- * No PR 10, com o Express fora, isto pode virar `useClass` e o singleton de
- * módulo desaparece.
+ * Enquanto o Express coexistia, as instâncias vinham de um singleton de módulo
+ * (`infrastructure/browser/sessions.ts`) e entravam aqui com `useValue`: era o
+ * único jeito de as duas apresentações chegarem ao mesmo objeto. Com um app só,
+ * o container é o dono e aquele arquivo deixou de existir.
+ *
+ * `SuppliersBrowserSession` não tem dependência, então `useClass` basta.
+ * `SharedBrowserSession` precisa da idade máxima de reciclagem, e ela vem do
+ * `ConfigService` — antes era `Number(process.env.BROWSER_SESSION_MAX_AGE_MS)`
+ * lido à mão no singleton, duplicando um parse que o schema do ambiente já faz e
+ * escapando da validação de boot.
+ *
+ * A idade continua sendo uma **função**, não um número: `SharedBrowserSession` a
+ * chama a cada `get()`, e é isso que permite testar reciclagem sem reconstruir o
+ * objeto.
  */
 @Module({
 	providers: [
-		{ provide: SharedBrowserSession, useValue: sharedBrowserSession },
-		{ provide: SuppliersBrowserSession, useValue: suppliersBrowserSession },
+		{
+			provide: SharedBrowserSession,
+			useFactory: (config: ConfigService<Env, true>) =>
+				new SharedBrowserSession(
+					() =>
+						config.get("BROWSER_SESSION_MAX_AGE_MS", { infer: true }) ??
+						DEFAULT_SESSION_MAX_AGE_MS,
+				),
+			inject: [ConfigService],
+		},
+		{ provide: SuppliersBrowserSession, useClass: SuppliersBrowserSession },
 		BrowserShutdown,
 	],
 	exports: [SharedBrowserSession, SuppliersBrowserSession],

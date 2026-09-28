@@ -3,9 +3,11 @@ import { expect } from "vitest";
 /**
  * O contrato HTTP da API, como ele é HOJE — não como ele deveria ser.
  *
- * Esta tabela é o portão objetivo da migração para Nest (`docs/NEST.md` §4): a
- * mesma bateria roda contra o app Express e contra o app Nest, e a paridade
- * está provada quando os dois passam nos mesmos casos.
+ * Esta tabela foi o portão objetivo da migração para Nest: a mesma bateria rodou
+ * contra o app Express e contra o app Nest, e a paridade ficou provada quando os
+ * dois passaram nos mesmos casos. Com o Express fora, ela continua valendo como
+ * o contrato HTTP público — é o que impede o item 14 do `docs/IMPROVEMENTS.md`
+ * de acontecer por acidente.
  *
  * Por isso as inconsistências de formato entre controllers estão **congeladas
  * de propósito**: `/games/research` devolve a mensagem de erro em `data`,
@@ -334,5 +336,5 @@ export const CONTRACT_CASES: ContractCase[] = [
 	},
 ];
 
-/** Todas as rotas cobertas — usada pelo critério de conclusão do PR 9. */
+/** Todas as rotas cobertas — era o critério de conclusão do cutover. */
 export const CONTRACT_ROUTES = [...new Set(CONTRACT_CASES.map((c) => c.route))];

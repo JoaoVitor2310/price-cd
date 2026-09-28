@@ -36,8 +36,9 @@ import { ZodError } from "zod";
  * inexistente. O que existe é o portão: a bateria de contrato cobre os três
  * formatos de 500 e falha se alguém esquecer.
  *
- * Mudar qualquer um desses formatos é mudança de contrato, proibida durante a
- * migração (`docs/NEST.md` §4).
+ * Mudar qualquer um desses formatos é mudança de contrato: item 14 do
+ * `docs/IMPROVEMENTS.md`, num PR isolado que atualiza a bateria no mesmo
+ * commit.
  */
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -57,7 +58,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
 			response
 				.status(status)
-				.json(typeof body === "string" ? { success: false, error: body } : body);
+				.json(
+					typeof body === "string" ? { success: false, error: body } : body,
+				);
 			return;
 		}
 
@@ -91,9 +94,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
 	 */
 	protected handleUnknown(exception: unknown, host: ArgumentsHost): void {
 		const response = host.switchToHttp().getResponse<Response>();
-		const message = exception instanceof Error ? exception.message : "Unknown error";
+		const message =
+			exception instanceof Error ? exception.message : "Unknown error";
 
-		this.logger.error(`Unhandled exception: ${message}`, (exception as Error)?.stack);
+		this.logger.error(
+			`Unhandled exception: ${message}`,
+			(exception as Error)?.stack,
+		);
 
 		response.status(500).json({
 			success: false,
