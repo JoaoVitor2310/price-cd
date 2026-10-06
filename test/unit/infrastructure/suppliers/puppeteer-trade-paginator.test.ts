@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildPageUrl, extractTopicsFromHtml } from "@/infrastructure/suppliers/puppeteer-trade-paginator.js";
+import { SUPPLIER_SEARCH_TERMS } from "@/domain/suppliers/supplier-eligibility.js";
 
 describe("buildPageUrl", () => {
     it("filters listings by have=<searchTerm>", () => {
@@ -14,6 +15,26 @@ describe("buildPageUrl", () => {
         expect(buildPageUrl(1, "Team Fortress 2 Key")).toBe(
             "https://www.steamtrades.com/trades/search?have=Team%20Fortress%202%20Key&page=1",
         );
+    });
+
+    it("url-encodes the currency symbols, which are not safe in a query string", () => {
+        expect(buildPageUrl(1, "€")).toBe("https://www.steamtrades.com/trades/search?have=%E2%82%AC&page=1");
+        expect(buildPageUrl(1, "$")).toBe("https://www.steamtrades.com/trades/search?have=%24&page=1");
+    });
+
+    it("sends the short money terms untouched", () => {
+        expect(buildPageUrl(1, "pp")).toBe("https://www.steamtrades.com/trades/search?have=pp&page=1");
+        expect(buildPageUrl(1, "paypal")).toBe("https://www.steamtrades.com/trades/search?have=paypal&page=1");
+    });
+
+    it("builds a well-formed url for every search term the discovery scans", () => {
+        for (const term of SUPPLIER_SEARCH_TERMS) {
+            const url = new URL(buildPageUrl(2, term));
+
+            // O termo volta idêntico depois de decodificado, e a página não é engolida por ele.
+            expect(url.searchParams.get("have")).toBe(term);
+            expect(url.searchParams.get("page")).toBe("2");
+        }
     });
 });
 

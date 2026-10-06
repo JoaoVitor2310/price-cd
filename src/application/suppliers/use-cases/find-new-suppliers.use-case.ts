@@ -4,7 +4,7 @@ import type { CommentPoster } from "@/application/suppliers/ports/comment-poster
 import type { ProfitabilityChecker, GamePriceInput, SupplierInput } from "@/application/suppliers/ports/profitability-checker.port.js";
 import type { GameSearcher } from "@/application/lists/ports/list-run.ports.js";
 import { formatResult } from "@/domain/suppliers/profitability.js";
-import { TF2_SEARCH_TERMS } from "@/domain/suppliers/tf2-key-matching.js";
+import { SUPPLIER_SEARCH_TERMS } from "@/domain/suppliers/supplier-eligibility.js";
 
 const MAX_PAGES = 100;
 const MAX_CONSECUTIVE_INACTIVE = 5;
@@ -31,18 +31,17 @@ type ProcessDeps = {
  * Varre as páginas de listagem do SteamTrades (já filtradas por `have=<termo>` na origem,
  * ver `PuppeteerTradePaginator`) em busca de fornecedores potenciais.
  *
- * TF2 Keys é a única moeda aceita hoje — `TF2_SEARCH_TERMS`/`isWantingTf2Keys` (ver
- * `src/domain/suppliers/tf2-key-matching.ts`) e o `total_tf2_price` calculado pelo Sistema
- * Estoque assumem isso. Não há suporte para outra moeda ainda, mas é algo que pretendemos
- * mudar no futuro — quem mexer aqui pra adicionar uma segunda moeda vai precisar generalizar
- * esses dois pontos.
+ * Cada Lista tem uma Moeda de oferta (`TopicData.offerCurrency`): TF2 Keys, dólar ou euro,
+ * conforme o que o dono aceita (regra e precedência em `domain/suppliers/supplier-eligibility.ts`).
+ * O use case só a repassa: pede ao Sistema Estoque a oferta nessa moeda e a coloca no comentário.
+ * Quem calcula e converte é o Sistema Estoque, nunca o price-cd.
  *
  * Roda em duas fases (`collectTopics` / `processTopics`) para reduzir a janela de exposição
  * a bumps — um usuário pode reordenar sua lista (mover para uma página já visitada) enquanto
  * a varredura está em andamento:
- * 1. **Coleta**: para cada termo em `TF2_SEARCH_TERMS` (a busca do SteamTrades é por
+ * 1. **Coleta**: para cada termo em `SUPPLIER_SEARCH_TERMS` (a busca do SteamTrades é por
  *    substring exata, então "TF2" sozinho não encontra quem escreveu "Team Fortress 2"
- *    por extenso — precisa varrer uma vez por variação), percorre as páginas extraindo
+ *    por extenso, nem "paypal" quem escreveu "pp" — precisa varrer uma vez por variação), percorre as páginas extraindo
  *    `{code, url}` de cada lista, deduplicando por `code` no mesmo Map (a mesma lista
  *    pode aparecer em páginas ou termos diferentes). Para de virar página para aquele
  *    termo assim que encontra `MAX_CONSECUTIVE_CLOSED` tópicos fechados seguidos (cadeado
@@ -93,14 +92,14 @@ export class FindNewSuppliersUseCase {
         return { pagesVisited, topicsProcessed, suppliersCommented };
     }
 
-    /** Fase 1: varre `TF2_SEARCH_TERMS` × páginas, retornando `{code, url}` únicos por `code`. */
+    /** Fase 1: varre `SUPPLIER_SEARCH_TERMS` × páginas, retornando `{code, url}` únicos por `code`. */
     private async collectTopics(
         paginator: TradePaginator,
     ): Promise<{ collectedTopics: Map<string, string>; pagesVisited: number }> {
         let pagesVisited = 0;
         const collectedTopics = new Map<string, string>();
 
-        for (const searchTerm of TF2_SEARCH_TERMS) {
+        for (const searchTerm of SUPPLIER_SEARCH_TERMS) {
             console.log(`🔎 [SUPPLIERS] Searching listings for "${searchTerm}"...`);
             let consecutiveClosed = 0;
 
@@ -161,8 +160,9 @@ export class FindNewSuppliersUseCase {
 
                 consecutiveInactive = 0;
 
-                if (!topic.wantsTf2Key) {
-                    console.log(`🚫 [SUPPLIERS] Topic ${code} does not want TF2 keys. Skipping.`);
+                const { offerCurrency } = topic;
+                if (offerCurrency === null) {
+                    console.log(`🚫 [SUPPLIERS] Topic ${code} accepts neither TF2 keys, PayPal, euros nor dollars. Skipping.`);
                     continue;
                 }
 
@@ -195,7 +195,7 @@ export class FindNewSuppliersUseCase {
                     .filter((g) => g.GamivoPrice != null)
                     .map((g) => ({
                         name: g.name,
-                        price_euro: g.GamivoPrice as number,
+                        market_price_euro: g.GamivoPrice as number,
                         popularity: g.popularity,
                         region: g.region ?? null,
                         gamivo_id: g.gamivo_id ?? null,
@@ -212,10 +212,10 @@ export class FindNewSuppliersUseCase {
                     list_code: code,
                 };
 
-                const { profitable: profitableGames, total_tf2_price, is_added, should_comment, last_commented_at, games_changed } =
-                    await profitabilityChecker.evaluate(supplier, gamesWithPrice);
+                const { profitable: profitableGames, offer, is_added, should_comment, last_commented_at, games_changed } =
+                    await profitabilityChecker.evaluate(supplier, gamesWithPrice, offerCurrency);
 
-                console.log(`📊 [SUPPLIERS] Topic ${code}: should_comment=${should_comment}, games_changed=${games_changed}, last_commented_at=${last_commented_at ?? "never"}`);
+                console.log(`📊 [SUPPLIERS] Topic ${code}: offerCurrency=${offerCurrency}, should_comment=${should_comment}, games_changed=${games_changed}, last_commented_at=${last_commented_at ?? "never"}`);
 
                 if (!should_comment) {
                     topicsProcessed++;
@@ -223,10 +223,16 @@ export class FindNewSuppliersUseCase {
                     continue;
                 }
 
+                // Invariante do `ProfitabilityChecker`: com `should_comment` verdadeiro há oferta. Se
+                // faltar, o adapter está quebrado — falhar alto, nunca comentar sem valor.
+                if (offer === null) {
+                    throw new Error(`should_comment is true for topic ${code} but there is no offer to post`);
+                }
+
                 const formatted = formatResult(profitableGames);
                 console.log(`✅ [SUPPLIERS] Commenting on topic ${code} (is_added=${is_added}):\n${formatted}`);
 
-                await commentPoster.post(url, profitableGames, total_tf2_price);
+                await commentPoster.post(url, offer);
                 topicsProcessed++;
                 suppliersCommented++;
                 console.log(`✅ [SUPPLIERS] Commented on ${code} with ${profitableGames.length} profitable game(s).`);

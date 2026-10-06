@@ -78,7 +78,7 @@ This allows the tool to be publicly accessible for demonstration while keeping t
 - **Inventory integration** — `HttpGameTradeImporter` implements the `GameTradeImporter` port using native `fetch` with a 15 s `AbortController` timeout, posting structured results to the inventory system over a private bearer-authenticated API
 - **Domain-level exclusion list** — `filterExcludedGames` is a pure domain function applied after the popularity filter; free-to-play games are excluded before the price fetcher is ever called
 - **Domain-level price floor** — `partitionByPrice` splits off any game whose best price is not above the floor (default €0.50); games that cheap return a few cents of profit and are not worth negotiating; every discarded game is logged with its price, so it never disappears silently between the price fetcher and the result. Applied in one place — `PriceGames` (`application/games/services/price-games.ts`), the pricing engine shared by the search endpoint, the research endpoint, the `lists` flow and supplier discovery — so no consumer repeats the rule. The `research` endpoint can override the floor per request via `minPrice` (bundles send `0`); the floor value is an argument to `partitionByPrice`, so the €0.50 default lives in one place (`MIN_PRICE_EURO`)
-- **Async background jobs** — `LimitedConcurrencyScheduler` queues list-processing jobs in-process with configurable concurrency; on completion it POSTs a callback to any URL the caller provides
+- **Async background jobs** — `LimitedConcurrencyScheduler` queues list-processing jobs in-process with configurable concurrency; on completion the Trade is created in the inventory system (there is no callback to the caller)
 - **Game name normalisation** — `clear-string.ts` normalises roman numerals, K-suffixed numbers, edition keywords, DLC tags, regional tags and special characters to maximise match accuracy across different naming conventions
 - **Full test suite** — 159 tests (unit + integration) with zero real network or browser calls; integration layer tests the full HTTP pipeline via supertest with vitest mocks at the infrastructure boundary
 - **CI/CD** — GitHub Actions runs the full test suite on every pull request; merging to `main` triggers an automatic deploy to the VPS via SSH, rebuilding the Docker image in-place
@@ -149,7 +149,7 @@ and `lib/` at most `@nestjs/common` (for `@Injectable()`). "Business rules never
 
 Ports are `abstract class`es, not interfaces: they survive compilation, so they double as the
 injection token without a decorator. The `lists` subdomain declares `ListTopicFetcher`,
-`BackgroundScheduler`, `RunListsCallbackPoster` and `RunListsRunner` — every use case is
+`ListTopicFetcherFactory`, `InactiveListNotifier`, `RunListsRunner` and `GameSearcher` — every use case is
 testable with zero infrastructure.
 
 ---
@@ -186,7 +186,7 @@ npm test
 | `POST` | `/api/games/search` | Search prices and return full analysis JSON |
 | `POST` | `/api/games/search-id-steam` | Resolve Steam IDs for a list of games |
 | `POST` | `/api/lists/run` | Async: crawl a Steam user's trade lists and run full analysis |
-| `POST` | `/api/suppliers/find-new` | Async, queued: scan SteamTrades for new suppliers offering games for TF2 keys |
+| `POST` | `/api/suppliers/find-new` | Async, queued: scan SteamTrades for new suppliers offering games for TF2 keys, PayPal, euros or dollars |
 | `GET` | `/api/health` | Liveness probe |
 
 <details>
@@ -213,11 +213,11 @@ npm test
   "success": true,
   "demo": true,
   "games": [
-    { "name": "Half-Life", "price_euro": 1.23, "popularity": 542, "region": "global" }
+    { "name": "Half-Life", "market_price_euro": 1.23, "popularity": 542, "region": "global" }
   ]
 }
 ```
-Runs synchronously and is capped at the first 10 games. Nothing is sent to the inventory system.
+Runs synchronously and is capped at the first 10 games. Nothing is sent to the inventory system. `market_price_euro` is the market price in euros (the best AllKeyShop price) — not the offer made to a supplier; it is the same name the inventory system receives.
 
 **Authenticated mode response** — `202`, valid token:
 ```json
@@ -232,20 +232,20 @@ Returns as soon as the work is queued. The full list is processed in the backgro
 
 ```json
 {
-  "id_steam": "76561198000000000",
-  "callback_url": "https://your-server.com/callback",
+  "steam_id": "76561198000000000",
   "checkGamivoOffer": true
 }
 ```
 
-Returns `202 Accepted` immediately. When analysis completes, POSTs to `callback_url`:
+`steam_id` is required; `checkGamivoOffer` defaults to `true`. Unknown fields are rejected (strict schema).
+
+Returns `202 Accepted` immediately:
 
 ```json
-{
-  "status": "completed",
-  "result": "<structured game data>"
-}
+{ "success": true, "status": "queued" }
 ```
+
+The crawl and pricing run in the background and the Trade is created in the inventory system when they finish. There is **no callback** to the caller, and a failure during background processing is currently only logged — see `docs/IMPROVEMENTS.md`.
 
 </details>
 
@@ -258,7 +258,7 @@ No request body. Requires `STEAMTRADES_SESSION`, `SISTEMA_ESTOQUE_URL` and `EXTE
 ```json
 { "success": true, "status": "queued" }
 ```
-Returns as soon as the scan is queued — scanning up to 100 SteamTrades pages per TF2-Keys search-term variant (the listing search is already filtered server-side) and researching prices per topic can take minutes. Runs in the background; eligible suppliers are commented on directly on SteamTrades once the Sistema Estoque approves. A failure during background processing is currently only logged.
+Returns as soon as the scan is queued — scanning up to 100 SteamTrades pages per search term — the TF2 variants plus `paypal`, `pp`, `euro`, `dollar`, `dolar`, `usdt`, `€` and `$` (the listing search is already filtered server-side) and researching prices per topic can take minutes. Runs in the background; eligible suppliers are commented on directly on SteamTrades once the Sistema Estoque approves. The comment states the offer in the list's offer currency — TF2 keys, else dollars, else euros (PayPal counts as euros) — and the Sistema Estoque is the one that computes and converts it. A failure during background processing is currently only logged.
 
 **Response** — `500`, when required env vars are missing:
 ```json

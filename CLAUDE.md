@@ -26,7 +26,7 @@ Atue sempre como arquiteto de software sênior com conhecimento profundo de Node
 
 **Todo código é em inglês** — nomes de `describe`/`it`, identificadores, mensagens de erro, strings de asserção, dados de fixture. Português fica **exclusivamente** em comentários explicativos e na documentação `.md`.
 
-Única exceção: string que reproduz literalmente uma saída de produção (ex.: a mensagem `"Erro no corpo da requisição: ..."` que `run-lists.controller.ts` devolve hoje). Nesse caso o português é o contrato, não escolha — e merece comentário dizendo isso.
+Única exceção: string que reproduz literalmente uma saída de produção (ex.: a mensagem `"Erro no corpo da requisição: ..."` que `lists-legacy-error.filter.ts` devolve hoje). Nesse caso o português é o contrato, não escolha — e merece comentário dizendo isso.
 
 ### Commits
 
@@ -109,7 +109,7 @@ src/
 
 A palavra "service" tem o sentido de DDD/clean architecture — colaborador que orquestra portas e domínio, como `application/games/services/price-games.ts`. **Não** o dos tutoriais de Nest (regra + banco), nem o do `src/services/` legado, que era composition root manual e foi removido junto com o Express. Ver `docs/nest-conceitos.md` §9.
 
-Segue uma arquitetura hexagonal leve: o subdomínio `lists` declara portas explícitas (`ListTopicFetcher`, `BackgroundScheduler`, `RunListsCallbackPoster`, `ListResultFormatter`, `RunListsRunner`) injetadas no use case pelo container, permitindo testabilidade isolada.
+Segue uma arquitetura hexagonal leve: o subdomínio `lists` declara portas explícitas (`ListTopicFetcher`, `ListTopicFetcherFactory`, `InactiveListNotifier`, `RunListsRunner`, `GameSearcher`) injetadas no use case pelo container, permitindo testabilidade isolada.
 
 ---
 
@@ -120,7 +120,7 @@ Segue uma arquitetura hexagonal leve: o subdomínio `lists` declara portas expl�
 | Node.js 22 + TypeScript 5 | Runtime e linguagem |
 | Express 5 | HTTP server, por baixo do Nest (`@nestjs/platform-express`) — não é dependência direta |
 | Zod 4 | Validação de input (body e conteúdo do arquivo) |
-| Native fetch (Node 22) | HTTP client (callback posts, integração com Sistema Estoque) |
+| Native fetch (Node 22) | HTTP client (integração com Sistema Estoque) |
 | Cheerio | Parse HTML via seletores jQuery-like |
 | Puppeteer Real Browser | Automação Chromium com bypass de anti-bot |
 | puppeteer-extra-plugin-stealth | Esconde fingerprint do Puppeteer |

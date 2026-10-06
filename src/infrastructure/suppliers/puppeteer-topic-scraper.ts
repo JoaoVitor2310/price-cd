@@ -5,7 +5,7 @@ import type {
 	TopicScraper,
 } from "@/application/suppliers/ports/topic-scraper.port.js";
 import { HaveListing } from "@/domain/lists/have-listing.js";
-import { acceptsTf2KeysFromUs } from "@/domain/suppliers/supplier-eligibility.js";
+import { offerCurrencyFor } from "@/domain/suppliers/supplier-eligibility.js";
 // Import de VALOR, não `import type`: a classe é o token de injeção, então
 // precisa existir em runtime para o `design:paramtypes` do decorator
 // registrá-la. Com `import type` o Nest injeta `undefined` — ver ADR 0004.
@@ -41,12 +41,12 @@ export function extractTopicData(html: string): TopicData {
 	// revendedor precisa de TODAS as linhas: o recado do dono costuma estar no
 	// meio da lista, inclusive dentro de uma seção descartada.
 	const games = HaveListing.parse(haveText).priceableGames;
-	const wantsTf2Key = acceptsTf2KeysFromUs({
+	const offerCurrency = offerCurrencyFor({
 		haveLines: toLines(haveText),
 		wantLines,
 	});
 
-	return { authorName, steamId, games, isInactive, wantsTf2Key };
+	return { authorName, steamId, games, isInactive, offerCurrency };
 }
 
 /**

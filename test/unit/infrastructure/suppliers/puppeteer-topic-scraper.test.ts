@@ -76,65 +76,63 @@ describe("extractTopicData", () => {
 		const html = `
             <div class="have">Half-Life\n\nGOG:\n\nNo resellers please</div>
             <div class="want">TF2 Keys</div>`;
-		expect(extractTopicData(html).wantsTf2Key).toBe(false);
+		expect(extractTopicData(html).offerCurrency).toBeNull();
 	});
 
 	it("returns empty games array when .have section is absent", () => {
 		expect(extractTopicData("<div>no have section</div>").games).toEqual([]);
 	});
 
-	describe("wantsTf2Key", () => {
-		it("returns true when .want contains TF2", () => {
+	describe("offerCurrency", () => {
+		it("returns tf2 when .want contains TF2", () => {
 			const html = '<div class="want">TF2 keys</div>';
-			expect(extractTopicData(html).wantsTf2Key).toBe(true);
+			expect(extractTopicData(html).offerCurrency).toBe("tf2");
 		});
 
-		it("returns true when .want contains TF2 in lowercase (case-insensitive)", () => {
+		it("returns tf2 when .want contains TF2 in lowercase (case-insensitive)", () => {
 			const html = '<div class="want">tf2</div>';
-			expect(extractTopicData(html).wantsTf2Key).toBe(true);
+			expect(extractTopicData(html).offerCurrency).toBe("tf2");
 		});
 
-		it("returns true when .want contains Team Fortress 2 Key", () => {
+		it("returns tf2 when .want contains Team Fortress 2 Key", () => {
 			const html = '<div class="want">Team Fortress 2 Key</div>';
-			expect(extractTopicData(html).wantsTf2Key).toBe(true);
+			expect(extractTopicData(html).offerCurrency).toBe("tf2");
 		});
 
-		it("returns false when .want contains no TF2", () => {
+		it("returns null when .want contains no TF2", () => {
 			const html = '<div class="want">no TF2</div>';
-			expect(extractTopicData(html).wantsTf2Key).toBe(false);
+			expect(extractTopicData(html).offerCurrency).toBeNull();
 		});
 
-		it("returns false when .want contains no tf2 (case-insensitive negation)", () => {
+		it("returns null when .want contains no tf2 (case-insensitive negation)", () => {
 			const html = '<div class="want">no tf2</div>';
-			expect(extractTopicData(html).wantsTf2Key).toBe(false);
+			expect(extractTopicData(html).offerCurrency).toBeNull();
 		});
 
-		it("returns false when .want contains no Team Fortress 2 Key", () => {
+		it("returns null when .want contains no Team Fortress 2 Key", () => {
 			const html = '<div class="want">no Team Fortress 2 Key</div>';
-			expect(extractTopicData(html).wantsTf2Key).toBe(false);
+			expect(extractTopicData(html).offerCurrency).toBeNull();
 		});
 
-		it("returns false when .want has no TF2 mention", () => {
+		it("returns null when .want has no TF2 mention", () => {
 			const html = '<div class="want">CS2 skins\nDota 2 items</div>';
-			expect(extractTopicData(html).wantsTf2Key).toBe(false);
+			expect(extractTopicData(html).offerCurrency).toBeNull();
 		});
 
-		it("returns false when .want section is absent", () => {
-			expect(extractTopicData("<div>no want section</div>").wantsTf2Key).toBe(
-				false,
-			);
+		it("returns null when .want section is absent", () => {
+			expect(extractTopicData("<div>no want section</div>").offerCurrency).toBeNull();
 		});
 
-		it("returns false when .have rejects resellers even though .want asks for TF2", () => {
+		it("returns null when .have rejects resellers even though .want asks for TF2", () => {
 			const html = `
                 <div class="have">Half-Life\nNo reseller offers</div>
                 <div class="want">TF2 keys</div>`;
-			expect(extractTopicData(html).wantsTf2Key).toBe(false);
+			expect(extractTopicData(html).offerCurrency).toBeNull();
 		});
 
-		it("returns false when .want itself rejects resellers", () => {
+		it("returns null when .want itself rejects resellers", () => {
 			const html = '<div class="want">TF2 keys\nNot for resellers</div>';
-			expect(extractTopicData(html).wantsTf2Key).toBe(false);
+			expect(extractTopicData(html).offerCurrency).toBeNull();
 		});
 
 		it("still lists the games of a topic that rejects resellers", () => {
@@ -147,41 +145,95 @@ describe("extractTopicData", () => {
 			]);
 		});
 
-		it("returns false when .want says it is not interested in TF2 keys", () => {
+		it("returns null when .want says it is not interested in TF2 keys", () => {
 			const html = '<div class="want">not interested in TF2 keys</div>';
-			expect(extractTopicData(html).wantsTf2Key).toBe(false);
+			expect(extractTopicData(html).offerCurrency).toBeNull();
 		});
 
-		it("stays true when .want refuses another payment method alongside TF2", () => {
+		it("stays tf2 when .want refuses another payment method alongside TF2", () => {
 			const html = '<div class="want">TF2 keys - no paypal</div>';
-			expect(extractTopicData(html).wantsTf2Key).toBe(true);
+			expect(extractTopicData(html).offerCurrency).toBe("tf2");
 		});
 
-		it("returns false when .want says it doesn't want tf2", () => {
+		it("returns null when .want says it doesn't want tf2", () => {
 			const html = '<div class="want">I don\'t want tf2</div>';
-			expect(extractTopicData(html).wantsTf2Key).toBe(false);
+			expect(extractTopicData(html).offerCurrency).toBeNull();
 		});
 
-		it("returns false when .want only rarely accepts TF2 keys", () => {
+		it("returns null when .want only rarely accepts TF2 keys", () => {
 			const html = '<div class="want">I rarely accept TF2 keys</div>';
-			expect(extractTopicData(html).wantsTf2Key).toBe(false);
+			expect(extractTopicData(html).offerCurrency).toBeNull();
 		});
 
-		it("returns false when another .want line refuses key currency broadly", () => {
+		it("returns null when another .want line refuses key currency broadly", () => {
 			const html = '<div class="want">TF2 keys\nNo CSGO Keys or similar</div>';
-			expect(extractTopicData(html).wantsTf2Key).toBe(false);
+			expect(extractTopicData(html).offerCurrency).toBeNull();
 		});
 
-		it("stays true when .want refuses one other key currency without generalizing", () => {
+		it("stays tf2 when .want refuses one other key currency without generalizing", () => {
 			const html = '<div class="want">TF2 keys\nNo CSGO Keys</div>';
-			expect(extractTopicData(html).wantsTf2Key).toBe(true);
+			expect(extractTopicData(html).offerCurrency).toBe("tf2");
 		});
 
-		it("stays true when .have mentions resellers without rejecting them", () => {
+		it("stays tf2 when .have mentions resellers without rejecting them", () => {
 			const html = `
                 <div class="have">Half-Life\nReseller friendly</div>
                 <div class="want">TF2 keys</div>`;
-			expect(extractTopicData(html).wantsTf2Key).toBe(true);
+			expect(extractTopicData(html).offerCurrency).toBe("tf2");
+		});
+
+		it("returns eur when .want accepts PayPal", () => {
+			const html = '<div class="want">Paypal</div>';
+			expect(extractTopicData(html).offerCurrency).toBe("eur");
+		});
+
+		it("returns eur when .want accepts euros", () => {
+			const html = '<div class="want">10€ per key</div>';
+			expect(extractTopicData(html).offerCurrency).toBe("eur");
+		});
+
+		it("returns usd when .want accepts dollars", () => {
+			const html = '<div class="want">Dollar</div>';
+			expect(extractTopicData(html).offerCurrency).toBe("usd");
+		});
+
+		it("returns usd when .want mentions both PayPal and dollars", () => {
+			const html = '<div class="want">Paypal\n$</div>';
+			expect(extractTopicData(html).offerCurrency).toBe("usd");
+		});
+
+		it("returns usd when .want accepts USDT", () => {
+			const html = '<div class="want">USDT</div>';
+			expect(extractTopicData(html).offerCurrency).toBe("usd");
+		});
+
+		it("prefers tf2 when .want accepts TF2 keys and PayPal", () => {
+			const html = '<div class="want">Paypal\nTF2 keys</div>';
+			expect(extractTopicData(html).offerCurrency).toBe("tf2");
+		});
+
+		it("returns null when .want refuses PayPal", () => {
+			const html = '<div class="want">no paypal</div>';
+			expect(extractTopicData(html).offerCurrency).toBeNull();
+		});
+
+		it("returns null when a PayPal list rejects resellers", () => {
+			const html = `
+                <div class="have">Half-Life\nNo reseller offers</div>
+                <div class="want">Paypal</div>`;
+			expect(extractTopicData(html).offerCurrency).toBeNull();
+		});
+
+		it("returns eur when .want refuses key currency broadly but accepts PayPal", () => {
+			const html = '<div class="want">TF2 keys\nNo CSGO Keys or similar\nPaypal</div>';
+			expect(extractTopicData(html).offerCurrency).toBe("eur");
+		});
+
+		it("does not read money among the games as accepted payment", () => {
+			const html = `
+                <div class="have">Half-Life\nPaypal</div>
+                <div class="want">CS2 skins</div>`;
+			expect(extractTopicData(html).offerCurrency).toBeNull();
 		});
 	});
 });

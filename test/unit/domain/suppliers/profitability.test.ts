@@ -4,7 +4,7 @@ import type { ProfitableGameResult } from "@/application/suppliers/ports/profita
 
 const makeGame = (overrides: Partial<ProfitableGameResult> = {}): ProfitableGameResult => ({
     name: "Half-Life",
-    price_euro: 4.50,
+    market_price_euro: 4.50,
     popularity: 500,
     region: "global",
     tf2_price: 2.10,
@@ -25,13 +25,13 @@ describe("formatResult", () => {
     });
 
     it("uses dot as decimal separator for price", () => {
-        const result = formatResult([makeGame({ price_euro: 3.99 })]);
+        const result = formatResult([makeGame({ market_price_euro: 3.99 })]);
         expect(result).toContain("3.99");
         expect(result).not.toContain("3,99");
     });
 
     it("formats price with exactly two decimal places", () => {
-        const result = formatResult([makeGame({ price_euro: 2.1 })]);
+        const result = formatResult([makeGame({ market_price_euro: 2.1 })]);
         expect(result).toContain("2.10");
     });
 

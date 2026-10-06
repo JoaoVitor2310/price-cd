@@ -53,6 +53,25 @@ describe("RunListsUseCase", () => {
 		);
 	});
 
+	it("sends the market price to the Sistema Estoque as market_price_euro", async () => {
+		const gameSearcher: GameSearcher = { search: vi.fn().mockResolvedValue(makePricedGames()) };
+		const tradeImporter: GameTradeImporter = { import: vi.fn().mockResolvedValue(undefined) };
+
+		await new RunListsUseCase(
+			{ create: () => makeFetcher() },
+			gameSearcher,
+			tradeImporter,
+			MAX_ACTIVE_LISTS,
+		).execute({
+			supplierListRequest: request,
+			checkGamivoOffer: false,
+		});
+
+		const [games] = (tradeImporter.import as ReturnType<typeof vi.fn>).mock.calls[0];
+		expect(games[0]).toHaveProperty("market_price_euro");
+		expect(games[0]).not.toHaveProperty("price_euro");
+	});
+
 	it("sends null for id_steam and gamivo_id when the priced game does not have them", async () => {
 		const gameSearcher: GameSearcher = {
 			search: vi.fn().mockResolvedValue(makePricedGames({ id_steam: undefined, gamivo_id: undefined })),

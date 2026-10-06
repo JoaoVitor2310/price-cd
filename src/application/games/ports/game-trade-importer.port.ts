@@ -1,6 +1,7 @@
 export type GameTradeInput = {
     name: string;
-    price_euro: number;
+    /** Preço de mercado em EUR — o melhor preço do AllKeyShop, não a oferta ao fornecedor. */
+    market_price_euro: number;
     popularity: number;
     region: string | null;
     id_steam: string | null;

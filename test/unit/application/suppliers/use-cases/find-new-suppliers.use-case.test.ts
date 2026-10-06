@@ -4,7 +4,8 @@ import type { FindNewSuppliersInput } from "@/application/suppliers/use-cases/fi
 import type { TopicData } from "@/application/suppliers/ports/topic-scraper.port.js";
 import type { ProspectResult } from "@/application/suppliers/ports/profitability-checker.port.js";
 import type { FoundGames } from "@/application/games/game.types.js";
-import { TF2_SEARCH_TERMS } from "@/domain/suppliers/tf2-key-matching.js";
+import { SUPPLIER_SEARCH_TERMS } from "@/domain/suppliers/supplier-eligibility.js";
+import type { Offer } from "@/domain/suppliers/offer.js";
 
 // ---------------------------------------------------------------------------
 // Builders
@@ -16,17 +17,21 @@ function makeTopic(overrides: Partial<TopicData> = {}): TopicData {
         steamId: "76561198888888888",
         games: ["Half-Life"],
         isInactive: false,
-        wantsTf2Key: true,
+        offerCurrency: "tf2",
         ...overrides,
     };
 }
 
 function makeProspectResult(overrides: Partial<ProspectResult> = {}): ProspectResult {
+    const shouldComment = overrides.should_comment ?? true;
+
     return {
-        profitable: [{ name: "Half-Life", price_euro: 1.5, popularity: 100, region: null, tf2_price: 0.5 }],
+        profitable: [{ name: "Half-Life", market_price_euro: 1.5, popularity: 100, region: null, tf2_price: 0.5 }],
         total_tf2_price: 0.5,
+        // Espelha o contrato real: sem comentário a postar não há oferta.
+        offer: shouldComment ? { currency: "tf2", lines: [{ name: "Half-Life", amount: 0.5 }], total: 0.5 } : null,
         is_added: false,
-        should_comment: true,
+        should_comment: shouldComment,
         last_commented_at: null,
         games_changed: false,
         ...overrides,
@@ -100,18 +105,114 @@ describe("FindNewSuppliersUseCase", () => {
         expect(result.suppliersCommented).toBe(1);
     });
 
-    it("forwards total_tf2_price from evaluate to commentPoster.post", async () => {
+    it("forwards the offer from evaluate to commentPoster.post", async () => {
+        const offer: Offer = { currency: "tf2", lines: [{ name: "Half-Life", amount: 12.34 }], total: 12.34 };
         const { deps: input, useCase } = build({
-            profitabilityChecker: { evaluate: vi.fn().mockResolvedValue(makeProspectResult({ total_tf2_price: 12.34 })) },
+            profitabilityChecker: { evaluate: vi.fn().mockResolvedValue(makeProspectResult({ offer })) },
         });
 
         await useCase.execute();
 
-        expect(input.commentPoster.post).toHaveBeenCalledWith(
-            expect.any(String),
+        expect(input.commentPoster.post).toHaveBeenCalledWith(expect.any(String), offer);
+    });
+
+    // --- offer currency ---
+
+    it("asks the Sistema Estoque for the offer in the currency the topic accepts", async () => {
+        const { deps: input, useCase } = build({
+            scraper: { scrape: vi.fn().mockResolvedValue(makeTopic({ offerCurrency: "eur" })) },
+            profitabilityChecker: { evaluate: vi.fn().mockResolvedValue(makeProspectResult()) },
+        });
+
+        await useCase.execute();
+
+        expect(input.profitabilityChecker.evaluate).toHaveBeenCalledWith(
+            expect.objectContaining({ steam_id: "76561198888888888", list_code: "ABC" }),
             expect.any(Array),
-            12.34,
+            "eur",
         );
+    });
+
+    it.each(["tf2", "eur", "usd"] as const)("comments a %s topic with the offer in that currency", async (currency) => {
+        const offer: Offer = { currency, lines: [{ name: "Half-Life", amount: 1.2 }], total: 1.2 };
+        const { deps: input, useCase } = build({
+            scraper: { scrape: vi.fn().mockResolvedValue(makeTopic({ offerCurrency: currency })) },
+            profitabilityChecker: { evaluate: vi.fn().mockResolvedValue(makeProspectResult({ offer })) },
+        });
+
+        const result = await useCase.execute();
+
+        expect(input.commentPoster.post).toHaveBeenCalledWith(expect.any(String), offer);
+        expect(result.suppliersCommented).toBe(1);
+    });
+
+    it("does not comment when the Sistema Estoque cannot offer in the topic's currency", async () => {
+        // O adapter lança em vez de devolver outra moeda: o valor iria para um comentário público.
+        const error = vi.spyOn(console, "error").mockImplementation(() => {});
+        const { deps: input, useCase } = build({
+            scraper: { scrape: vi.fn().mockResolvedValue(makeTopic({ offerCurrency: "usd" })) },
+            profitabilityChecker: {
+                evaluate: vi.fn().mockRejectedValue(new Error('Sistema Estoque did not return an offer in "usd"')),
+            },
+        });
+
+        const result = await useCase.execute();
+
+        expect(input.commentPoster.post).not.toHaveBeenCalled();
+        expect(result.suppliersCommented).toBe(0);
+        expect(error).toHaveBeenCalledWith(expect.stringContaining("Failed to process topic ABC"));
+        error.mockRestore();
+    });
+
+    it("does not comment, and says so, when should_comment is true but there is no offer", async () => {
+        // Estado impossível para um adapter correto: falhar alto é melhor do que comentar sem valor.
+        const error = vi.spyOn(console, "error").mockImplementation(() => {});
+        const { deps: input, useCase } = build({
+            profitabilityChecker: {
+                evaluate: vi.fn().mockResolvedValue(makeProspectResult({ should_comment: true, offer: null })),
+            },
+        });
+
+        const result = await useCase.execute();
+
+        expect(input.commentPoster.post).not.toHaveBeenCalled();
+        expect(result.suppliersCommented).toBe(0);
+        expect(error).toHaveBeenCalledWith(expect.stringContaining("there is no offer to post"));
+        error.mockRestore();
+    });
+
+    it("never hands a null offer to the comment poster", async () => {
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        const { deps: input, useCase } = build({
+            profitabilityChecker: {
+                evaluate: vi.fn().mockResolvedValue(makeProspectResult({ should_comment: true, offer: null })),
+            },
+        });
+
+        await useCase.execute();
+
+        expect(input.commentPoster.post).not.toHaveBeenCalledWith(expect.anything(), null);
+    });
+
+    it("keeps processing the next topic after one fails to get an offer", async () => {
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        const evaluate = vi.fn()
+            .mockRejectedValueOnce(new Error("no offer"))
+            .mockResolvedValue(makeProspectResult());
+        const { deps: input, useCase } = build({
+            paginator: {
+                getTopicsFromPage: vi.fn()
+                    .mockResolvedValueOnce([makeTopicRef("AAA"), makeTopicRef("BBB")])
+                    .mockResolvedValue([]),
+            },
+            profitabilityChecker: { evaluate },
+        });
+
+        const result = await useCase.execute();
+
+        expect(evaluate).toHaveBeenCalledTimes(2);
+        expect(input.commentPoster.post).toHaveBeenCalledTimes(1);
+        expect(result.suppliersCommented).toBe(1);
     });
 
     it("does not comment when should_comment is false", async () => {
@@ -133,6 +234,7 @@ describe("FindNewSuppliersUseCase", () => {
         expect(input.profitabilityChecker.evaluate).toHaveBeenCalledWith(
             expect.objectContaining({ list_code: "ABC" }),
             expect.any(Array),
+            expect.any(String),
         );
     });
 
@@ -146,7 +248,20 @@ describe("FindNewSuppliersUseCase", () => {
         expect(input.profitabilityChecker.evaluate).toHaveBeenCalledWith(
             expect.any(Object),
             [expect.objectContaining({ gamivo_id: "144601" })],
+            expect.any(String),
         );
+    });
+
+    it("sends the market price to evaluate as market_price_euro", async () => {
+        const { deps: input, useCase } = build({
+            gameSearcher: { search: vi.fn().mockResolvedValue(makePricedGames({ GamivoPrice: 2.5 })) },
+        });
+
+        await useCase.execute();
+
+        const [, games] = (input.profitabilityChecker.evaluate as ReturnType<typeof vi.fn>).mock.calls[0];
+        expect(games[0]).toMatchObject({ name: "Half-Life", market_price_euro: 2.5 });
+        expect(games[0]).not.toHaveProperty("price_euro");
     });
 
     it("sends null for gamivo_id when the priced game does not have it", async () => {
@@ -207,9 +322,9 @@ describe("FindNewSuppliersUseCase", () => {
 
     // --- early exits ---
 
-    it("skips topics where wantsTf2Key is false without calling profitabilityChecker", async () => {
+    it("skips topics that accept no offer currency without calling profitabilityChecker", async () => {
         const { deps: input, useCase } = build({
-            scraper: { scrape: vi.fn().mockResolvedValue(makeTopic({ wantsTf2Key: false })) },
+            scraper: { scrape: vi.fn().mockResolvedValue(makeTopic({ offerCurrency: null })) },
         });
 
         const result = await useCase.execute();
@@ -302,7 +417,7 @@ describe("FindNewSuppliersUseCase", () => {
         const result = await useCase.execute();
 
         // Uma página com tópicos + uma página vazia (que interrompe) por termo de busca.
-        expect(result.pagesVisited).toBe(TF2_SEARCH_TERMS.length * 2);
+        expect(result.pagesVisited).toBe(SUPPLIER_SEARCH_TERMS.length * 2);
     });
 
     it("stops processing collected topics after MAX_CONSECUTIVE_INACTIVE inactive ones", async () => {
@@ -345,8 +460,8 @@ describe("FindNewSuppliersUseCase", () => {
         const result = await useCase.execute();
 
         // Um fetch por termo — os 5 fechados já vêm na primeira página, então a segunda nunca é buscada.
-        expect(getTopicsFromPage).toHaveBeenCalledTimes(TF2_SEARCH_TERMS.length);
-        expect(result.pagesVisited).toBe(TF2_SEARCH_TERMS.length);
+        expect(getTopicsFromPage).toHaveBeenCalledTimes(SUPPLIER_SEARCH_TERMS.length);
+        expect(result.pagesVisited).toBe(SUPPLIER_SEARCH_TERMS.length);
         expect(input.scraper.scrape).not.toHaveBeenCalled();
     });
 
@@ -377,14 +492,17 @@ describe("FindNewSuppliersUseCase", () => {
 
     // --- search coverage (have=<term>) ---
 
-    it("queries the paginator once per TF2 search-term variant, not just a literal 'tf2' substring", async () => {
+    it("queries the paginator once per search term, TF2 and money alike, not just a literal 'tf2' substring", async () => {
         const getTopicsFromPage = vi.fn().mockResolvedValue([]);
         const { deps: input, useCase } = build({ paginator: { getTopicsFromPage } });
 
         await useCase.execute();
 
         const termsQueried = new Set(getTopicsFromPage.mock.calls.map(([, searchTerm]) => searchTerm));
-        expect(termsQueried).toEqual(new Set(TF2_SEARCH_TERMS));
+        expect(termsQueried).toEqual(new Set(SUPPLIER_SEARCH_TERMS));
+        for (const term of ["TF2", "Team Fortress 2", "paypal", "pp", "euro", "dolar", "usdt", "€", "$"]) {
+            expect(termsQueried).toContain(term);
+        }
     });
 
     // --- two-phase collection (bump mitigation) ---
@@ -416,7 +534,7 @@ describe("FindNewSuppliersUseCase", () => {
         expect(firstScrapeIndex).toBeGreaterThan(-1);
         expect(callOrder.slice(0, firstScrapeIndex)).toEqual(pageEntries);
         // page 1 (com tópico) + page 2 (vazia, interrompe) por termo.
-        expect(pageEntries).toHaveLength(TF2_SEARCH_TERMS.length * 2);
+        expect(pageEntries).toHaveLength(SUPPLIER_SEARCH_TERMS.length * 2);
     });
 
     it("processes a topic only once even when its code appears on more than one page or search term", async () => {

@@ -990,7 +990,7 @@ Counter-Strike 2</pre>
       tbody.innerHTML = games.map(g => `
         <tr>
           <td>${escHtml(g.name)}</td>
-          <td class="td-price">€${Number(g.price_euro).toFixed(2)}</td>
+          <td class="td-price">€${Number(g.market_price_euro).toFixed(2)}</td>
           <td class="td-pop">${Number(g.popularity).toLocaleString()}</td>
           <td class="td-reg">${escHtml(g.region ?? "—")}</td>
         </tr>`).join("");

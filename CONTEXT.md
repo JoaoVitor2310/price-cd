@@ -11,7 +11,7 @@ License key de jogo na Steam — o produto que o CarcaDeals compra de fornecedor
 _Avoid_: TF2 Key (conceito de moeda de troca, não produto — ver abaixo)
 
 **TF2 Key**:
-Mann Co. Supply Crate Key, o item virtual do Team Fortress 2 usado como moeda de troca líquida na comunidade do SteamTrades. É a forma de pagamento que o CarcaDeals oferece aos fornecedores em troca dos jogos ofertados — não tem relação com license keys.
+Mann Co. Supply Crate Key, o item virtual do Team Fortress 2 usado como moeda de troca líquida na comunidade do SteamTrades. É a Moeda de oferta preferida do CarcaDeals aos fornecedores em troca dos jogos ofertados — não tem relação com license keys.
 _Avoid_: Key (sem qualificador — sempre especificar "TF2 Key")
 
 **Plataforma**:
@@ -21,8 +21,12 @@ _Avoid_: Loja, Store
 ### Ciclo de vida do fornecedor
 
 **Fornecedor**:
-Dono de uma Lista no SteamTrades que oferece jogos — é fornecedor independente de já estar adicionado como contato (`is_added`) ou já ter negociado com o CarcaDeals (`has_traded`, rastreado no Sistema Estoque; ainda não consumido pelo price-cd). Os critérios de elegibilidade (Lista ativa, jogos com preço encontrado, disposto a receber TF2 Keys) determinam se ele qualifica para receber uma oferta de compra — não se ele é ou não um Fornecedor.
+Dono de uma Lista no SteamTrades que oferece jogos — é fornecedor independente de já estar adicionado como contato (`is_added`) ou já ter negociado com o CarcaDeals (`has_traded`, rastreado no Sistema Estoque; ainda não consumido pelo price-cd). Os critérios de elegibilidade (Lista ativa, jogos com preço encontrado, aceitar alguma Moeda de oferta) determinam se ele qualifica para receber uma oferta de compra — não se ele é ou não um Fornecedor.
 _Avoid_: Supplier, Trader
+
+**Moeda de oferta**:
+A moeda em que o CarcaDeals propõe pagar o Fornecedor por uma Lista: TF2 Key, euro ou dólar. Sai do que a Lista aceita no `.want`, não de configuração — o mesmo Fornecedor pode receber TF2 Keys numa Lista e euros em outra. Precedência quando a Lista aceita mais de uma: **TF2 Key**, depois **dólar**, depois **euro** (dólar vence euro porque quem cita dólar pensa em dólar). PayPal não é moeda: é meio de pagamento em euro, então cai em euro. Quem calcula e converte o valor é o Sistema Estoque; o price-cd só o repassa ao comentário (ver `docs/adr/0001`).
+_Avoid_: Moeda de pagamento, Meio de pagamento (PayPal é meio de pagamento, não moeda)
 
 **Lista**:
 A relação de jogos/keys que um Fornecedor está oferecendo em `.have` num tópico do SteamTrades. É o que o price-cd raspa para descobrir novos Fornecedores e para reabastecer os já conhecidos. Termo canônico atual — o código ainda usa nomes antigos ("trade", "topic") para o mesmo conceito em partes diferentes do `suppliers`.
@@ -49,6 +53,10 @@ _Avoid_: usar para um remaster/relançamento com produto próprio — isso é Ve
 **Versão**:
 Relançamento de um jogo que o AllKeyShop trata como PRODUTO separado no catálogo — resultado de busca próprio — mesmo compartilhando o nome-base com o jogo original (ex.: "Skyrim" 2011 vs "Skyrim Special Edition" 2021). A palavra de edição só entra pra desempatar entre Versões candidatas com o mesmo nome-base, nunca para filtrar Edições.
 _Avoid_: Edição (reservado para variação de preço dentro do mesmo produto, ver acima), Remaster
+
+**Preço de mercado**:
+O melhor preço de um jogo no AllKeyShop, em euros — o que a key vale para revenda. Chama-se `market_price_euro` em todo lugar — no contrato com o Sistema Estoque e na resposta demo da interface web (antes `price_euro`, renomeado porque se confundia com o valor ofertado ao fornecedor). **Não é a oferta**: a oferta é a Moeda de oferta (`offer_price`), calculada pelo Sistema Estoque. O Fornecedor nunca vê o Preço de mercado.
+_Avoid_: Preço, `price_euro` (nome antigo do campo), usar para o valor que se propõe ao Fornecedor
 
 ### Preço mínimo negociável
 
