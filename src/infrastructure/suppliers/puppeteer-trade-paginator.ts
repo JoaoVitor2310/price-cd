@@ -14,8 +14,8 @@ import {
  * `have=<searchTerm>` filtra, no próprio SteamTrades, listas cujo `.want` casa com o termo —
  * reduz bastante a varredura (de ~100 páginas totais para uma fração disso por termo), e por
  * consequência encolhe a janela em que um bump pode reordenar uma lista para fora do que já
- * foi coletado. Precisa ser chamado uma vez por variação em `TF2_SEARCH_TERMS` (ver
- * `src/domain/suppliers/tf2-key-matching.ts`) porque a busca do site é por substring exata.
+ * foi coletado. Precisa ser chamado uma vez por variação em `SUPPLIER_SEARCH_TERMS` (ver
+ * `src/domain/suppliers/supplier-eligibility.ts`) porque a busca do site é por substring exata.
  */
 function buildPageUrl(page: number, searchTerm: string): string {
 	return `${STEAMTRADES_BASE}/trades/search?have=${encodeURIComponent(searchTerm)}&page=${page}`;

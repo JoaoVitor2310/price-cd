@@ -157,6 +157,21 @@ describe("GamesModule", () => {
 			expect(tradeImporter.import).not.toHaveBeenCalled();
 		});
 
+		it("names the market price `market_price_euro` in the demo games", async () => {
+			// `public/index.html` lê este nome: trocá-lo só de um lado deixaria a
+			// coluna de preço da UI em `NaN`. O nome antigo não pode voltar.
+			popularity.fetch.mockResolvedValueOnce([found("Hades")]);
+			price.fetch.mockResolvedValueOnce([found("Hades")]);
+
+			const response = await request(app.getHttpServer())
+				.post("/games/research")
+				.send(body);
+
+			expect(response.body.games).toHaveLength(1);
+			expect(response.body.games[0]).toMatchObject({ name: "Hades", market_price_euro: 4.2 });
+			expect(response.body.games[0]).not.toHaveProperty("price_euro");
+		});
+
 		it("returns 200 demo for a wrong token instead of rejecting it", async () => {
 			// Este é o caso que proíbe um Guard: Guard devolveria 403, e o
 			// contrato manda devolver o resultado demo com 200.

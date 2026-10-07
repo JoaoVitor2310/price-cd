@@ -1,3 +1,4 @@
+import type { OfferCurrency } from "@/domain/suppliers/offer.js";
 import type {
 	GamePriceInput,
 	ProfitabilityChecker,
@@ -22,8 +23,9 @@ export class LazyProfitabilityChecker implements ProfitabilityChecker {
 	async evaluate(
 		supplier: SupplierInput,
 		games: GamePriceInput[],
+		currency: OfferCurrency,
 	): Promise<ProspectResult> {
 		if (!this.instance) this.instance = this.build();
-		return this.instance.evaluate(supplier, games);
+		return this.instance.evaluate(supplier, games, currency);
 	}
 }

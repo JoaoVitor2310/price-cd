@@ -56,6 +56,20 @@ describe("ResearchGamesUseCase", () => {
 		expect(imported.map((g) => g.name)).toEqual(["Worthy"]);
 	});
 
+	it("sends the market price to the Sistema Estoque as market_price_euro", async () => {
+		const tradeImporter: GameTradeImporter = {
+			import: vi.fn().mockResolvedValue(undefined),
+		};
+		const found = [game("Worthy")];
+		const priced = [game("Worthy", 2)];
+
+		await makeUseCase(found, priced, tradeImporter).execute(makeInput(found));
+
+		const [imported] = vi.mocked(tradeImporter.import).mock.calls[0];
+		expect(imported[0]).toMatchObject({ name: "Worthy", market_price_euro: 2 });
+		expect(imported[0]).not.toHaveProperty("price_euro");
+	});
+
 	it("skips the import entirely when every price is too low", async () => {
 		const tradeImporter: GameTradeImporter = {
 			import: vi.fn().mockResolvedValue(undefined),

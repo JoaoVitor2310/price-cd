@@ -1,3 +1,5 @@
+import type { Offer, OfferCurrency } from "@/domain/suppliers/offer.js";
+
 /** Dados do fornecedor enviados ao Sistema Estoque para identificação e registro. */
 export type SupplierInput = {
     steam_id: string;
@@ -8,8 +10,11 @@ export type SupplierInput = {
 /** Jogo com preço já descoberto pelo price researcher, pronto para avaliação de rentabilidade. */
 export type GamePriceInput = {
     name: string;
-    /** Preço em EUR obtido no AllKeyShop/Gamivo. */
-    price_euro: number;
+    /**
+     * Preço de **mercado** em EUR obtido no AllKeyShop/Gamivo — não a oferta ao fornecedor (essa é
+     * `Offer`). O nome carrega "market" para não se confundir com `offer_price`.
+     */
+    market_price_euro: number;
     /** Pico de jogadores em 24h no SteamCharts. */
     popularity: number;
     /** Região da oferta: "global", "eu", "row", ou null se não identificado. */
@@ -20,7 +25,8 @@ export type GamePriceInput = {
 
 export type ProfitableGameResult = {
     name: string;
-    price_euro: number;
+    /** Preço de mercado em EUR, devolvido pelo Sistema Estoque junto do jogo. */
+    market_price_euro: number;
     popularity: number;
     region: string | null;
     /** Preço em keys TF2, calculado pelo Sistema Estoque. */
@@ -31,6 +37,16 @@ export type ProspectResult = {
     profitable: ProfitableGameResult[];
     /** Soma dos `tf2_price` de todos os jogos rentáveis, calculada pelo Sistema Estoque. */
     total_tf2_price: number;
+    /**
+     * O que propor ao fornecedor, já na Moeda de oferta pedida em `evaluate`. Para `tf2` são os
+     * mesmos `tf2_price`/`total_tf2_price` acima; para `eur`/`usd` vêm convertidos pelo Sistema
+     * Estoque.
+     *
+     * É `null` **exatamente quando** `should_comment` é `false`, em qualquer moeda: sem comentário a
+     * postar não há oferta a mostrar. Com `should_comment` verdadeiro o adapter garante uma oferta —
+     * ou lança, nunca devolve `null` nem uma oferta inventada.
+     */
+    offer: Offer | null;
     /** Se o fornecedor já está adicionado como contato no Sistema Estoque. */
     is_added: boolean;
     /** `true` se o price-cd deve postar comentário no tópico. Decisão tomada pelo Sistema Estoque. */
@@ -42,5 +58,14 @@ export type ProspectResult = {
 };
 
 export abstract class ProfitabilityChecker {
-    abstract evaluate(supplier: SupplierInput, games: GamePriceInput[]): Promise<ProspectResult>;
+    /**
+     * `currency` é a Moeda de oferta da Lista: o Sistema Estoque calcula `offer` nela. Um adapter
+     * que não consiga entregar `offer` na moeda pedida **lança** — nunca devolve outra moeda,
+     * porque o valor iria para um comentário público como se fosse a que o fornecedor aceita.
+     */
+    abstract evaluate(
+        supplier: SupplierInput,
+        games: GamePriceInput[],
+        currency: OfferCurrency,
+    ): Promise<ProspectResult>;
 }

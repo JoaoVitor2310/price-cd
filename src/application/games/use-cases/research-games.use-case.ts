@@ -62,7 +62,7 @@ export class ResearchGamesUseCase {
 		const pricedGames: GameTradeInput[] = worthy
 			.map((g) => ({
 				name: g.name,
-				price_euro: g.GamivoPrice as number,
+				market_price_euro: g.GamivoPrice as number,
 				popularity: g.popularity,
 				region: g.region ?? null,
 				id_steam: g.id_steam ?? null,

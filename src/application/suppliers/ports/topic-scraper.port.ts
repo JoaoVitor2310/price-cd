@@ -1,3 +1,5 @@
+import type { OfferCurrency } from "@/domain/suppliers/offer.js";
+
 /** Dados extraídos de uma página de tópico individual no SteamTrades. */
 export type TopicData = {
     /** Nome do autor exibido em `.author_name`. */
@@ -9,12 +11,14 @@ export type TopicData = {
     /** `true` se a trade está marcada como inativa (presença de `.notification.yellow`). */
     isInactive: boolean;
     /**
-     * `true` se o dono aceitaria TF2 Keys **do CarcaDeals** — regra completa (menção a TF2 sem
-     * negação/relutância, menos os vetos de tópico) em `domain/suppliers/supplier-eligibility.ts`.
-     * Não é o mesmo que "o texto menciona TF2": recusar revendedor ("No reseller offers") ou
-     * moeda-key em bloco ("No CSGO Keys or similar") desqualifica mesmo pedindo TF2 Keys.
+     * A Moeda de oferta desta Lista: em que moeda o CarcaDeals propõe pagar o dono. `null` se ele
+     * não aceita nenhuma que a gente ofereça. Regra completa (menção sem negação/relutância,
+     * menos os vetos de tópico, mais a precedência TF2 > dólar > euro) em
+     * `domain/suppliers/supplier-eligibility.ts`.
+     * Não é o mesmo que "o texto menciona um meio de pagamento": recusar revendedor ("No reseller
+     * offers") desqualifica mesmo aceitando tudo.
      */
-    wantsTf2Key: boolean;
+    offerCurrency: OfferCurrency | null;
 };
 
 /** Porta responsável por extrair os dados relevantes de um tópico de trade. */
