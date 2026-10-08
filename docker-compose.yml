@@ -62,6 +62,16 @@ services:
       - sistema-estoque-cd
 
   price-researcher:
+    # Em produção a imagem vem do GHCR, construída pelo CI (.github/workflows/deploy.yml;
+    # ver docs/adr/0006-imagem-de-producao-e-construida-no-ci.md): a CPU da VPS é
+    # emprestada e um build frio ali passava dos 10 minutos.
+    #
+    # `IMAGE_TAG` existe para rollback manual — `IMAGE_TAG=sha-<commit> docker compose up -d
+    # price-researcher`. O nome é minúsculo porque o GHCR exige.
+    image: ghcr.io/joaovitor2310/price-cd:${IMAGE_TAG:-latest}
+
+    # Plano B se o GHCR estiver fora: `docker compose up -d --build price-researcher`.
+    # O deploy normal nunca usa — ele faz `pull` explícito e aborta se falhar.
     build: .
 
     container_name: price-researcher
