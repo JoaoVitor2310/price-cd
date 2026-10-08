@@ -9,21 +9,95 @@ on:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # Minúsculo e fixo de propósito: o GHCR rejeita maiúsculas e `github.repository`
+  # é `JoaoVitor2310/price-cd`. O mesmo nome está no docker-compose.yml, e
+  # test/unit/infrastructure/deploy-workflow.test.ts trava que os dois coincidam.
+  IMAGE: ghcr.io/joaovitor2310/price-cd
+
+# Dois deploys sobrepostos disputariam o mesmo container; o segundo espera o primeiro.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
 
 jobs:
-  deploy:
+  # A imagem é construída aqui, não na VPS: lá a CPU é emprestada (steal de 60-80%
+  # medido em 2026-10-08) e um build frio passava dos 10 minutos. Ver
+  # docs/adr/0006-imagem-de-producao-e-construida-no-ci.md.
+  build:
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    permissions:
+      contents: read
+      packages: write
+    env:
+      # No `workflow_run`, `github.sha` é o último commit de main, não necessariamente
+      # o que o CI aprovou; `head_sha` é o commit exato que passou nos testes.
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SHA }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:sha-${{ env.SHA }}
+          # Liga o pacote ao repositório: é isso que deixa o GITHUB_TOKEN do job de
+          # deploy puxar a imagem sem um PAT guardado na VPS.
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ env.SHA }}
+          # Cache de camadas no GitHub: o `apt-get install` do Chromium deixa de
+          # depender do cache de build da VPS (que os crons de prune esvaziam).
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
 
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1
+        env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT }}
+          envs: GHCR_USER,GHCR_TOKEN
           script: |
+            set -eu
             cd /var/www/price-cd
+            # O git pull traz o docker-compose.yml e o docker/ — a imagem vem do GHCR.
             git pull origin main
-            docker compose up price-researcher --build -d
+
+            # Token do próprio job: expira quando o job acaba e nada fica guardado na VPS.
+            # O trap remove a credencial do disco mesmo se o pull ou o up falharem.
+            trap 'docker logout ghcr.io' EXIT
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+
+            # Sem `--build`: se o pull falhar o deploy para, em vez de compilar na VPS.
+            docker compose pull price-researcher
+            docker compose up -d price-researcher

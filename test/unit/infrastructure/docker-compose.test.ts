@@ -78,4 +78,21 @@ describe("docker-compose", () => {
 			expect(block).toMatch(/^\s*mem_limit:\s*\S+\s*$/m);
 		},
 	);
+
+	describe("production image", () => {
+		it("comes from GHCR under a lowercase name, with an overridable tag for rollback", () => {
+			expect(blocks.get("price-researcher")).toMatch(
+				/^\s*image:\s*ghcr\.io\/[a-z0-9._/-]+:\$\{IMAGE_TAG:-latest\}\s*$/m,
+			);
+		});
+
+		it("keeps a local build as the manual fallback when GHCR is down", () => {
+			expect(blocks.get("price-researcher")).toMatch(/^\s*build:\s*\.\s*$/m);
+		});
+
+		it("is not shared with the dev service, which must keep building its own target", () => {
+			// Se o dev herdasse o `image:` de produção, um `up` do dev sobrescreveria a tag local da imagem de produção.
+			expect(blocks.get("price-researcher-dev")).not.toMatch(/^\s*image:/m);
+		});
+	});
 });
