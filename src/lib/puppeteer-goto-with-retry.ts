@@ -1,6 +1,16 @@
 import { delay } from "@/helpers/utils.js";
 import { TimeoutError } from "puppeteer";
 import { PageWithCursor } from "puppeteer-real-browser";
+import { describeDiagnosis, diagnoseFailedNavigation } from "@/lib/navigation-diagnostics.js";
+
+/**
+ * Chamada só quando a navegação desistiu de vez. O `TimeoutError` sozinho não diz se o
+ * Chromium travou, morreu ou se a Cloudflare segurou a página — o diagnóstico diz.
+ */
+async function logFailureDiagnosis(page: PageWithCursor, url: string): Promise<void> {
+    const diagnosis = await diagnoseFailedNavigation(page);
+    console.error(`🩺 [DIAGNOSIS] Navigation to ${url} gave up: ${describeDiagnosis(diagnosis)}`);
+}
 
 export async function gotoWithRetry(page: PageWithCursor, url: string, maxRetries = 3): Promise<boolean> {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -35,9 +45,12 @@ export async function gotoWithRetry(page: PageWithCursor, url: string, maxRetrie
             }
 
             console.error(`❌ [ERROR] Failed to navigate to ${url}, error:`, error);
+            await logFailureDiagnosis(page, url);
             return false;
         }
     }
 
+    // Saída do laço = todas as tentativas terminaram em 429.
+    await logFailureDiagnosis(page, url);
     return false;
 }
