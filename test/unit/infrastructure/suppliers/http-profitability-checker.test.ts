@@ -174,8 +174,23 @@ describe("HttpProfitabilityChecker.evaluate", () => {
 		const fetchMock = vi.fn().mockResolvedValue({
 			ok,
 			status: ok ? 200 : 500,
-			json: async () => body,
-			text: async () => "boom",
+			headers: new Headers({ "content-type": "application/json" }),
+			text: async () => (ok ? JSON.stringify(body) : "boom"),
+		});
+		vi.stubGlobal("fetch", fetchMock);
+		return fetchMock;
+	}
+
+	/** Uma resposta arbitrária, para simular o que um proxy ou framework devolve fora do contrato. */
+	function stubRawResponse(init: { status: number; contentType?: string; location?: string; body: string }) {
+		const headers = new Headers();
+		if (init.contentType) headers.set("content-type", init.contentType);
+		if (init.location) headers.set("location", init.location);
+		const fetchMock = vi.fn().mockResolvedValue({
+			ok: init.status >= 200 && init.status < 300,
+			status: init.status,
+			headers,
+			text: async () => init.body,
 		});
 		vi.stubGlobal("fetch", fetchMock);
 		return fetchMock;
@@ -238,5 +253,46 @@ describe("HttpProfitabilityChecker.evaluate", () => {
 		await expect(
 			new HttpProfitabilityChecker("http://estoque", "token").evaluate(supplier, games, "tf2"),
 		).rejects.toThrow(/failed with status 500/);
+	});
+
+	it("asks for JSON and refuses to follow redirects", async () => {
+		const fetchMock = stubFetch(makeWire());
+
+		await new HttpProfitabilityChecker("http://estoque", "token").evaluate(supplier, games, "tf2");
+
+		const [, init] = fetchMock.mock.calls[0];
+		expect(init.headers.Accept).toBe("application/json");
+		expect(init.redirect).toBe("manual");
+	});
+
+	it("reports a redirect as an error that names where it pointed", async () => {
+		// O caso que escondia a causa: rejeição virando redirect para uma página HTML.
+		stubRawResponse({ status: 302, location: "https://estoque/login", body: "" });
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+		await expect(
+			new HttpProfitabilityChecker("http://estoque", "token").evaluate(supplier, games, "tf2"),
+		).rejects.toThrow(/failed with status 302/);
+		expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("https://estoque/login"));
+	});
+
+	it("explains a 2xx HTML body instead of failing with an opaque JSON syntax error", async () => {
+		stubRawResponse({ status: 200, contentType: "text/html; charset=UTF-8", body: "<!DOCTYPE html><html>login</html>" });
+		vi.spyOn(console, "error").mockImplementation(() => {});
+
+		const promise = new HttpProfitabilityChecker("http://estoque", "token").evaluate(supplier, games, "tf2");
+
+		await expect(promise).rejects.toThrow(/non-JSON body \(HTTP 200, content-type text\/html; charset=UTF-8\): <!DOCTYPE html>/);
+	});
+
+	it("truncates a huge non-JSON body in the error message", async () => {
+		stubRawResponse({ status: 200, contentType: "text/html", body: `<html>${"x".repeat(5000)}` });
+		vi.spyOn(console, "error").mockImplementation(() => {});
+
+		const error = await new HttpProfitabilityChecker("http://estoque", "token")
+			.evaluate(supplier, games, "tf2")
+			.catch((e: Error) => e);
+
+		expect((error as Error).message.length).toBeLessThan(400);
 	});
 });

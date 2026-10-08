@@ -101,8 +101,14 @@ export class HttpProfitabilityChecker implements ProfitabilityChecker {
             const response = await fetch(url, {
                 method: "POST",
                 signal: controller.signal,
+                // Sem `Accept: application/json`, um framework web responde a uma rejeição (validação,
+                // auth) com redirect para uma página HTML, e o `fetch` o seguiria até um `200` com HTML
+                // — que estourava como "Unexpected token '<'" sem dizer o que foi rejeitado. Com
+                // `redirect: "manual"` o 3xx chega aqui como erro e cai no ramo `!response.ok`.
+                redirect: "manual",
                 headers: {
                     "Content-Type": "application/json",
+                    Accept: "application/json",
                     Authorization: `Bearer ${this.bearerToken}`,
                 },
                 body: JSON.stringify({
@@ -116,11 +122,13 @@ export class HttpProfitabilityChecker implements ProfitabilityChecker {
             if (!response.ok) {
                 const body = await response.text().catch(() => undefined);
                 console.error(`❌ [PROFITABILITY] HTTP ${response.status} — POST ${url}`);
+                const location = response.headers?.get("location");
+                if (location) console.error(`❌ [PROFITABILITY] Redirected to: ${location}`);
                 console.error(`❌ [PROFITABILITY] Response body:`, body);
                 throw new Error(`POST ${url} failed with status ${response.status}`);
             }
 
-            return toProspectResult((await response.json()) as ProspectWire, currency);
+            return toProspectResult(await this.parseJson(response, url), currency);
         } catch (err) {
             if (err instanceof Error && err.name === "AbortError") {
                 console.error(`❌ [PROFITABILITY] Request timed out — POST ${url}`);
@@ -128,6 +136,25 @@ export class HttpProfitabilityChecker implements ProfitabilityChecker {
             throw err;
         } finally {
             clearTimeout(timeoutId);
+        }
+    }
+
+    /**
+     * Lê o corpo como texto antes de parsear: `response.json()` descarta o corpo quando falha, e
+     * "Unexpected token '<'" não diz quem respondeu nem o quê. O erro agora carrega status,
+     * `content-type` e o começo do corpo — o suficiente para distinguir proxy, página de login e
+     * rejeição de payload.
+     */
+    private async parseJson(response: Response, url: string): Promise<ProspectWire> {
+        const text = await response.text();
+        try {
+            return JSON.parse(text) as ProspectWire;
+        } catch {
+            const contentType = response.headers?.get("content-type") ?? "unknown";
+            console.error(`❌ [PROFITABILITY] Non-JSON body from POST ${url} (HTTP ${response.status}, ${contentType}):`, text.slice(0, 500));
+            throw new Error(
+                `POST ${url} returned a non-JSON body (HTTP ${response.status}, content-type ${contentType}): ${text.slice(0, 200)}`,
+            );
         }
     }
 }
