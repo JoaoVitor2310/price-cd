@@ -7,8 +7,13 @@ const { readdir, readFile } = vi.hoisted(() => ({
 
 vi.mock("node:fs/promises", () => ({ readdir, readFile }));
 
-const { collectDescendants, descendantsOf, killProcessTree, readProcessTable } =
-	await import("@/lib/process-tree.js");
+const {
+	collectDescendants,
+	descendantsOf,
+	findPidByDebugPort,
+	killProcessTree,
+	readProcessTable,
+} = await import("@/lib/process-tree.js");
 
 /** `/proc/<pid>/stat`: `pid (comm) state ppid ...` */
 const stat = (pid: number, comm: string, ppid: number) =>
@@ -156,5 +161,94 @@ describe("descendantsOf", () => {
 		});
 
 		expect(await descendantsOf(10)).toEqual([30, 20]);
+	});
+});
+
+/** `/proc/<pid>/cmdline`: argumentos separados por NUL. */
+const cmdlines = (table: Record<number, string[] | "gone">) => {
+	readdir.mockResolvedValue([...Object.keys(table), "self"]);
+	readFile.mockImplementation(async (path: string) => {
+		const pid = Number(path.split("/")[2]);
+		const args = table[pid];
+		if (!args || args === "gone") throw new Error("ENOENT");
+		return `${args.join("\0")}\0`;
+	});
+};
+
+describe("findPidByDebugPort", () => {
+	const main = ["/usr/lib/chromium/chromium", "--remote-debugging-port=46611"];
+
+	it("finds the main Chromium process listening on the port", async () => {
+		cmdlines({ 10: ["node", "dist/main.js"], 30: main });
+
+		expect(await findPidByDebugPort(46611)).toBe(30);
+	});
+
+	it("ignores renderers, which inherit the port flag but carry --type=", async () => {
+		cmdlines({
+			30: main,
+			111: [...main, "--type=renderer"],
+			112: [...main, "--type=gpu-process"],
+		});
+
+		expect(await findPidByDebugPort(46611)).toBe(30);
+	});
+
+	it("matches the whole argument, so 4661 never matches 46611", async () => {
+		cmdlines({ 30: main });
+
+		expect(await findPidByDebugPort(4661)).toBeUndefined();
+		expect(await findPidByDebugPort(466110)).toBeUndefined();
+	});
+
+	it("tells apart two browsers by their ports", async () => {
+		cmdlines({
+			30: ["chromium", "--remote-debugging-port=46611"],
+			2113: ["chromium", "--remote-debugging-port=36879"],
+		});
+
+		expect(await findPidByDebugPort(36879)).toBe(2113);
+	});
+
+	it("picks the lowest pid when a wrapper and Chromium both carry the flag", async () => {
+		// Wrapper que não faz exec: pai (20) e filho (30) sem --type=. O pai contém o filho
+		// na árvore, então é o pid que alcança os dois.
+		cmdlines({ 20: ["/bin/sh", "chromium", ...main.slice(1)], 30: main });
+
+		expect(await findPidByDebugPort(46611)).toBe(20);
+	});
+
+	// As duas ordens são necessárias: com só uma, "o último que terminou vence" (o bug
+	// original) ou "o primeiro vence" acertaria por coincidência.
+	it.each([20, 30])(
+		"does not depend on which /proc read finishes first (pid %i answers last)",
+		async (slowPid) => {
+			readdir.mockResolvedValue(["30", "20"]);
+			readFile.mockImplementation(async (path: string) => {
+				const pid = Number(path.split("/")[2]);
+				if (pid === slowPid) await new Promise((resolve) => setTimeout(resolve, 20));
+				return `${main.join("\0")}\0`;
+			});
+
+			expect(await findPidByDebugPort(46611)).toBe(20);
+		},
+	);
+
+	it("returns undefined when no process listens on the port", async () => {
+		cmdlines({ 10: ["node", "dist/main.js"] });
+
+		expect(await findPidByDebugPort(46611)).toBeUndefined();
+	});
+
+	it("skips processes that die mid-scan instead of failing", async () => {
+		cmdlines({ 20: "gone", 30: main });
+
+		expect(await findPidByDebugPort(46611)).toBe(30);
+	});
+
+	it("returns undefined where there is no procfs", async () => {
+		readdir.mockRejectedValue(new Error("ENOENT"));
+
+		expect(await findPidByDebugPort(46611)).toBeUndefined();
 	});
 });

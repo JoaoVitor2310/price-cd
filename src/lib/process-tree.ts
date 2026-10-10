@@ -72,6 +72,62 @@ const parsePpid = (stat: string): number | null => {
 };
 
 /**
+ * Acha o processo PRINCIPAL do Chromium que escuta na porta de debug `port`.
+ *
+ * Existe porque `browser.process()` devolve `null` para browsers criados por
+ * `puppeteer.connect` — e o `puppeteer-real-browser` sempre conecta. Sem o pid, o
+ * `cleanupBrowser` não tem de onde partir para tirar a árvore; foi assim que
+ * sessões velhas ficaram vivas por dias (produção, 2026-10-10). A porta, ao
+ * contrário, está sempre na `wsEndpoint()`.
+ *
+ * Os renderers herdam `--remote-debugging-port` na linha de comando; o que os
+ * distingue do principal é o `--type=`. Compara o argumento INTEIRO: `4661` não
+ * pode casar com `46611`.
+ *
+ * Se mais de um processo casar (um wrapper que não faz `exec` e o Chromium que ele
+ * lança, ambos com a flag e sem `--type=`), vale o de MENOR pid: o pai nasce antes
+ * do filho, e a árvore do pai contém o Chromium, então o snapshot e o kill
+ * alcançam os dois. Escolher "o último que terminou a varredura" dependeria da
+ * ordem do `Promise.all` — não determinístico, e errar o pid reabre o vazamento.
+ *
+ * Devolve `undefined` se não achar (inclusive onde não há procfs) — nunca lança.
+ */
+export const findPidByDebugPort = async (
+	port: number,
+): Promise<number | undefined> => {
+	let entries: string[];
+	try {
+		entries = await readdir("/proc");
+	} catch {
+		return undefined;
+	}
+
+	const wanted = `--remote-debugging-port=${port}`;
+	const matches: number[] = [];
+
+	await Promise.all(
+		entries.map(async (entry) => {
+			const pid = Number(entry);
+			if (!Number.isInteger(pid) || pid <= 0) return;
+
+			try {
+				// cmdline separa os argumentos por NUL.
+				const args = (await readFile(`/proc/${pid}/cmdline`, "utf8")).split(
+					"\0",
+				);
+				if (args.includes(wanted) && !args.some((a) => a.startsWith("--type="))) {
+					matches.push(pid);
+				}
+			} catch {
+				// processo morreu entre o readdir e o readFile — ignora
+			}
+		}),
+	);
+
+	return matches.length > 0 ? Math.min(...matches) : undefined;
+};
+
+/**
  * Todos os descendentes de `root` na tabela, dos mais profundos para os mais
  * rasos — a ordem em que se deve matar, para que nenhum nível seja reparentado
  * antes de ter sido visitado. O próprio `root` não entra no resultado.
