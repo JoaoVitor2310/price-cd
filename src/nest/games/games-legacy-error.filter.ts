@@ -9,7 +9,7 @@ import { AllExceptionsFilter } from "@/nest/common/all-exceptions.filter.js";
  * Existe porque o contrato atual **não é uniforme**. A migração foi proibida de
  * uniformizá-lo: enquanto Express e Nest coexistiram, qualquer diferença de
  * resposta tinha de significar "o Nest quebrou", nunca "eu melhorei". Com o
- * Express fora, a uniformização virou o item 14 do `docs/IMPROVEMENTS.md` — um
+ * Express fora, a uniformização virou o item 13 do `docs/IMPROVEMENTS.md` — um
  * PR de contrato, deliberado, não um efeito colateral.
  *
  * Só o **500** destas rotas diverge do global — elas usam `message` e um
@@ -17,7 +17,7 @@ import { AllExceptionsFilter } from "@/nest/common/all-exceptions.filter.js";
  * **com** ponto. Por isso herda em vez de copiar: 400 e `HttpException`
  * continuam sendo os do pai, inclusive o log de validação.
  *
- * Some no PR de uniformização (item 16 do `docs/IMPROVEMENTS.md`), que só pode
+ * Some no PR de uniformização (item 13 do `docs/IMPROVEMENTS.md`), que só pode
  * acontecer depois que o Express sair.
  */
 @Catch()

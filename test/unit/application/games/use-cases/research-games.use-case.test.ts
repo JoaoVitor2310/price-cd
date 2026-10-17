@@ -6,7 +6,11 @@ import type {
 } from "@/application/games/ports/game-search.ports.js";
 import type { GameTradeImporter } from "@/application/games/ports/game-trade-importer.port.js";
 import { PriceGames } from "@/application/games/services/price-games.js";
-import { ResearchGamesUseCase } from "@/application/games/use-cases/research-games.use-case.js";
+import {
+	type ResearchDelivery,
+	ResearchGamesUseCase,
+} from "@/application/games/use-cases/research-games.use-case.js";
+import { flatPopularity } from "@/domain/games/search-criteria.js";
 
 const game = (name: string, GamivoPrice?: number): FoundGames => ({
 	id: 0,
@@ -30,11 +34,14 @@ const makeUseCase = (
 		tradeImporter,
 	);
 
-const makeInput = (found: FoundGames[], demo = false) => ({
+const makeInput = (
+	found: FoundGames[],
+	delivery: ResearchDelivery = "trade",
+	minPrice = 0.5,
+) => ({
 	gameNames: found.map((g) => g.name),
-	minPopularity: 100,
-	checkGamivoOffer: false,
-	demo,
+	criteria: { popularity: flatPopularity(100), minPrice, checkGamivoOffer: false },
+	delivery,
 });
 
 describe("ResearchGamesUseCase", () => {
@@ -92,10 +99,9 @@ describe("ResearchGamesUseCase", () => {
 		const found = [game("Cheap"), game("Free")];
 		const priced = [game("Cheap", 0.1), game("Free", 0)];
 
-		await makeUseCase(found, priced, tradeImporter).execute({
-			...makeInput(found),
-			minPrice: 0,
-		});
+		await makeUseCase(found, priced, tradeImporter).execute(
+			makeInput(found, "trade", 0),
+		);
 
 		expect(tradeImporter.import).toHaveBeenCalledTimes(1);
 		const [imported] = vi.mocked(tradeImporter.import).mock.calls[0];
@@ -108,9 +114,50 @@ describe("ResearchGamesUseCase", () => {
 		const priced = [game("Cheap", 0.2), game("Worthy", 1.5)];
 
 		const result = await makeUseCase(found, priced).execute(
-			makeInput(found, true),
+			makeInput(found, "demo"),
 		);
 
 		expect(result?.map((g) => g.name)).toEqual(["Worthy"]);
+	});
+
+	describe("delivery", () => {
+		const many = Array.from({ length: 12 }, (_, i) => game(`Game ${i}`));
+		const manyPriced = many.map((g) => ({ ...g, GamivoPrice: 2 }));
+
+		it("respond: returns every game and creates no Trade (the bundle sync case)", async () => {
+			const tradeImporter: GameTradeImporter = { import: vi.fn() };
+
+			const result = await makeUseCase(many, manyPriced, tradeImporter).execute(
+				makeInput(many, "respond"),
+			);
+
+			expect(result).toHaveLength(12);
+			expect(tradeImporter.import).not.toHaveBeenCalled();
+		});
+
+		it("demo: caps the list at 10 games and creates no Trade", async () => {
+			const tradeImporter: GameTradeImporter = { import: vi.fn() };
+			const popularity = { fetch: vi.fn().mockResolvedValue(many) } as PopularityFetcher;
+			const useCase = new ResearchGamesUseCase(
+				new PriceGames(popularity, { fetch: vi.fn().mockResolvedValue([]) } as PriceFetcher),
+				tradeImporter,
+			);
+
+			await useCase.execute(makeInput(many, "demo"));
+
+			expect(vi.mocked(popularity.fetch).mock.calls[0][0]).toHaveLength(10);
+			expect(tradeImporter.import).not.toHaveBeenCalled();
+		});
+
+		it("trade: creates the Trade and returns nothing", async () => {
+			const tradeImporter: GameTradeImporter = { import: vi.fn().mockResolvedValue(undefined) };
+
+			const result = await makeUseCase(many, manyPriced, tradeImporter).execute(
+				makeInput(many, "trade"),
+			);
+
+			expect(result).toBeNull();
+			expect(vi.mocked(tradeImporter.import).mock.calls[0][0]).toHaveLength(12);
+		});
 	});
 });

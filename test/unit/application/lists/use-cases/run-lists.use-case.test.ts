@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { RunListsUseCase } from "@/application/lists/use-cases/run-lists.use-case.js";
 import { ListTopic } from "@/domain/lists/list-topic.js";
+import { SEARCH_PRESETS } from "@/domain/games/search-presets.js";
 import type { ListTopicFetcher, GameSearcher } from "@/application/lists/ports/list-run.ports.js";
 import type { GameTradeImporter } from "@/application/games/ports/game-trade-importer.port.js";
 import type { FoundGames } from "@/application/games/game.types.js";
@@ -133,5 +134,21 @@ describe("RunListsUseCase", () => {
 			expect.objectContaining({ gameNames: [] }),
 		);
 		expect(tradeImporter.import).not.toHaveBeenCalled();
+	});
+
+	it("searches with the lists preset, taking only the Gamivo flag from the request", async () => {
+		const gameSearcher: GameSearcher = { search: vi.fn().mockResolvedValue([]) };
+
+		await new RunListsUseCase(
+			{ create: () => makeFetcher() },
+			gameSearcher,
+			{ import: vi.fn() },
+			MAX_ACTIVE_LISTS,
+		).execute({ supplierListRequest: request, checkGamivoOffer: true });
+
+		expect(vi.mocked(gameSearcher.search).mock.calls[0][0].criteria).toEqual({
+			...SEARCH_PRESETS.lists,
+			checkGamivoOffer: true,
+		});
 	});
 });

@@ -3,25 +3,28 @@ import { expect } from "vitest";
 /**
  * O contrato HTTP da API, como ele é HOJE — não como ele deveria ser.
  *
- * Esta tabela foi o portão objetivo da migração para Nest: a mesma bateria rodou
- * contra o app Express e contra o app Nest, e a paridade ficou provada quando os
- * dois passaram nos mesmos casos. Com o Express fora, ela continua valendo como
- * o contrato HTTP público — é o que impede o item 14 do `docs/IMPROVEMENTS.md`
- * de acontecer por acidente.
+ * É o que o Sistema Estoque consome: status codes, formato das respostas e das
+ * mensagens de erro. Teste unitário não passa pelo HTTP, então uma mudança como
+ * devolver 201 em vez de 200, ou tirar o `demo: true` do lugar, só seria notada
+ * quando o Sistema Estoque quebrasse em produção. `route-coverage.contract.test.ts`
+ * garante que toda rota de negócio tenha pelo menos um caso aqui.
  *
- * Por isso as inconsistências de formato entre controllers estão **congeladas
- * de propósito**: `/games/research` devolve a mensagem de erro em `data`,
+ * As inconsistências de formato entre controllers estão **congeladas de
+ * propósito**: `/games/research` devolve a mensagem de erro em `data`,
  * `/games/search` devolve em `error` + `details`, `/suppliers/find-new` nem tem
  * campo `success` no 500, e "Internal server error" aparece com e sem ponto
- * final. Uniformizar isso durante a migração impede distinguir "diferença é bug
- * do Nest" de "diferença é melhoria intencional" — se for uniformizar, é um PR
- * separado, antes ou depois, nunca durante.
+ * final. Uniformizar é o item 13 do `docs/IMPROVEMENTS.md`: uma mudança de
+ * contrato deliberada, num PR próprio que atualiza esta tabela junto — nunca um
+ * efeito colateral de outra mudança.
+ *
+ * Nasceu como o portão da migração Express → Nest (a mesma bateria rodou contra
+ * os dois apps até a paridade estar provada); o git guarda essa história.
  */
 
 export type HttpMethod = "get" | "post";
 
 export type ContractCase = {
-	/** Rota exata, do jeito que o cliente chama. Serve de chave do opt-in por rota. */
+	/** Rota exata, do jeito que o cliente chama. */
 	route: string;
 	method: HttpMethod;
 	/** O que este caso prova. Aparece no nome do teste. */
@@ -47,9 +50,8 @@ export const CONTRACT_SECRET = "contract-secret";
 /**
  * Nome de jogo que faz o dublê do SteamCharts explodir (`doubles.ts`).
  *
- * Existe porque o 500 é a divergência mais perigosa da migração — cada grupo de
- * rotas responde um formato diferente — e sem um jeito declarativo de provocar
- * a falha não haveria como travar esses formatos.
+ * Existe porque cada grupo de rotas responde o 500 num formato diferente, e sem
+ * um jeito declarativo de provocar a falha não haveria como travar esses formatos.
  */
 export const CONTRACT_BOOM = "__contract_boom__";
 
@@ -64,12 +66,10 @@ export const CONTRACT_CASES: ContractCase[] = [
 	{
 		route: "/",
 		method: "get",
-		name: "serves public/index.html, NOT the authorship handler",
+		name: "serves public/index.html",
 		expectStatus: 200,
-		// `app.use(express.static(publicDir))` vem ANTES de `app.get("/")` em
-		// `src/app.ts`, então o estático ganha e o handler com o texto do
-		// LinkedIn é inalcançável. Travado aqui porque no Nest a ordem de
-		// `useStaticAssets` vs rota é fácil de inverter sem ninguém notar.
+		// A página vem do `useStaticAssets` em `src/nest/configure-app.ts`. Uma
+		// rota registrada em `/` passaria na frente dela sem ninguém notar.
 		expectText: "<!DOCTYPE html>",
 	},
 
@@ -143,6 +143,27 @@ export const CONTRACT_CASES: ContractCase[] = [
 		expectBody: { success: false, error: "Validation failed" },
 	},
 
+	// ------------------------------------------------ GET /api/games/presets
+	{
+		route: "/api/games/presets",
+		method: "get",
+		name: "lists every search preset with its criteria",
+		expectStatus: 200,
+		expectBody: {
+			success: true,
+			presets: {
+				default: {
+					label: "Default",
+					popularity: { upToThreshold: 30, aboveThreshold: 100, priceThresholdEuro: 5 },
+					minPrice: 0.5,
+					checkGamivoOffer: true,
+				},
+				"bundle-research": expect.objectContaining({ label: "Bundle Research" }),
+				"bundle-sync": expect.any(Object),
+			},
+		},
+	},
+
 	// ----------------------------------------------- POST /api/games/research
 	{
 		route: "/api/games/research",
@@ -183,7 +204,7 @@ export const CONTRACT_CASES: ContractCase[] = [
 	{
 		route: "/api/games/research",
 		method: "post",
-		name: "checkGamivoOffer is optional here and defaults to false",
+		name: "checkGamivoOffer is optional here and comes from the preset",
 		body: { minPopularity: 0, gameNames: ["Hades"] },
 		expectStatus: 200,
 		expectBody: { success: true, demo: true },
@@ -197,6 +218,64 @@ export const CONTRACT_CASES: ContractCase[] = [
 		expectBody: {
 			success: false,
 			data: "Invalid file content: minPrice must be 0 or greater",
+		},
+	},
+	{
+		route: "/api/games/research",
+		method: "post",
+		name: "token + delivery respond returns 200 with the games and no demo flag",
+		body: {
+			gameNames: ["Hades"],
+			preset: "bundle-sync",
+			delivery: "respond",
+			internal_secret: CONTRACT_SECRET,
+		},
+		env: { INTERNAL_SECRET: CONTRACT_SECRET },
+		expectStatus: 200,
+		expectBody: { success: true, games: expect.any(Array) },
+	},
+	{
+		route: "/api/games/research",
+		method: "post",
+		name: "delivery respond without a token is still the capped demo",
+		body: { gameNames: ["Hades"], delivery: "respond" },
+		env: { INTERNAL_SECRET: CONTRACT_SECRET },
+		expectStatus: 200,
+		expectBody: { success: true, demo: true },
+	},
+	{
+		route: "/api/games/research",
+		method: "post",
+		name: "popularity tiers and a preset are accepted without minPopularity",
+		body: {
+			gameNames: ["Hades"],
+			preset: "default",
+			popularity: { upToThreshold: 30, aboveThreshold: 30, priceThresholdEuro: 5 },
+			minPrice: 0,
+		},
+		expectStatus: 200,
+		expectBody: { success: true, demo: true },
+	},
+	{
+		route: "/api/games/research",
+		method: "post",
+		name: "minPopularity together with popularity tiers returns 400",
+		body: { gameNames: ["Hades"], minPopularity: 30, popularity: { upToThreshold: 10 } },
+		expectStatus: 400,
+		expectBody: {
+			success: false,
+			data: "Invalid file content: Send either minPopularity or popularity, not both",
+		},
+	},
+	{
+		route: "/api/games/research",
+		method: "post",
+		name: "an unknown preset returns 400 naming the valid ones",
+		body: { gameNames: ["Hades"], preset: "nope" },
+		expectStatus: 400,
+		expectBody: {
+			success: false,
+			data: expect.stringContaining("preset must be one of: default, bundle-research"),
 		},
 	},
 	{
@@ -259,8 +338,8 @@ export const CONTRACT_CASES: ContractCase[] = [
 
 	// ---------------------------------------------------------------- 500
 	// Os três formatos de erro interno que existem hoje. Congelados aqui porque
-	// é a divergência mais perigosa da migração: um filter global do Nest tem um
-	// default só, e sem estes casos a regressão passaria sem ruído.
+	// o filter global do Nest tem um formato só: um controller que perdesse o seu
+	// filter próprio mudaria o 500 sem nenhum outro teste perceber.
 	{
 		route: "/api/games/search",
 		method: "post",
@@ -326,11 +405,9 @@ export const CONTRACT_CASES: ContractCase[] = [
 	{
 		route: "/api/does-not-exist",
 		method: "post",
-		// Só o status é comparado, e o nome diz isso. O CORPO do 404 diverge
-		// entre os apps — Express devolve HTML, Nest devolve JSON — e essa
-		// divergência está registrada e aceita no item 18 do IMPROVEMENTS.
-		// Um nome prometendo "no JSON error body" mentiria.
-		name: "unknown route returns 404 (body differs between the apps, by decision)",
+		// Só o status faz parte do contrato. O corpo é o JSON padrão do Nest, e
+		// nenhum cliente depende dele.
+		name: "unknown route returns 404",
 		body: {},
 		expectStatus: 404,
 	},

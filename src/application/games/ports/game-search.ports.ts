@@ -20,10 +20,16 @@ import type {
  * Ver `docs/nest-conceitos.md` §3.
  */
 export abstract class PopularityFetcher {
-	abstract fetch(
-		gameNames: string[],
-		minPopularity: number,
-	): Promise<FoundGames[]>;
+	/**
+	 * Com `lookup: false` não consulta nada e devolve todo jogo com popularidade 0.
+	 * Com `true`, consulta e omite quem não foi encontrado. **Não filtra** por
+	 * popularidade mínima — isso é regra de domínio, aplicada por quem chama.
+	 *
+	 * Era um `minPopularity: number` em que só importava se o valor era 0: o
+	 * número em si nunca era usado, e quem chamava precisava inventar um `1` para
+	 * forçar a consulta.
+	 */
+	abstract fetch(gameNames: string[], lookup: boolean): Promise<FoundGames[]>;
 }
 
 export abstract class PriceFetcher {

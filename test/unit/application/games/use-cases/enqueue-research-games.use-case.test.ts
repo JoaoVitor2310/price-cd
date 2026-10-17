@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { resolveSearchCriteria } from "@/domain/games/search-presets.js";
 import { EnqueueResearchGamesUseCase } from "@/application/games/use-cases/enqueue-research-games.use-case.js";
 import type { ResearchGamesRequest } from "@/application/games/ports/research-games-runner.port.js";
 
@@ -9,8 +10,7 @@ import type { ResearchGamesRequest } from "@/application/games/ports/research-ga
 function makeRequest(overrides: Partial<ResearchGamesRequest> = {}): ResearchGamesRequest {
     return {
         gameNames: ["Half-Life"],
-        minPopularity: 30,
-        checkGamivoOffer: true,
+        criteria: resolveSearchCriteria("default", { checkGamivoOffer: true }),
         supplierSteamId: "76561198888888888",
         listCode: "G0eXM",
         title: "Trade from supplier X",

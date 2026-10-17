@@ -1,3 +1,5 @@
+import type { SearchCriteria } from "@/domain/games/search-criteria.js";
+
 export type FoundGames = {
 	id: number;
 	name: string;
@@ -11,10 +13,10 @@ export type FoundGames = {
 	KinguinPrice?: number;
 };
 
+/** O que `lists` e `suppliers` pedem ao motor: nomes + os critérios do seu preset. */
 export interface SearchGamesRequest {
-	minPopularity: number;
 	gameNames: string[];
-	checkGamivoOffer: boolean;
+	criteria: SearchCriteria;
 }
 
 export interface GameAnalysisResult {

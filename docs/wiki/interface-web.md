@@ -11,7 +11,10 @@ Quando o token interno é informado, o envio é **assíncrono**: a tela confirma
 | Campo | Obrigatório | Para que serve |
 |---|---|---|
 | Lista de jogos | Sim | Um nome de jogo por linha — é o que será pesquisado |
-| Popularidade mínima | Sim | Corte de jogadores simultâneos: abaixo disso o jogo é descartado |
+| Preset | Não (só aparece com token) | Atalho: preenche os campos abaixo com os valores de um caso de uso (padrão, bundle, Reabastecimento, Descoberta). Os campos continuam editáveis |
+| Popularidade mínima até o limite / acima do limite | Não (vem preenchida) | Corte de jogadores simultâneos por faixa de preço: jogo barato precisa de menos jogadores que jogo caro |
+| Limite de preço | Não (vem preenchido) | Valor em euro que separa as duas faixas. Um jogo exatamente no limite usa a faixa de baixo |
+| Preço mínimo | Não (vem preenchido) | O melhor preço precisa ser maior que este valor |
 | Token interno | Só para criar Trade | Autoriza o price-researcher a criar a Trade no Sistema Estoque. Sem ele, roda em modo demonstração |
 | Oferta na Gamivo | Não | Se marcado, só traz jogos que têm oferta ativa na Gamivo — ou seja, jogos que conseguimos revender |
 | Steam ID do fornecedor | Não | Vincula a Trade criada ao Fornecedor correspondente no Sistema Estoque |
@@ -31,7 +34,7 @@ Quando o token interno é informado, o envio é **assíncrono**: a tela confirma
 
 | Parâmetro | Valor atual | O que controla | Se aumentar | Se diminuir |
 |---|---|---|---|---|
-| Popularidade mínima | Escolhida pelo usuário a cada pesquisa | Abaixo disso, o jogo é descartado | Traz menos jogos, com menos chance de vender | Traz mais jogos, mas mais difíceis de vender (menos populares) |
-| Preço mínimo negociável | 0,50 € (fixo no código) | Jogos cujo melhor preço não passa disso são descartados depois da busca de preço | Descarta mais jogos, focando só nos que dão lucro relevante | Traz jogos mais baratos, cujo lucro por unidade é de centavos |
+| Popularidade mínima por faixa de preço | Padrão 30 até 5 € e 100 acima, editável a cada pesquisa | Abaixo do mínimo da faixa do preço, o jogo é descartado. Quem não alcança nem o menor dos dois é descartado antes da busca de preço | Traz menos jogos, com menos chance de vender | Traz mais jogos, mas mais difíceis de vender, e mais jogos na busca de preço, que é a etapa lenta |
+| Preço mínimo negociável | Padrão 0,50 €, editável a cada pesquisa | Jogos cujo melhor preço não passa disso são descartados depois da busca de preço | Descarta mais jogos, focando só nos que dão lucro relevante | Traz jogos mais baratos, cujo lucro por unidade é de centavos |
 | Limite de jogos no modo demonstração | 10 | Quantos jogos são processados quando não há token interno | Demonstração mais completa, porém mais demorada | Resposta mais rápida na demonstração |
-| Exigir oferta ativa na Gamivo | Escolhido pelo usuário (marcado por padrão) | Se marcado, só considera jogos com oferta na Gamivo | Menos jogos no resultado, todos revendáveis pela Gamivo | Mais jogos no resultado, usando qualquer oferta do AllKeyShop |
+| Exigir oferta ativa na Gamivo | Escolhido pelo usuário (marcado no preset padrão) | Se marcado, só considera jogos com oferta na Gamivo | Menos jogos no resultado, todos revendáveis pela Gamivo | Mais jogos no resultado, usando qualquer oferta do AllKeyShop |

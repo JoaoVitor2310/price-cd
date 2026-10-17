@@ -1,4 +1,5 @@
 import type { FoundGames } from "@/application/games/game.types.js";
+import { logDiscardedByPopularityTier } from "@/application/games/services/log-discarded-by-popularity.js";
 import { logDiscardedByPrice } from "@/application/games/services/log-discarded-by-price.js";
 import type {
 	PopularityFetcher,
@@ -6,14 +7,17 @@ import type {
 } from "@/application/games/ports/game-search.ports.js";
 import { filterExcludedGames } from "@/domain/games/excluded-games.js";
 import { worthyByPopularity } from "@/domain/games/worthy-by-popularity.js";
+import {
+	lowestTier,
+	needsPopularityLookup,
+	partitionByPopularityTier,
+	type SearchCriteria,
+} from "@/domain/games/search-criteria.js";
 import { partitionByPrice } from "@/domain/games/worthy-by-price.js";
 
 export type PriceGamesInput = {
 	gameNames: string[];
-	minPopularity: number;
-	checkGamivoOffer: boolean;
-	/** Piso de preço negociável. Omitido → default do domínio (`MIN_PRICE_EURO`). */
-	minPrice?: number;
+	criteria: SearchCriteria;
 };
 
 /**
@@ -30,9 +34,12 @@ export type PriceGamesResult = {
 	requested: string[];
 	/** Tudo que o SteamCharts encontrou. */
 	found: FoundGames[];
-	/** Sobreviveu à popularidade mínima e à lista de exclusão. */
+	/**
+	 * Sobreviveu ao corte de popularidade feito ANTES do preço (o menor tier) e à
+	 * lista de exclusão. É o que foi mandado ao AllKeyShop.
+	 */
 	worthyByPopularity: FoundGames[];
-	/** Tem preço e está acima do piso — o resultado útil. */
+	/** Tem preço acima do piso e passou no tier exato do seu preço — o resultado útil. */
 	priced: FoundGames[];
 };
 
@@ -57,20 +64,31 @@ export class PriceGames {
 		private readonly priceFetcher: PriceFetcher,
 	) {}
 
+	/**
+	 * Os tiers de popularidade dependem do preço, que só se conhece depois do
+	 * AllKeyShop. Filtrar tudo no fim faria o AllKeyShop pesquisar quase todo jogo;
+	 * por isso o corte é feito em dois estágios:
+	 *
+	 * 1. antes do preço, pelo MENOR tier — quem não passa nele não passa em nenhum;
+	 * 2. depois do preço, pelo tier exato daquela faixa.
+	 */
 	async run(input: PriceGamesInput): Promise<PriceGamesResult> {
+		const { criteria } = input;
+		const { popularity: tiers } = criteria;
 		const requested = [...new Set(input.gameNames)];
 
 		if (requested.length === 0) {
 			return { requested, found: [], worthyByPopularity: [], priced: [] };
 		}
 
+		// Com um tier em 0 e o outro acima, o menor tier é 0 mas a consulta continua
+		// necessária: quem decide consultar é `needsPopularityLookup`, não o mínimo.
+		const minimum = lowestTier(tiers);
 		const found = await this.popularityFetcher.fetch(
 			requested,
-			input.minPopularity,
+			needsPopularityLookup(tiers),
 		);
-		const worthy = filterExcludedGames(
-			worthyByPopularity(found, input.minPopularity),
-		);
+		const worthy = filterExcludedGames(worthyByPopularity(found, minimum));
 
 		// Não vale abrir o browser do AllKeyShop para lista vazia.
 		if (worthy.length === 0) {
@@ -79,13 +97,19 @@ export class PriceGames {
 
 		const withPrices = await this.priceFetcher.fetch(
 			worthy,
-			input.checkGamivoOffer,
+			criteria.checkGamivoOffer,
 		);
-		const { worthy: priced, tooCheap } = partitionByPrice(
+		const { worthy: aboveFloor, tooCheap } = partitionByPrice(
 			withPrices,
-			input.minPrice,
+			criteria.minPrice,
 		);
-		logDiscardedByPrice(tooCheap, input.minPrice);
+		logDiscardedByPrice(tooCheap, criteria.minPrice);
+
+		const { worthy: priced, tooUnpopular } = partitionByPopularityTier(
+			aboveFloor,
+			tiers,
+		);
+		logDiscardedByPopularityTier(tooUnpopular, tiers);
 
 		return { requested, found, worthyByPopularity: worthy, priced };
 	}

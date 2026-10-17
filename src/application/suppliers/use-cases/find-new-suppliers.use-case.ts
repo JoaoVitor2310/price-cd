@@ -3,13 +3,13 @@ import type { TopicScraper } from "@/application/suppliers/ports/topic-scraper.p
 import type { CommentPoster } from "@/application/suppliers/ports/comment-poster.port.js";
 import type { ProfitabilityChecker, GamePriceInput, SupplierInput } from "@/application/suppliers/ports/profitability-checker.port.js";
 import type { GameSearcher } from "@/application/lists/ports/list-run.ports.js";
+import { resolveSearchCriteria } from "@/domain/games/search-presets.js";
 import { formatResult } from "@/domain/suppliers/profitability.js";
 import { SUPPLIER_SEARCH_TERMS } from "@/domain/suppliers/supplier-eligibility.js";
 
 const MAX_PAGES = 100;
 const MAX_CONSECUTIVE_INACTIVE = 5;
 const MAX_CONSECUTIVE_CLOSED = 5;
-const MIN_POPULARITY = 30;
 const MAX_GAMES_PER_SUPPLIER = 1000;
 
 export type FindNewSuppliersResult = {
@@ -187,8 +187,7 @@ export class FindNewSuppliersUseCase {
 
                 const pricedByCatalog = await gameSearcher.search({
                     gameNames,
-                    minPopularity: MIN_POPULARITY,
-                    checkGamivoOffer: true,
+                    criteria: resolveSearchCriteria("suppliers"),
                 });
 
                 const gamesWithPrice: GamePriceInput[] = pricedByCatalog

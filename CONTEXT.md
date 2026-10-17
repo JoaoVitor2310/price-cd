@@ -60,5 +60,15 @@ _Avoid_: Preço, `price_euro` (nome antigo do campo), usar para o valor que se p
 
 ### Preço mínimo negociável
 
-Piso de valor abaixo do qual não vale a pena negociar um jogo: mesmo com popularidade suficiente e oferta encontrada, o lucro por unidade seria de poucos centavos e não paga o tempo da negociação com o Fornecedor. O piso **default** é 0,50 € e o corte é estrito — um jogo exatamente em 0,50 € é descartado. Aplicado depois da busca de preço, sobre o melhor preço encontrado. O default vale para a busca, o Reabastecimento e a Descoberta de Fornecedores; a Pesquisa (endpoint `research`) pode sobrescrever o piso por requisição via `minPrice` — a de bundle manda `0` porque quer os jogos independente de preço.
+Piso de valor abaixo do qual não vale a pena negociar um jogo: mesmo com popularidade suficiente e oferta encontrada, o lucro por unidade seria de poucos centavos e não paga o tempo da negociação com o Fornecedor. O piso **default** é 0,50 € e o corte é estrito — um jogo exatamente em 0,50 € é descartado. Aplicado depois da busca de preço, sobre o melhor preço encontrado. Cada Preset de pesquisa define o seu (os de bundle usam `0`, porque querem os jogos independente de preço), e a Pesquisa pode sobrescrevê-lo por requisição.
 _Avoid_: usar para o corte de Popularidade mínima, que é anterior e olha jogadores simultâneos, não preço
+
+### Tier de popularidade
+
+A popularidade mínima (pico de jogadores em 24h) que um jogo precisa ter, que depende do preço dele: um mínimo para jogos até um limite de preço (inclusive) e outro para os acima. Jogo barato rende pouco por key, então basta pouca procura; jogo caro só compensa com procura de verdade. Popularidade plana é o mesmo valor nos dois tiers. O corte pelo menor tier acontece antes da busca de preço; o tier exato, depois.
+_Avoid_: Popularidade mínima como valor único (é o caso particular dos dois tiers iguais)
+
+### Preset de pesquisa
+
+Conjunto nomeado de critérios de pesquisa (tiers de popularidade, limite de preço, Preço mínimo negociável, exigir oferta na Gamivo) para um caso de uso: `default`, `bundle-research`, `bundle-sync`, `lists`, `suppliers`. Mora no price-cd e é a fonte única dos valores; a interface web só preenche os campos com ele e quem chama a API pode sobrescrever qualquer critério.
+_Avoid_: modo (reservado para a entrega: demo, criar Trade ou devolver o resultado)

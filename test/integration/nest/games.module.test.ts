@@ -91,7 +91,7 @@ describe("GamesModule", () => {
 
 		expect(response.status).toBe(200);
 		expect(response.body.data.games).toHaveLength(1);
-		expect(popularity.fetch).toHaveBeenCalledWith(["Hades"], 0);
+		expect(popularity.fetch).toHaveBeenCalledWith(["Hades"], false);
 		expect(price.fetch).toHaveBeenCalledWith(expect.any(Array), false);
 	});
 

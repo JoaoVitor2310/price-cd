@@ -57,7 +57,7 @@ describe("toProspectResult", () => {
 		it("ignores offer fields the Sistema Estoque sent anyway", () => {
 			const { offer } = toProspectResult(makeMoneyWire("eur"), "tf2");
 
-			expect(offer.total).toBe(1.5);
+			expect(offer?.total).toBe(1.5);
 		});
 	});
 

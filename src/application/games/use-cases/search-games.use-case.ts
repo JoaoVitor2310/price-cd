@@ -1,5 +1,7 @@
 import type { GameAnalysisResult } from "@/application/games/game.types.js";
 import type { PriceGames } from "@/application/games/services/price-games.js";
+import { flatPopularity } from "@/domain/games/search-criteria.js";
+import { MIN_PRICE_EURO } from "@/domain/games/worthy-by-price.js";
 
 /** Só dado: as dependências estão no construtor. */
 export type SearchGamesInput = {
@@ -17,6 +19,10 @@ export type SearchGamesInput = {
  * tempo. Nenhum outro consumidor usa isso — `lists` e `suppliers` liam só
  * `.games` e descartavam o resto.
  *
+ * Sai na etapa 3 de `docs/SEARCH_PRESETS.md`, quando a sync de bundle do Sistema
+ * Estoque migrar para `/api/games/research`. Até lá mantém o comportamento de
+ * sempre: popularidade plana e o piso padrão de preço.
+ *
  * Sem `@Injectable()`: `application/` nunca importa `@nestjs/*`.
  */
 export class SearchGamesUseCase {
@@ -26,7 +32,14 @@ export class SearchGamesUseCase {
 		const startTime = performance.now();
 
 		const { requested, found, worthyByPopularity, priced } =
-			await this.priceGames.run(input);
+			await this.priceGames.run({
+				gameNames: input.gameNames,
+				criteria: {
+					popularity: flatPopularity(input.minPopularity),
+					minPrice: MIN_PRICE_EURO,
+					checkGamivoOffer: input.checkGamivoOffer,
+				},
+			});
 
 		const processingTimeSeconds = (performance.now() - startTime) / 1000;
 

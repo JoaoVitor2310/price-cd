@@ -31,9 +31,9 @@ A supplier sends a list of 200+ game titles. The buyer needs to cross-reference 
 
 Price Researcher fully automates that workflow:
 
-1. Receives a list of game names + a minimum popularity threshold
+1. Receives a list of game names + search criteria (a named preset, popularity tiers by price, minimum price)
 2. Fetches the **24h peak player count** from SteamCharts for each game — in parallel batches
-3. Filters out games below the popularity threshold (low demand = hard to resell)
+3. Filters out games below the popularity threshold (low demand = hard to resell) — cheap games need fewer players than expensive ones
 4. Filters out known free-to-play titles that have no resale value
 5. Scrapes **AllKeyShop** for the best current market price on each qualifying game
 6. In authenticated mode, pushes the results directly into the inventory system — zero manual steps
@@ -127,7 +127,7 @@ src/
 │   ├── suppliers/     #   FindNewSuppliersUseCase
 │   └── bump/          #   BumpTopicsUseCase
 ├── domain/            # Pure business rules (no Node, no HTTP)
-│   ├── games/         #   worthyByPopularity, partitionByPrice, filterExcludedGames
+│   ├── games/         #   search presets + popularity tiers, partitionByPrice, filterExcludedGames
 │   ├── lists/         #   ListTopic entity
 │   └── suppliers/     #   HaveListing parsing
 ├── infrastructure/    # Concrete adapters implementing port interfaces
@@ -182,8 +182,9 @@ npm test
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/api/games/research` | Research prices for a list of game names — sync preview (demo) or async, queued (authenticated) |
-| `POST` | `/api/games/search` | Search prices and return full analysis JSON |
+| `POST` | `/api/games/research` | Research prices for a list of game names — sync preview (demo), async with Trade creation, or sync with results (authenticated) |
+| `GET` | `/api/games/presets` | List the named search presets: a human `label` plus their criteria |
+| `POST` | `/api/games/search` | Search prices and return full analysis JSON. **Being retired** in favour of `/research` with the `bundle-sync` preset — see `docs/SEARCH_PRESETS.md` |
 | `POST` | `/api/games/search-id-steam` | Resolve Steam IDs for a list of games |
 | `POST` | `/api/lists/run` | Async: crawl a Steam user's trade lists and run full analysis |
 | `POST` | `/api/suppliers/find-new` | Async, queued: scan SteamTrades for new suppliers offering games for TF2 keys, PayPal, euros or dollars |
@@ -194,10 +195,12 @@ npm test
 
 ```json
 {
-  "minPopularity": 100,
   "gameNames": ["Half-Life", "Portal 2", "Hades"],
-  "checkGamivoOffer": true,
+  "preset": "default",
+  "popularity": { "upToThreshold": 30, "aboveThreshold": 100, "priceThresholdEuro": 5 },
   "minPrice": 0.5,
+  "checkGamivoOffer": true,
+  "delivery": "trade",
   "internal_secret": "optional-token",
   "steam_id": "optional-supplier-steam-id",
   "list_code": "optional-list-identifier",
@@ -205,7 +208,13 @@ npm test
 }
 ```
 
-`minPopularity` is the minimum 24h peak player count (`0` or greater); `gameNames` is a non-empty array of game names. `minPrice` is the minimum negotiable price floor in euros — games priced at or below it are discarded; **omit it to use the €0.50 default**, or send `0` (e.g. for bundles) to keep any priced game. Unknown fields are rejected (strict schema).
+Only `gameNames` (non-empty) is required. Every search criterion comes from a **preset** (`default` when none is sent) and any field sent explicitly overrides it, field by field. Unknown fields are rejected (strict schema).
+
+- `preset` — one of `default`, `bundle-research`, `bundle-sync`, `lists`, `suppliers` (`GET /api/games/presets` lists their values).
+- `popularity` — minimum 24h peak players **by price tier**: `upToThreshold` applies to games priced up to `priceThresholdEuro` (inclusive), `aboveThreshold` to pricier ones. Flat popularity is the same value in both. `0` in both skips SteamCharts entirely; any tier above `0` looks popularity up and drops games SteamCharts does not know.
+- `minPrice` — games must be priced **above** it (default €0.50); send `0` to keep any priced game.
+- `delivery` — only with a valid token: `trade` (default) or `respond`. Ignored without a token, which always gets the demo.
+- `minPopularity` — **temporary**, kept while the inventory system migrates: shorthand for the same value in both tiers. Sending it together with `popularity` returns `400`.
 
 **Demo mode response** — `200`, no token or wrong token:
 ```json
@@ -219,11 +228,22 @@ npm test
 ```
 Runs synchronously and is capped at the first 10 games. Nothing is sent to the inventory system. `market_price_euro` is the market price in euros (the best AllKeyShop price) — not the offer made to a supplier; it is the same name the inventory system receives.
 
-**Authenticated mode response** — `202`, valid token:
+**Authenticated, `delivery: "trade"`** — `202`, valid token:
 ```json
 { "success": true, "status": "queued" }
 ```
 Returns as soon as the work is queued. The full list is processed in the background and the Trade is created in the inventory system when it finishes. A failure during background processing is currently only logged — see `docs/IMPROVEMENTS.md`.
+
+**Authenticated, `delivery: "respond"`** — `200`, valid token:
+```json
+{
+  "success": true,
+  "games": [
+    { "name": "Half-Life", "market_price_euro": 1.23, "popularity": 542, "region": "global", "id_steam": "70", "gamivo_id": null }
+  ]
+}
+```
+Runs synchronously over the whole list and creates no Trade. Exists for callers that store the prices themselves, like the hourly bundle sync. No `demo` field.
 
 </details>
 

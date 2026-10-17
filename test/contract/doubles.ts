@@ -1,10 +1,10 @@
 /**
  * Dublês dos adaptadores de infraestrutura usados pela bateria de contrato.
  *
- * A costura é `infrastructure/` de propósito: é a camada que não mudou na
- * migração, então os mesmos dublês serviram ao app Express e ao app Nest sem
- * duplicação. Mockar as camadas de cima não teria servido — `controllers/` e
- * `services/` foram removidos junto com o Express.
+ * A costura é `infrastructure/` de propósito: troca só o que fala com o mundo
+ * externo (SteamCharts, AllKeyShop, SteamTrades, filas) e deixa controller, use
+ * cases e domínio rodando de verdade — que é exatamente o caminho que o contrato
+ * HTTP precisa exercitar.
  *
  * Nada aqui abre browser: a bateria de contrato roda em milissegundos e não
  * depende de rede, porque o que ela verifica é forma de resposta HTTP, não
@@ -26,7 +26,7 @@ export const contractGame = (name: string, id = 1): FoundGames => ({
 });
 
 export const popularityFetcherDouble = () => ({
-	fetch: async (gameNames: string[], _minPopularity: number) => {
+	fetch: async (gameNames: string[], _lookup: boolean) => {
 		// O único jeito declarativo de um caso de contrato provocar um 500: sem
 		// isso os três formatos de erro interno ficariam sem portão.
 		if (gameNames.includes(CONTRACT_BOOM)) {

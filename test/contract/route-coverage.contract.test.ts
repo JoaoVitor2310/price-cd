@@ -9,13 +9,12 @@ import {
 } from "./doubles.js";
 
 /**
- * Os mesmos dublês do `express.contract.test.ts`.
+ * Dublês de todo efeito externo, os mesmos de `doubles.ts`.
  *
- * Este arquivo faz POST em **todas** as rotas para provar que o Express as
- * atende. Sem estes mocks, esses POSTs enfileiram os jobs de verdade: medido,
- * eram 4 tentativas de abrir Chromium por rodada — barradas só pela trava do
- * `initializeBrowser()`. Um teste que depende da trava para não subir browser
- * está errado, mesmo passando.
+ * Este arquivo sobe o app inteiro só para ler as rotas declaradas — não faz
+ * requisição nenhuma. Os dublês ficam mesmo assim: um app de pé com os adapters
+ * reais está a um passo de abrir Chromium, e a trava do `initializeBrowser()` é
+ * a última linha de defesa, não a primeira.
  *
  * `vi.mock` é hoisted por arquivo, então não dá para compartilhar estas linhas
  * com os irmãos; só os corpos vêm de `doubles.ts`.
@@ -98,10 +97,6 @@ function declaredRoutes(app: NestExpressApplication): string[] {
  * contrato. Isto prova o complemento: que **toda** rota exposta tem caso. Uma
  * rota nova — um `@Controller` acrescentado, um `@Post` a mais — entraria no ar
  * sem ninguém ter escrito o contrato dela, e este teste é quem acusa.
- *
- * Este arquivo se chamava `route-parity` e comparava as rotas do Nest contra as
- * do Express. Com o Express removido não há contra o que comparar; o que
- * sobrevive é a cobertura, que nunca dependeu dos dois apps.
  */
 describe("contract coverage of the exposed routes", () => {
 	let app: NestExpressApplication;

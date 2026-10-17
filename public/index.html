@@ -411,7 +411,8 @@
     .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
     input[type="text"],
     input[type="number"],
-    input[type="password"] {
+    input[type="password"],
+    select {
       width: 100%;
       padding: 10px 14px;
       border: 1px solid var(--border);
@@ -423,7 +424,8 @@
       transition: border-color .15s, box-shadow .15s;
     }
     input[type="text"]:focus,
-    input[type="number"]:focus {
+    input[type="number"]:focus,
+    select:focus {
       outline: none;
       border-color: var(--accent);
       box-shadow: 0 0 0 3px var(--accent-ring);
@@ -720,12 +722,12 @@
           <div class="step">
             <div class="step-num">1</div>
             <h3>Paste game names</h3>
-            <p>Set a minimum popularity threshold, then list one game name per line.</p>
+            <p>Set the popularity tiers and the minimum price, then list one game name per line.</p>
           </div>
           <div class="step">
             <div class="step-num">2</div>
             <h3>Popularity filter</h3>
-            <p>SteamCharts is scraped in parallel batches of 50 to get the 24-hour player peak. Games below the threshold are dropped.</p>
+            <p>SteamCharts is scraped in parallel batches of 50 to get the 24-hour player peak. Cheap games need fewer players than expensive ones: one minimum up to a price threshold, another above it.</p>
           </div>
           <div class="step">
             <div class="step-num">3</div>
@@ -798,13 +800,13 @@
           <div class="tool-info">
             <div class="eyebrow">Research tool</div>
             <h2>Search game prices</h2>
-            <p>Paste a list of games with a minimum popularity threshold. The system filters by 24-hour Steam peak, finds the best Gamivo price, and sends the results to inventory.</p>
+            <p>Paste a list of games and set the popularity tiers. The system filters by 24-hour Steam peak, finds the best Gamivo price, and sends the results to inventory.</p>
             <div class="format-card">
               <div class="format-card-head">Game list format</div>
               <pre>Half-Life
 Portal 2
 Counter-Strike 2</pre>
-              <div class="format-card-foot">One game title per line. The minimum popularity threshold is set separately above.</div>
+              <div class="format-card-foot">One game title per line. Popularity tiers and the minimum price are set in the form.</div>
             </div>
           </div>
           <div>
@@ -831,22 +833,44 @@ Counter-Strike 2</pre>
                   <input type="text" id="listCode" />
                 </div>
               </div>
-              <div class="fg">
-                <label class="fl" for="minPopularity">Minimum popularity <span>(24h peak players)</span></label>
-                <input type="number" id="minPopularity" value="30" min="0" step="1" />
+              <!-- Só aparece com token: presets são atalhos do uso interno. Os campos
+                   abaixo aparecem sempre; o preset apenas os preenche. -->
+              <div class="fg" id="presetGroup" hidden>
+                <label class="fl" for="preset">Preset <span>(fills the fields below)</span></label>
+                <select id="preset" onchange="applyPreset(this.value)"></select>
+              </div>
+              <div class="two-col">
+                <div class="fg">
+                  <label class="fl" for="priceThreshold">Price threshold <span>(€)</span></label>
+                  <input type="text" id="priceThreshold" inputmode="decimal" autocomplete="off" />
+                </div>
+                <div class="fg">
+                  <label class="fl" for="minPrice">Minimum price <span>(€)</span></label>
+                  <input type="text" id="minPrice" inputmode="decimal" autocomplete="off" />
+                </div>
+              </div>
+              <div class="two-col">
+                <div class="fg">
+                  <label class="fl" for="popularityUpTo">Popularity, price ≤ threshold <span>(min.)</span></label>
+                  <input type="number" id="popularityUpTo" min="0" step="1" />
+                </div>
+                <div class="fg">
+                  <label class="fl" for="popularityAbove">Popularity, price &gt; threshold <span>(min.)</span></label>
+                  <input type="number" id="popularityAbove" min="0" step="1" />
+                </div>
               </div>
               <div class="fg">
                 <label class="fl" for="gamesList">Game list</label>
                 <textarea id="gamesList" rows="12" placeholder="Half-Life&#10;Portal 2&#10;Counter-Strike 2"></textarea>
               </div>
               <div class="chk-row">
-                <input type="checkbox" id="checkGamivoOffer" checked />
+                <input type="checkbox" id="checkGamivoOffer" />
                 <label for="checkGamivoOffer">Only include games with a Gamivo offer</label>
               </div>
               <p class="filter-note">
-                Beyond the popularity cut, games whose best price is <strong>€0.50 or below</strong> are always
-                dropped — the margin is a few cents and does not pay for negotiating the trade. This applies to
-                both demo and inventory runs.
+                A game is kept when its best price is <strong>above the minimum price</strong> and its 24h peak
+                players meet the tier for that price (a price equal to the threshold uses the lower tier). Empty fields use the server defaults. This applies to both demo and
+                inventory runs.
               </p>
               <button type="button" class="submit-btn" id="uploadButton" onclick="submitGames()">Search prices</button>
             </form>
@@ -862,7 +886,7 @@ Counter-Strike 2</pre>
         <div id="demoResults">
           <div class="demo-results-eyebrow">Demo results</div>
           <h3 class="demo-results-title">Research output</h3>
-          <p class="demo-results-sub">Showing up to 10 games, excluding anything priced at €0.50 or below — the floor is fixed on this page for now. Provide a valid token to run the full pipeline and send results to inventory.</p>
+          <p class="demo-results-sub">Showing up to 10 games that passed the popularity tiers and the minimum price. Provide a valid token to run the full pipeline and send results to inventory.</p>
           <div class="demo-table-wrap">
             <table>
               <thead>
@@ -889,10 +913,21 @@ Counter-Strike 2</pre>
   </footer>
 
   <script>
+    let hadToken = false;
+
     function updateModeBanner() {
       const hasToken = document.getElementById("internalSecret").value.trim().length > 0;
       const banner   = document.getElementById("modeBanner");
       const span     = banner.querySelector("span:last-child");
+      document.getElementById("presetGroup").hidden = !hasToken;
+      // Sem token o select some; se ficassem os valores de outro preset, a pesquisa
+      // usaria critérios que a tela não mostra mais. Só na transição, para não
+      // apagar o que o usuário digitou sem token.
+      if (hadToken && !hasToken) {
+        document.getElementById("preset").value = "default";
+        applyPreset("default");
+      }
+      hadToken = hasToken;
       if (hasToken) {
         banner.className  = "auth";
         banner.querySelector(".mode-icon").textContent = "✓";
@@ -905,13 +940,17 @@ Counter-Strike 2</pre>
     }
 
     async function submitGames() {
-      const minPop  = document.getElementById("minPopularity").value.trim();
       const games   = document.getElementById("gamesList").value.trim();
       if (!games) {
         alert("Paste the game list before submitting.");
         return;
       }
-      const minPopularity = Number(minPop || "0");
+      const invalid = invalidEuroField();
+      if (invalid) {
+        alert("Price threshold and minimum price must be numbers of 0 or more, like 0.5.");
+        document.getElementById(invalid).focus();
+        return;
+      }
       const gameNames = games
         .split("\n")
         .map((line) => line.trim())
@@ -931,8 +970,15 @@ Counter-Strike 2</pre>
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            minPopularity,
             gameNames,
+            // O preset só vale com token; sem ele o select fica oculto.
+            preset: hasTokenNow() ? document.getElementById("preset").value || undefined : undefined,
+            popularity: {
+              upToThreshold:      numberOrUndefined("popularityUpTo"),
+              aboveThreshold:     numberOrUndefined("popularityAbove"),
+              priceThresholdEuro: numberOrUndefined("priceThreshold"),
+            },
+            minPrice:         numberOrUndefined("minPrice"),
             checkGamivoOffer: document.getElementById("checkGamivoOffer").checked,
             title:            document.getElementById("title").value.trim()           || undefined,
             steam_id:         document.getElementById("steamId").value.trim()         || undefined,
@@ -984,7 +1030,7 @@ Counter-Strike 2</pre>
     function renderDemoTable(games) {
       const tbody = document.getElementById("demoTableBody");
       if (games.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" class="demo-empty">No games passed the filters. A game can drop out for three different reasons: it was not found on SteamCharts, it is below the minimum popularity, or its best price is €0.50 or below (the fixed floor). The server log names each discarded game and why.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="4" class="demo-empty">No games passed the filters. A game can drop out for three different reasons: it was not found on SteamCharts, its popularity is below the tier for its price, or its best price is not above the minimum price. The server log names each discarded game and why.</td></tr>`;
         return;
       }
       tbody.innerHTML = games.map(g => `
@@ -995,6 +1041,59 @@ Counter-Strike 2</pre>
           <td class="td-reg">${escHtml(g.region ?? "—")}</td>
         </tr>`).join("");
     }
+
+    // Os valores dos presets vêm do servidor (GET /api/games/presets): a página
+    // não guarda cópia de nenhum padrão. Se a carga falhar, os campos ficam vazios
+    // e o servidor aplica o preset padrão.
+    let searchPresets = {};
+
+    async function loadPresets() {
+      try {
+        const response = await fetch("/api/games/presets");
+        const data = await response.json();
+        searchPresets = data.presets ?? {};
+      } catch {
+        return;
+      }
+      const select = document.getElementById("preset");
+      select.innerHTML = Object.entries(searchPresets)
+        .map(([name, preset]) => `<option value="${escHtml(name)}">${escHtml(preset.label ?? name)}</option>`)
+        .join("");
+      select.value = "default";
+      applyPreset("default");
+    }
+
+    function applyPreset(name) {
+      const preset = searchPresets[name];
+      if (!preset) return;
+      document.getElementById("popularityUpTo").value   = preset.popularity.upToThreshold;
+      document.getElementById("popularityAbove").value  = preset.popularity.aboveThreshold;
+      document.getElementById("priceThreshold").value   = preset.popularity.priceThresholdEuro;
+      document.getElementById("minPrice").value         = preset.minPrice;
+      document.getElementById("checkGamivoOffer").checked = preset.checkGamivoOffer;
+    }
+
+    // Os campos em euro são `type="text"`: um `type="number"` exibe o valor no
+    // formato do idioma do sistema (0,5 em português), e o ponto é o que a API usa.
+    // Vírgula digitada é aceita e vira ponto.
+    function numberOrUndefined(id) {
+      const raw = document.getElementById(id).value.trim().replace(",", ".");
+      return raw === "" ? undefined : Number(raw);
+    }
+
+    function invalidEuroField() {
+      for (const id of ["priceThreshold", "minPrice"]) {
+        const value = numberOrUndefined(id);
+        if (value !== undefined && (Number.isNaN(value) || value < 0)) return id;
+      }
+      return null;
+    }
+
+    function hasTokenNow() {
+      return document.getElementById("internalSecret").value.trim().length > 0;
+    }
+
+    loadPresets();
 
     function escHtml(str) {
       return String(str)

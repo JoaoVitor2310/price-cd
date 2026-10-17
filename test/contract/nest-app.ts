@@ -18,18 +18,6 @@ import {
 } from "./doubles.js";
 
 /**
- * Sobe o app Nest com **todo** efeito externo substituído por dublê.
- *
- * Existe num arquivo só de propósito. Esta lista estava duplicada em dois
- * arquivos de teste, já com ordem divergente — e o risco não é estético:
- * esquecer um dublê num dos dois faz aquele arquivo **abrir um Chromium de
- * verdade**. Já aconteceu (PR 7), e encheu a máquina de janelas do Chrome.
- *
- * A trava do `initializeBrowser()` transformaria isso numa falha legível em vez
- * de janelas, mas um teste que falha por esquecimento continua sendo um teste
- * quebrado. Um lugar só resolve os dois.
- */
-/**
  * Fixa o ambiente da bateria. Chame **uma vez**, no `beforeAll`.
  *
  * Atribuição forçada porque a suíte não pode ter o ambiente da máquina como
@@ -48,6 +36,18 @@ export function setContractEnv(): void {
 	process.env.STEAMTRADES_SESSION = "contract-session-cookie";
 }
 
+/**
+ * Sobe o app Nest com **todo** efeito externo substituído por dublê.
+ *
+ * Existe num arquivo só de propósito. Esta lista estava duplicada em dois
+ * arquivos de teste, já com ordem divergente — e o risco não é estético:
+ * esquecer um dublê num dos dois faz aquele arquivo **abrir um Chromium de
+ * verdade**. Já aconteceu (PR 7), e encheu a máquina de janelas do Chrome.
+ *
+ * A trava do `initializeBrowser()` transformaria isso numa falha legível em vez
+ * de janelas, mas um teste que falha por esquecimento continua sendo um teste
+ * quebrado. Um lugar só resolve os dois.
+ */
 export async function createContractNestApp(): Promise<NestExpressApplication> {
 	const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
 		.overrideProvider(PopularityFetcher)
