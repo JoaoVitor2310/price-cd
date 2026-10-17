@@ -22,21 +22,19 @@ import { ZodError } from "zod";
  *
  * | Rota | 400 | 500 |
  * |---|---|---|
- * | `/api/games/search`, `/api/games/search-id-steam` | `error` + `details` | `error` **sem ponto** + `message: "Failed to analyze games"` |
+ * | `/api/games/search-id-steam` | `error` + `details` | `error` **sem ponto** + `message: "Failed to analyze games"` |
  * | `/api/games/research`, `/api/lists/run` | mensagem em `data` | `error` **com ponto** + `details` |
  * | `/api/suppliers/find-new` | — | só `{ error }`, **sem `success`** |
  *
- * Um filter global tem um default só. O default daqui é o 400 de `search` e o
- * 500 de `research` — ou seja, **nenhum grupo de rotas é atendido inteiro**: as
- * duas rotas que o PR 3 migra batem no 400 e divergem no 500.
+ * Um filter global tem um default só. O default daqui é o 400 de
+ * `search-id-steam` e o 500 de `research` — ou seja, **nenhum grupo de rotas é
+ * atendido inteiro**. Por isso cada controller que diverge declara o seu formato
+ * legado com `@UseFilters(...)`: `GamesLegacyErrorFilter`,
+ * `ResearchLegacyErrorFilter`, `ListsLegacyErrorFilter` e
+ * `SuppliersLegacyErrorFilter`. A bateria de contrato cobre os formatos de 500 e
+ * falha se um controller perder o seu.
  *
- * Por isso cada controller que diverge precisa declarar seu formato legado com
- * `@UseFilters(...)` no PR em que for migrado (3 a 5). Não foi construído aqui
- * porque ainda não existe controller nenhum — seria abstração para necessidade
- * inexistente. O que existe é o portão: a bateria de contrato cobre os três
- * formatos de 500 e falha se alguém esquecer.
- *
- * Mudar qualquer um desses formatos é mudança de contrato: item 14 do
+ * Mudar qualquer um desses formatos é mudança de contrato: item 13 do
  * `docs/IMPROVEMENTS.md`, num PR isolado que atualiza a bateria no mesmo
  * commit.
  */

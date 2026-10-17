@@ -12,7 +12,6 @@ import type {
 import { PriceGames } from "@/application/games/services/price-games.js";
 import { EnqueueResearchGamesUseCase } from "@/application/games/use-cases/enqueue-research-games.use-case.js";
 import { ResearchGamesUseCase } from "@/application/games/use-cases/research-games.use-case.js";
-import { SearchGamesUseCase } from "@/application/games/use-cases/search-games.use-case.js";
 import type { BackgroundScheduler } from "@/application/shared/ports/background-scheduler.port.js";
 import type { Env } from "@/config/env.schema.js";
 import { LimitedConcurrencyScheduler } from "@/infrastructure/background/limited-concurrency.scheduler.js";
@@ -92,12 +91,6 @@ import {
 			useFactory: (popularity: PopularityFetcher, price: PriceFetcher) =>
 				new PriceGames(popularity, price),
 			inject: [PopularityFetcher, PriceFetcher],
-		},
-		{
-			provide: SearchGamesUseCase,
-			useFactory: (priceGames: PriceGames) =>
-				new SearchGamesUseCase(priceGames),
-			inject: [PriceGames],
 		},
 		{
 			provide: ResearchGamesUseCase,

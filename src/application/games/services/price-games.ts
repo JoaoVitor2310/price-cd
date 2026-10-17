@@ -24,10 +24,8 @@ export type PriceGamesInput = {
  * O que o pipeline produziu, em cada estágio.
  *
  * Os estágios intermediários são expostos porque quem chama decide o que fazer
- * com eles — `/api/games/search` monta um resumo com as contagens, `lists` e
- * `suppliers` só querem `priced`. Devolver o resumo pronto era justamente o
- * problema: forçava dois consumidores a receber uma forma que existe para a
- * resposta HTTP de um terceiro.
+ * com eles; hoje todos os consumidores leem só `priced`, e os outros estágios
+ * servem para teste e diagnóstico.
  */
 export type PriceGamesResult = {
 	/** Nomes efetivamente pesquisados, já sem duplicatas. */
@@ -46,10 +44,10 @@ export type PriceGamesResult = {
 /**
  * O motor de precificação: nomes de jogos → jogos com preço que valem a pena.
  *
- * Extraído de `SearchGamesUseCase`, que acumulava dois papéis — o caso de uso do
- * endpoint `/api/games/search` **e** o motor compartilhado por `lists` e
- * `suppliers`. Toda política colocada nele era herdada pelos três, quisessem ou
- * não; foi o que aconteceu com o piso de preço.
+ * Compartilhado pela pesquisa (`ResearchGamesUseCase`), pelo Reabastecimento
+ * (`lists`) e pela Descoberta de Fornecedores (`suppliers`). A política de cada um
+ * chega pronta em `criteria`, resolvida a partir do seu preset — o motor não tem
+ * default próprio de nada.
  *
  * Não é `*.service.ts` de propósito: essa convenção está proibida neste repo
  * (`docs/nest-conceitos.md` §9) porque colide com o vocabulário do Nest e com o

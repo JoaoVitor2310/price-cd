@@ -23,7 +23,7 @@ import { SuppliersModule } from "@/nest/suppliers/suppliers.module.js";
  * Não há `APP_PIPE` aqui de propósito. O plano previa um, mas o
  * `ZodValidationPipe` recebe o schema no construtor — cada rota valida contra um
  * schema diferente, então ele é aplicado por parâmetro
- * (`@Body(new ZodValidationPipe(gameSearchSchema))`), não globalmente. Um pipe
+ * (`@Body(new ZodValidationPipe(researchGamesBodySchema))`), não globalmente. Um pipe
  * global só faria sentido se houvesse uma validação válida para toda rota, o que
  * não é o caso.
  */

@@ -11,7 +11,7 @@ import {
  * Existe para ninguém precisar lembrar a combinação exata de parâmetros de cada
  * situação, e para essa combinação morar num lugar só — a página e o Sistema
  * Estoque leem daqui. Valores enviados explicitamente na requisição sobrescrevem o
- * preset campo a campo. Plano completo em `docs/SEARCH_PRESETS.md`.
+ * preset campo a campo. Decisão em `docs/adr/0007-presets-de-pesquisa-moram-no-price-cd.md`.
  */
 export const SEARCH_PRESET_NAMES = [
 	"default",

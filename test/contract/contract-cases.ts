@@ -11,7 +11,7 @@ import { expect } from "vitest";
  *
  * As inconsistências de formato entre controllers estão **congeladas de
  * propósito**: `/games/research` devolve a mensagem de erro em `data`,
- * `/games/search` devolve em `error` + `details`, `/suppliers/find-new` nem tem
+ * `/games/search-id-steam` devolve em `error` + `details`, `/suppliers/find-new` nem tem
  * campo `success` no 500, e "Internal server error" aparece com e sem ponto
  * final. Uniformizar é o item 13 do `docs/IMPROVEMENTS.md`: uma mudança de
  * contrato deliberada, num PR próprio que atualiza esta tabela junto — nunca um
@@ -55,10 +55,9 @@ export const CONTRACT_SECRET = "contract-secret";
  */
 export const CONTRACT_BOOM = "__contract_boom__";
 
-const VALID_SEARCH_BODY = {
-	minPopularity: 0,
+const VALID_RESEARCH_BODY = {
 	gameNames: ["Hades"],
-	checkGamivoOffer: false,
+	preset: "bundle-sync",
 };
 
 export const CONTRACT_CASES: ContractCase[] = [
@@ -71,45 +70,6 @@ export const CONTRACT_CASES: ContractCase[] = [
 		// A página vem do `useStaticAssets` em `src/nest/configure-app.ts`. Uma
 		// rota registrada em `/` passaria na frente dela sem ninguém notar.
 		expectText: "<!DOCTYPE html>",
-	},
-
-	// ------------------------------------------------- POST /api/games/search
-	{
-		route: "/api/games/search",
-		method: "post",
-		name: "valid body returns success and data.summary",
-		body: VALID_SEARCH_BODY,
-		expectStatus: 200,
-		expectBody: { success: true, data: { summary: { totalRequested: 1 } } },
-	},
-	{
-		route: "/api/games/search",
-		method: "post",
-		name: "empty gameNames returns 400 with error and details",
-		body: { ...VALID_SEARCH_BODY, gameNames: [] },
-		expectStatus: 400,
-		expectBody: {
-			success: false,
-			error: "Validation failed",
-			// O nome promete `details`; sem afirmá-lo, o campo poderia sumir.
-			details: "gameNames: At least one game name is required",
-		},
-	},
-	{
-		route: "/api/games/search",
-		method: "post",
-		name: "empty body returns 400",
-		body: {},
-		expectStatus: 400,
-		expectBody: { success: false, error: "Validation failed" },
-	},
-	{
-		route: "/api/games/search",
-		method: "post",
-		name: "unknown field returns 400 because the schema is a strictObject",
-		body: { ...VALID_SEARCH_BODY, unknownField: 1 },
-		expectStatus: 400,
-		expectBody: { success: false, error: "Validation failed" },
 	},
 
 	// ------------------------------------------ POST /api/games/search-id-steam
@@ -169,7 +129,7 @@ export const CONTRACT_CASES: ContractCase[] = [
 		route: "/api/games/research",
 		method: "post",
 		name: "no internal_secret returns 200 demo, not 401",
-		body: VALID_SEARCH_BODY,
+		body: VALID_RESEARCH_BODY,
 		env: { INTERNAL_SECRET: CONTRACT_SECRET },
 		expectStatus: 200,
 		expectBody: { success: true, demo: true },
@@ -178,7 +138,7 @@ export const CONTRACT_CASES: ContractCase[] = [
 		route: "/api/games/research",
 		method: "post",
 		name: "wrong internal_secret returns 200 demo, not 403",
-		body: { ...VALID_SEARCH_BODY, internal_secret: "wrong-secret" },
+		body: { ...VALID_RESEARCH_BODY, internal_secret: "wrong-secret" },
 		env: { INTERNAL_SECRET: CONTRACT_SECRET },
 		expectStatus: 200,
 		expectBody: { success: true, demo: true },
@@ -187,7 +147,7 @@ export const CONTRACT_CASES: ContractCase[] = [
 		route: "/api/games/research",
 		method: "post",
 		name: "correct internal_secret returns 202 queued",
-		body: { ...VALID_SEARCH_BODY, internal_secret: CONTRACT_SECRET },
+		body: { ...VALID_RESEARCH_BODY, internal_secret: CONTRACT_SECRET },
 		env: { INTERNAL_SECRET: CONTRACT_SECRET },
 		expectStatus: 202,
 		expectBody: { success: true, status: "queued" },
@@ -196,7 +156,7 @@ export const CONTRACT_CASES: ContractCase[] = [
 		route: "/api/games/research",
 		method: "post",
 		name: "unset INTERNAL_SECRET returns 200 demo even with a token",
-		body: { ...VALID_SEARCH_BODY, internal_secret: CONTRACT_SECRET },
+		body: { ...VALID_RESEARCH_BODY, internal_secret: CONTRACT_SECRET },
 		env: { INTERNAL_SECRET: undefined },
 		expectStatus: 200,
 		expectBody: { success: true, demo: true },
@@ -204,8 +164,8 @@ export const CONTRACT_CASES: ContractCase[] = [
 	{
 		route: "/api/games/research",
 		method: "post",
-		name: "checkGamivoOffer is optional here and comes from the preset",
-		body: { minPopularity: 0, gameNames: ["Hades"] },
+		name: "only gameNames is required: every criterion comes from the default preset",
+		body: { gameNames: ["Hades"] },
 		expectStatus: 200,
 		expectBody: { success: true, demo: true },
 	},
@@ -213,7 +173,7 @@ export const CONTRACT_CASES: ContractCase[] = [
 		route: "/api/games/research",
 		method: "post",
 		name: "negative minPrice returns 400 with the message in `data`, not `error`",
-		body: { ...VALID_SEARCH_BODY, minPrice: -1 },
+		body: { ...VALID_RESEARCH_BODY, minPrice: -1 },
 		expectStatus: 400,
 		expectBody: {
 			success: false,
@@ -246,7 +206,7 @@ export const CONTRACT_CASES: ContractCase[] = [
 	{
 		route: "/api/games/research",
 		method: "post",
-		name: "popularity tiers and a preset are accepted without minPopularity",
+		name: "popularity tiers and a preset are accepted together",
 		body: {
 			gameNames: ["Hades"],
 			preset: "default",
@@ -259,12 +219,13 @@ export const CONTRACT_CASES: ContractCase[] = [
 	{
 		route: "/api/games/research",
 		method: "post",
-		name: "minPopularity together with popularity tiers returns 400",
-		body: { gameNames: ["Hades"], minPopularity: 30, popularity: { upToThreshold: 10 } },
+		// O atalho da migração para os presets saiu: hoje é campo desconhecido.
+		name: "minPopularity is no longer accepted and returns 400",
+		body: { gameNames: ["Hades"], minPopularity: 30 },
 		expectStatus: 400,
 		expectBody: {
 			success: false,
-			data: "Invalid file content: Send either minPopularity or popularity, not both",
+			data: expect.stringContaining("minPopularity"),
 		},
 	},
 	{
@@ -341,18 +302,6 @@ export const CONTRACT_CASES: ContractCase[] = [
 	// o filter global do Nest tem um formato só: um controller que perdesse o seu
 	// filter próprio mudaria o 500 sem nenhum outro teste perceber.
 	{
-		route: "/api/games/search",
-		method: "post",
-		name: "internal failure returns 500 with `message`, not `details`",
-		body: { ...VALID_SEARCH_BODY, gameNames: [CONTRACT_BOOM] },
-		expectStatus: 500,
-		expectBody: {
-			success: false,
-			error: "Internal server error",
-			message: "Failed to analyze games",
-		},
-	},
-	{
 		route: "/api/games/search-id-steam",
 		method: "post",
 		name: "internal failure returns 500 with `message`, not `details`",
@@ -368,7 +317,7 @@ export const CONTRACT_CASES: ContractCase[] = [
 		route: "/api/games/research",
 		method: "post",
 		name: "internal failure returns 500 with `details` and a trailing period",
-		body: { ...VALID_SEARCH_BODY, gameNames: [CONTRACT_BOOM] },
+		body: { ...VALID_RESEARCH_BODY, gameNames: [CONTRACT_BOOM] },
 		expectStatus: 500,
 		// Note o ponto final em "error" — as rotas de search não o têm.
 		expectBody: { success: false, error: "Internal server error." },

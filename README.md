@@ -120,7 +120,7 @@ src/
 ├── schemas/           # Zod schemas + parse helpers
 ├── application/       # Application layer, one directory per subdomain
 │   ├── games/
-│   │   ├── use-cases/ #   SearchGamesUseCase, ResearchGamesUseCase
+│   │   ├── use-cases/ #   ResearchGamesUseCase, EnqueueResearchGamesUseCase
 │   │   ├── services/  #   PriceGames — the pricing engine shared by every flow
 │   │   └── ports/     #   PopularityFetcher, PriceFetcher, GameTradeImporter
 │   ├── lists/         #   RunListsUseCase, EnqueueRunListsUseCase
@@ -184,7 +184,6 @@ npm test
 |---|---|---|
 | `POST` | `/api/games/research` | Research prices for a list of game names — sync preview (demo), async with Trade creation, or sync with results (authenticated) |
 | `GET` | `/api/games/presets` | List the named search presets: a human `label` plus their criteria |
-| `POST` | `/api/games/search` | Search prices and return full analysis JSON. **Being retired** in favour of `/research` with the `bundle-sync` preset — see `docs/SEARCH_PRESETS.md` |
 | `POST` | `/api/games/search-id-steam` | Resolve Steam IDs for a list of games |
 | `POST` | `/api/lists/run` | Async: crawl a Steam user's trade lists and run full analysis |
 | `POST` | `/api/suppliers/find-new` | Async, queued: scan SteamTrades for new suppliers offering games for TF2 keys, PayPal, euros or dollars |
@@ -214,7 +213,6 @@ Only `gameNames` (non-empty) is required. Every search criterion comes from a **
 - `popularity` — minimum 24h peak players **by price tier**: `upToThreshold` applies to games priced up to `priceThresholdEuro` (inclusive), `aboveThreshold` to pricier ones. Flat popularity is the same value in both. `0` in both skips SteamCharts entirely; any tier above `0` looks popularity up and drops games SteamCharts does not know.
 - `minPrice` — games must be priced **above** it (default €0.50); send `0` to keep any priced game.
 - `delivery` — only with a valid token: `trade` (default) or `respond`. Ignored without a token, which always gets the demo.
-- `minPopularity` — **temporary**, kept while the inventory system migrates: shorthand for the same value in both tiers. Sending it together with `popularity` returns `400`.
 
 **Demo mode response** — `200`, no token or wrong token:
 ```json

@@ -10,7 +10,7 @@ Serviço Node.js que automatiza a pesquisa de preço e popularidade de jogos par
 4. Descarta quem não passa do Preço mínimo negociável ou do tier de popularidade **da faixa do seu preço** (até o limite / acima dele).
 5. Cria a Trade no Sistema Estoque, ou devolve os jogos na resposta (demo e entrega `respond`).
 
-Há também dois fluxos assíncronos que raspam o SteamTrades e rodam o mesmo pipeline com os seus presets: "lists" (aceita um Steam ID e revisa as Listas do Fornecedor, preset `lists`) e a Descoberta de Fornecedores (preset `suppliers`). O plano que trouxe os presets e vai aposentar o `/api/games/search` está em `docs/SEARCH_PRESETS.md`.
+Há também dois fluxos assíncronos que raspam o SteamTrades e rodam o mesmo pipeline com os seus presets: "lists" (aceita um Steam ID e revisa as Listas do Fornecedor, preset `lists`) e a Descoberta de Fornecedores (preset `suppliers`). A decisão dos presets está em `docs/adr/0007-presets-de-pesquisa-moram-no-price-cd.md`.
 
 ## Papel do Claude neste projeto
 
