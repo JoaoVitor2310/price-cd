@@ -18,29 +18,3 @@ export interface SearchGamesRequest {
 	gameNames: string[];
 	criteria: SearchCriteria;
 }
-
-export interface GameAnalysisResult {
-	games: FoundGames[];
-	summary: {
-		totalRequested: number;
-		foundGames: number;
-		worthyByPopularity: number;
-		foundPrices: number;
-		processingTimeSeconds: number;
-	};
-}
-
-export interface SearchGamesIdSteamRequest {
-	games: {
-		id: number;
-		name: string;
-	}[];
-}
-
-export interface SearchGamesIdSteamResponse {
-	games: {
-		id: number;
-		name: string;
-		id_steam?: string;
-	}[];
-}

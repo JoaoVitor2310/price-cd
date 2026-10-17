@@ -8,7 +8,7 @@ import {
 	PriceFetcher,
 } from "@/application/games/ports/game-search.ports.js";
 import { GameTradeImporter } from "@/application/games/ports/game-trade-importer.port.js";
-import { SearchGamesUseCase } from "@/application/games/use-cases/search-games.use-case.js";
+import { ResearchGamesUseCase } from "@/application/games/use-cases/research-games.use-case.js";
 import { SteamChartsPopularityFetcher } from "@/infrastructure/games/steam-charts-popularity-fetcher.js";
 import { AppConfigModule } from "@/nest/config/config.module.js";
 import { GamesModule } from "@/nest/games/games.module.js";
@@ -70,14 +70,14 @@ describe("GamesModule", () => {
 		await moduleRef.close();
 	});
 
-	it("builds SearchGamesUseCase with both ports injected", async () => {
+	it("builds ResearchGamesUseCase with its dependencies injected", async () => {
 		// O use case não tem `@Injectable()` — `application/` não importa Nest.
 		// Este teste prova que o `useFactory` + `inject` do módulo supre isso.
 		const moduleRef = await Test.createTestingModule({
 			imports: [AppConfigModule, GamesModule],
 		}).compile();
 
-		expect(moduleRef.get(SearchGamesUseCase)).toBeInstanceOf(SearchGamesUseCase);
+		expect(moduleRef.get(ResearchGamesUseCase)).toBeInstanceOf(ResearchGamesUseCase);
 		await moduleRef.close();
 	});
 
@@ -86,11 +86,13 @@ describe("GamesModule", () => {
 		price.fetch.mockResolvedValueOnce([found("Hades")]);
 
 		const response = await request(app.getHttpServer())
-			.post("/games/search")
-			.send({ minPopularity: 0, gameNames: ["Hades"], checkGamivoOffer: false });
+			.post("/games/research")
+			.send({ gameNames: ["Hades"], preset: "bundle-sync" });
 
 		expect(response.status).toBe(200);
-		expect(response.body.data.games).toHaveLength(1);
+		expect(response.body.games).toHaveLength(1);
+		// `bundle-sync` tem popularidade 0 nos dois tiers: o fetcher é chamado com
+		// `lookup: false`, ou seja, sem consultar o SteamCharts.
 		expect(popularity.fetch).toHaveBeenCalledWith(["Hades"], false);
 		expect(price.fetch).toHaveBeenCalledWith(expect.any(Array), false);
 	});
@@ -109,14 +111,14 @@ describe("GamesModule", () => {
 		]);
 	});
 
-	it("uses the legacy 500 shape of these routes, not the global one", async () => {
+	it("uses the legacy 500 shape of search-id-steam, not the global one", async () => {
 		// `message` e "Internal server error" SEM ponto final. O filter global
 		// responde `details` e COM ponto — trocar os dois quebraria o contrato.
 		popularity.fetch.mockRejectedValueOnce(new Error("scraper died"));
 
 		const response = await request(app.getHttpServer())
-			.post("/games/search")
-			.send({ minPopularity: 0, gameNames: ["Hades"], checkGamivoOffer: false });
+			.post("/games/search-id-steam")
+			.send({ games: [{ id: 1, name: "Hades" }] });
 
 		expect(response.status).toBe(500);
 		expect(response.body).toEqual({
@@ -130,18 +132,14 @@ describe("GamesModule", () => {
 		popularity.fetch.mockRejectedValueOnce(new Error("PHPSESSID=secret-cookie"));
 
 		const response = await request(app.getHttpServer())
-			.post("/games/search")
-			.send({ minPopularity: 0, gameNames: ["Hades"], checkGamivoOffer: false });
+			.post("/games/search-id-steam")
+			.send({ games: [{ id: 1, name: "Hades" }] });
 
 		expect(JSON.stringify(response.body)).not.toContain("secret-cookie");
 	});
 
 	describe("POST /games/research", () => {
-		const body = {
-			minPopularity: 0,
-			gameNames: ["Hades"],
-			checkGamivoOffer: false,
-		};
+		const body = { gameNames: ["Hades"], preset: "bundle-sync" };
 
 		it("runs synchronously and returns 200 when no token is sent", async () => {
 			popularity.fetch.mockResolvedValueOnce([found("Hades")]);
@@ -188,10 +186,10 @@ describe("GamesModule", () => {
 		});
 
 		it("reports validation problems in `data`, not in `error`", async () => {
-			// Formato legado desta rota, diferente do de `/games/search`.
+			// Formato legado desta rota, diferente do de `/games/search-id-steam`.
 			const response = await request(app.getHttpServer())
 				.post("/games/research")
-				.send({ minPopularity: -1, gameNames: ["Hades"] });
+				.send({ minPrice: -1, gameNames: ["Hades"] });
 
 			expect(response.status).toBe(400);
 			expect(response.body).toEqual({

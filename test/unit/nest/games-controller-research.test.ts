@@ -11,7 +11,6 @@ const build = () => {
 	const config = { get: vi.fn(() => SECRET) };
 	const controller = new GamesController(
 		{} as never,
-		{} as never,
 		research as never,
 		enqueue as never,
 		{ import: vi.fn() } as never,

@@ -20,15 +20,12 @@ import {
 	SEARCH_PRESET_NAMES,
 	SEARCH_PRESETS,
 } from "@/domain/games/search-presets.js";
-import { SearchGamesUseCase } from "@/application/games/use-cases/search-games.use-case.js";
 import { GamesLegacyErrorFilter } from "@/nest/games/games-legacy-error.filter.js";
 import { ZodValidationPipe } from "@/nest/common/zod-validation.pipe.js";
 import { LazyGameTradeImporter } from "@/infrastructure/games/lazy-game-trade-importer.js";
 import { ResearchLegacyErrorFilter } from "@/nest/games/research-legacy-error.filter.js";
 import { toResearchRequest } from "@/nest/games/research-request.mapper.js";
 import {
-	type GameSearch,
-	gameSearchSchema,
 	type ResearchGamesBody,
 	researchGamesBodySchema,
 	type SteamIdLookup,
@@ -37,20 +34,17 @@ import {
 } from "@/schemas/game.schema.js";
 
 /**
- * As duas rotas síncronas de busca.
+ * As rotas de `games`: pesquisa de preço (`research`), os presets que a
+ * alimentam e a busca de Steam ID. Aqui o pipe valida, o filter traduz o erro, e
+ * o método só descreve o caminho feliz.
  *
- * Substitui `routes/games/search.route.ts`, `search-id-steam.route.ts` e os dois
- * controllers correspondentes — que eram praticamente o mesmo arquivo, repetindo
- * o `try/catch` de `ZodError` e `Error`. Aqui o pipe valida, o filter traduz o
- * erro, e o método só descreve o caminho feliz.
- *
- * `@UseFilters` porque o 500 destas rotas diverge do global — ver o filter.
+ * `@UseFilters` porque o 500 de `search-id-steam` diverge do global — ver o
+ * filter. `research` declara o próprio.
  */
 @Controller("games")
 @UseFilters(GamesLegacyErrorFilter)
 export class GamesController {
 	constructor(
-		private readonly searchGamesUseCase: SearchGamesUseCase,
 		private readonly popularityFetcher: PopularityFetcher,
 		private readonly researchGamesUseCase: ResearchGamesUseCase,
 		private readonly enqueueResearchGamesUseCase: EnqueueResearchGamesUseCase,
@@ -73,20 +67,14 @@ export class GamesController {
 		return !!secret && token === secret;
 	}
 
-	// `@Post()` responde 201 por padrão no Nest; o Express respondia 200, e o
-	// contrato é 200. A bateria pegou isso na primeira execução.
-	@Post("search")
-	@HttpCode(HttpStatus.OK)
-	async search(@Body(new ZodValidationPipe(gameSearchSchema)) body: GameSearch) {
-		return { success: true, data: await this.searchGamesUseCase.execute(body) };
-	}
-
 	/**
 	 * Resolve o `id_steam` de cada jogo, preservando os que não foram achados.
 	 *
 	 * Injeta a porta direto, sem use case: não há regra de negócio nenhuma aqui
-	 * além de casar nome com resultado. Criar um use case só para ter simetria
-	 * com `/search` seria cerimônia vazia.
+	 * além de casar nome com resultado.
+	 *
+	 * `@HttpCode` porque o `@Post()` responde 201 por padrão no Nest, e o contrato
+	 * é 200.
 	 */
 	@Post("search-id-steam")
 	@HttpCode(HttpStatus.OK)

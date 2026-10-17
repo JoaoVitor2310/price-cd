@@ -105,11 +105,11 @@ esbarra nele. Existem três saídas.
 ```ts
 // application/games/ports/game-search.ports.ts
 export const POPULARITY_FETCHER = Symbol("PopularityFetcher");
-export interface PopularityFetcher { fetch(names: string[], min: number): Promise<FoundGames[]>; }
+export interface PopularityFetcher { fetch(names: string[], lookup: boolean): Promise<FoundGames[]>; }
 
-// application/games/search-games.use-case.ts
+// application/games/services/price-games.ts
 @Injectable()
-export class SearchGamesUseCase {
+export class PriceGames {
   constructor(@Inject(POPULARITY_FETCHER) private readonly popularityFetcher: PopularityFetcher) {}
 }
 
@@ -126,12 +126,12 @@ Uma classe abstrata **existe em runtime** (é um valor), então serve de token s
 ```ts
 // application/games/ports/game-search.ports.ts — sem nada do Nest
 export abstract class PopularityFetcher {
-  abstract fetch(names: string[], min: number): Promise<FoundGames[]>;
+  abstract fetch(names: string[], lookup: boolean): Promise<FoundGames[]>;
 }
 
-// application/games/search-games.use-case.ts
+// application/games/services/price-games.ts
 @Injectable()
-export class SearchGamesUseCase {
+export class PriceGames {
   constructor(private readonly popularityFetcher: PopularityFetcher) {}  // ✅ sem @Inject
 }
 
@@ -151,8 +151,8 @@ metadata funcionando (risco 7.2); se falhar, o fallback é A.
 ```ts
 // use case sem decorator nenhum — application/ intocado
 providers: [{
-  provide: SearchGamesUseCase,
-  useFactory: (p: PopularityFetcher, pr: PriceFetcher) => new SearchGamesUseCase(p, pr),
+  provide: PriceGames,
+  useFactory: (p: PopularityFetcher, pr: PriceFetcher) => new PriceGames(p, pr),
   inject: [POPULARITY_FETCHER, PRICE_FETCHER],
 }]
 ```
@@ -302,8 +302,8 @@ resposta
 Pipe transforma e/ou valida o argumento antes de o handler recebê-lo:
 
 ```ts
-@Post("search")
-async search(@Body(new ZodValidationPipe(gameSearchSchema)) body: GameSearch) { … }
+@Post("search-id-steam")
+async searchIdSteam(@Body(new ZodValidationPipe(steamIdLookupSchema)) body: SteamIdLookup) { … }
 ```
 
 O `ZodValidationPipe` deste projeto tem ~15 linhas e relança o `ZodError`, deixando a
@@ -465,7 +465,7 @@ const moduleRef = await Test.createTestingModule({ imports: [GamesModule] })
 
 const app = moduleRef.createNestApplication();
 await app.init();
-await request(app.getHttpServer()).post("/api/games/search").send(body).expect(200);
+await request(app.getHttpServer()).post("/api/games/research").send(body).expect(200);
 ```
 
 Compare com o que os testes de integração fazem hoje:

@@ -61,9 +61,8 @@ describe("booting without the inventory system configured", () => {
 		const response = await request(app.getHttpServer())
 			.post("/api/games/research")
 			.send({
-				minPopularity: 0,
 				gameNames: ["Hades"],
-				checkGamivoOffer: false,
+				preset: "bundle-sync",
 			});
 
 		expect(response.status).toBe(200);
@@ -78,9 +77,8 @@ describe("booting without the inventory system configured", () => {
 		const response = await request(app.getHttpServer())
 			.post("/api/games/research")
 			.send({
-				minPopularity: 0,
 				gameNames: ["Hades"],
-				checkGamivoOffer: false,
+				preset: "bundle-sync",
 				internal_secret: "secret",
 			});
 

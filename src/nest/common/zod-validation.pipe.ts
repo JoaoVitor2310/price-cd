@@ -13,7 +13,7 @@ import type { ZodType } from "zod";
  *
  * Sem `@Injectable()` de propósito: o schema vem pelo construtor, então o pipe é
  * sempre instanciado à mão por parâmetro
- * (`@Body(new ZodValidationPipe(gameSearchSchema))`) e nunca passa pelo
+ * (`@Body(new ZodValidationPipe(researchGamesBodySchema))`) e nunca passa pelo
  * container. O decorator seria enfeite.
  */
 export class ZodValidationPipe<T> implements PipeTransform<unknown, T> {

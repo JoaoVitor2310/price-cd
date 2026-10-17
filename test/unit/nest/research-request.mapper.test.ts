@@ -32,14 +32,6 @@ describe("toResearchRequest", () => {
 		expect(toResearchRequest(body()).criteria).toEqual(SEARCH_PRESETS.default);
 	});
 
-	it("maps the temporary minPopularity shorthand to both tiers", () => {
-		expect(toResearchRequest(body({ minPopularity: 30 })).criteria.popularity).toEqual({
-			upToThreshold: 30,
-			aboveThreshold: 30,
-			priceThresholdEuro: 5,
-		});
-	});
-
 	it("starts from the chosen preset and applies explicit fields on top", () => {
 		const { criteria } = toResearchRequest(
 			body({

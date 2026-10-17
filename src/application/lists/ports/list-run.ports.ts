@@ -39,21 +39,13 @@ export interface RunListsRunner {
 
 /**
  * Porta para buscar popularidade e preços de jogos.
- * Isola RunListsUseCase da implementação concreta de SearchGamesUseCase.
+ * Isola RunListsUseCase do motor de precificação (`PriceGames`).
  *
  * Contrato: o resultado já vem cortado pelas regras de domínio do catálogo —
  * popularidade mínima, jogos excluídos e Preço mínimo negociável (`partitionByPrice`).
  * Quem consome não repete esses filtros; quem implementa precisa aplicá-los.
  */
 export abstract class GameSearcher {
-	/**
-	 * Devolve **só os jogos** precificados.
-	 *
-	 * Devolvia `GameAnalysisResult` — que carrega um `summary` com contagens e
-	 * tempo de processamento existentes apenas para a resposta de
-	 * `POST /api/games/search`. Nenhum consumidor desta porta jamais leu esse
-	 * campo: `lists` e `suppliers` acessavam `.games` e descartavam o resto. O
-	 * contrato compartilhado tinha a forma da apresentação de um terceiro.
-	 */
+	/** Devolve **só os jogos** precificados, já cortados pelos critérios. */
 	abstract search(request: SearchGamesRequest): Promise<FoundGames[]>;
 }

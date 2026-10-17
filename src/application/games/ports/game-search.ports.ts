@@ -1,8 +1,4 @@
-import type {
-	FoundGames,
-	GameAnalysisResult,
-	SearchGamesRequest,
-} from "@/application/games/game.types.js";
+import type { FoundGames } from "@/application/games/game.types.js";
 
 /**
  * Portas da busca de jogos.
@@ -37,9 +33,4 @@ export abstract class PriceFetcher {
 		games: FoundGames[],
 		checkGamivoOffer: boolean,
 	): Promise<FoundGames[]>;
-}
-
-/** Ainda `interface`: só vira token quando os PRs 5 e 6 migrarem lists/suppliers. */
-export interface GameSearcher {
-	search(request: SearchGamesRequest): Promise<GameAnalysisResult>;
 }

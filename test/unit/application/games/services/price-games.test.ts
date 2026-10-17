@@ -52,8 +52,8 @@ const tiers = (upToThreshold: number, aboveThreshold: number): PopularityTiers =
 
 describe("PriceGames", () => {
 	it("exposes each stage so callers can shape their own output", async () => {
-		// É a razão de a extração existir: `/api/games/search` monta um resumo com
-		// estas contagens, enquanto `lists` e `suppliers` leem só `priced`.
+		// Hoje todo consumidor lê só `priced`; os estágios intermediários existem
+		// para teste e diagnóstico, e este teste trava que continuam expostos.
 		const { engine } = makeEngine(
 			[game("Cheap"), game("Worthy")],
 			[game("Cheap", 0.2), game("Worthy", 1.99)],
