@@ -3,10 +3,9 @@ import type {
 	ListTopicFetcherFactory,
 } from "@/application/lists/ports/list-run.ports.js";
 import type { GameTradeImporter, GameTradeInput } from "@/application/games/ports/game-trade-importer.port.js";
+import { resolveSearchCriteria } from "@/domain/games/search-presets.js";
 import { disposeIfPresent } from "@/lib/dispose.js";
 import type { SupplierListRequest } from "@/schemas/list.schema.js";
-
-const MIN_POPULARITY = 30;
 
 /** Só dado: as dependências estão no construtor. */
 export type RunListsInput = {
@@ -62,10 +61,11 @@ export class RunListsUseCase {
 			await disposeIfPresent(fetcher);
 		}
 
+		// Os critérios do Reabastecimento são o preset `lists`; só a oferta Gamivo
+		// vem da requisição.
 		const pricedByCatalog = await gameSearcher.search({
-			minPopularity: MIN_POPULARITY,
 			gameNames: allGameNames,
-			checkGamivoOffer,
+			criteria: resolveSearchCriteria("lists", { checkGamivoOffer }),
 		});
 
 		const pricedGames: GameTradeInput[] = pricedByCatalog

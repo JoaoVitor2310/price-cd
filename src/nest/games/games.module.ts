@@ -123,13 +123,13 @@ import {
 
 		/**
 		 * O que a fila executa. É só composição — nenhuma regra de negócio mora
-		 * aqui, só a tradução "rodar a pesquisa completa, não em modo demo".
+		 * aqui, só a tradução "rodar a pesquisa completa e criar a Trade".
 		 */
 		{
 			provide: RESEARCH_RUNNER,
 			useFactory: (useCase: ResearchGamesUseCase): ResearchGamesRunner => ({
 				run: async (request: ResearchGamesRequest) => {
-					await useCase.execute({ ...request, demo: false });
+					await useCase.execute({ ...request, delivery: "trade" });
 				},
 			}),
 			inject: [ResearchGamesUseCase],

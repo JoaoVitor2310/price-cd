@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { SEARCH_PRESETS } from "@/domain/games/search-presets.js";
 import { FindNewSuppliersUseCase } from "@/application/suppliers/use-cases/find-new-suppliers.use-case.js";
-import type { FindNewSuppliersInput } from "@/application/suppliers/use-cases/find-new-suppliers.use-case.js";
+import type { TradePaginator } from "@/application/suppliers/ports/trade-paginator.port.js";
+import type { TopicScraper } from "@/application/suppliers/ports/topic-scraper.port.js";
+import type { CommentPoster } from "@/application/suppliers/ports/comment-poster.port.js";
+import type { ProfitabilityChecker } from "@/application/suppliers/ports/profitability-checker.port.js";
+import type { GameSearcher } from "@/application/lists/ports/list-run.ports.js";
 import type { TopicData } from "@/application/suppliers/ports/topic-scraper.port.js";
 import type { ProspectResult } from "@/application/suppliers/ports/profitability-checker.port.js";
 import type { FoundGames } from "@/application/games/game.types.js";
@@ -385,10 +390,20 @@ describe("FindNewSuppliersUseCase", () => {
 
         await useCase.execute();
 
-        const calledWith = input.gameSearcher.search.mock.calls[0][0].gameNames;
+        const calledWith = vi.mocked(input.gameSearcher.search).mock.calls[0][0].gameNames;
         expect(calledWith).toHaveLength(1000);
         expect(calledWith[0]).toBe("Game 1");
         expect(calledWith[999]).toBe("Game 1000");
+    });
+
+    it("searches with the suppliers preset: popularity tiers and a required Gamivo offer", async () => {
+        const { deps: input, useCase } = build({
+            scraper: { scrape: vi.fn().mockResolvedValue(makeTopic({ games: ["Hades"] })) },
+        });
+
+        await useCase.execute();
+
+        expect(vi.mocked(input.gameSearcher.search).mock.calls[0][0].criteria).toEqual(SEARCH_PRESETS.suppliers);
     });
 
     it("passes all games when the topic has 1000 or fewer", async () => {
@@ -399,7 +414,7 @@ describe("FindNewSuppliersUseCase", () => {
 
         await useCase.execute();
 
-        const calledWith = input.gameSearcher.search.mock.calls[0][0].gameNames;
+        const calledWith = vi.mocked(input.gameSearcher.search).mock.calls[0][0].gameNames;
         expect(calledWith).toHaveLength(30);
     });
 

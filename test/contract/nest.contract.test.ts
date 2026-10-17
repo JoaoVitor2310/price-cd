@@ -1,22 +1,13 @@
 /**
- * A MESMA bateria de contrato do Express, agora contra o app Nest.
- *
- * **Sem `only`: a paridade está provada.** Durante os PRs 3 a 7 esta bateria
- * rodava com uma lista de rotas — o app Nest só era cobrado pelo que já tinha
- * sido migrado. No PR 8 a lista foi removida: as cinco rotas, o `GET /` e o 404
- * respondem igual nos dois apps.
- *
- * Reintroduzir `only` aqui é dar um passo atrás na migração, e deve ser
- * justificado no PR que o fizer.
+ * Roda a bateria de contrato (`contract-cases.ts`) contra o app Nest, com todos
+ * os casos — nenhuma rota fica de fora.
  *
  * Note que aqui não há `vi.mock`: o container faz o trabalho. `overrideProvider`
  * troca a implementação registrada pelo token da porta — é substituição de
- * dependência de verdade, não interceptação de módulo. Os dublês são os mesmos
- * do Express, de propósito: mesmo fake, mesma entrada, a resposta HTTP tem que
- * ser idêntica.
+ * dependência de verdade, não interceptação de módulo.
  *
- * **Todo efeito externo precisa de dublê aqui, igual ao lado Express.** A
- * primeira versão deste arquivo só substituía os fetchers de preço: o
+ * **Todo efeito externo precisa de dublê aqui.** A primeira versão deste arquivo
+ * só substituía os fetchers de preço: o
  * `LISTS_SCHEDULER` era a fila real e a `ListTopicFetcherFactory` era a de
  * produção, então o caso de 202 de `/api/lists/run` disparava Puppeteer de
  * verdade durante a suíte. Passava — e deixava um Chromium subindo.

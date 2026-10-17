@@ -179,7 +179,7 @@ const chunkArray = <T>(array: T[], chunkSize: number): T[][] => {
 
 const searchSteamCharts = async (
 	gamesToSearch: string[],
-	minPopularity: number,
+	lookup: boolean,
 	batchSize: number = 50,
 ): Promise<FoundGames[]> => {
 	console.log("\n📊 [INFO] Starting SteamCharts popularity search");
@@ -187,9 +187,9 @@ const searchSteamCharts = async (
 		`📋 [INFO] Processing ${gamesToSearch.length} games in batches of ${batchSize}`,
 	);
 
-	if (minPopularity === 0) {
+	if (!lookup) {
 		console.log(
-			"⚡ [INFO] minPopularity is 0, returning all games without popularity check",
+			"⚡ [INFO] Popularity lookup disabled (both tiers are 0), returning all games without popularity check",
 		);
 		return gamesToSearch.map((gameName, index) => ({
 			id: index,
@@ -229,10 +229,7 @@ const searchSteamCharts = async (
 
 @Injectable()
 export class SteamChartsPopularityFetcher implements PopularityFetcher {
-	async fetch(
-		gameNames: string[],
-		minPopularity: number,
-	): Promise<FoundGames[]> {
-		return searchSteamCharts(gameNames, minPopularity);
+	async fetch(gameNames: string[], lookup: boolean): Promise<FoundGames[]> {
+		return searchSteamCharts(gameNames, lookup);
 	}
 }

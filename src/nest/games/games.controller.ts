@@ -1,6 +1,7 @@
 import {
 	Body,
 	Controller,
+	Get,
 	HttpCode,
 	HttpStatus,
 	Post,
@@ -14,11 +15,17 @@ import { GameTradeImporter } from "@/application/games/ports/game-trade-importer
 import { PopularityFetcher } from "@/application/games/ports/game-search.ports.js";
 import { ResearchGamesUseCase } from "@/application/games/use-cases/research-games.use-case.js";
 import type { Env } from "@/config/env.schema.js";
+import {
+	SEARCH_PRESET_LABELS,
+	SEARCH_PRESET_NAMES,
+	SEARCH_PRESETS,
+} from "@/domain/games/search-presets.js";
 import { SearchGamesUseCase } from "@/application/games/use-cases/search-games.use-case.js";
 import { GamesLegacyErrorFilter } from "@/nest/games/games-legacy-error.filter.js";
 import { ZodValidationPipe } from "@/nest/common/zod-validation.pipe.js";
 import { LazyGameTradeImporter } from "@/infrastructure/games/lazy-game-trade-importer.js";
 import { ResearchLegacyErrorFilter } from "@/nest/games/research-legacy-error.filter.js";
+import { toResearchRequest } from "@/nest/games/research-request.mapper.js";
 import {
 	type GameSearch,
 	gameSearchSchema,
@@ -88,7 +95,7 @@ export class GamesController {
 	) {
 		const found = await this.popularityFetcher.fetch(
 			body.games.map((game) => game.name),
-			1,
+			true,
 		);
 
 		const games = body.games.map((game) => ({
@@ -104,15 +111,34 @@ export class GamesController {
 	}
 
 	/**
-	 * Duas respostas diferentes na mesma rota, decididas pelo token:
-	 * autenticado enfileira e devolve **202**; sem token roda síncrono e devolve
-	 * **200** com os jogos.
+	 * Os presets de pesquisa, para a página preencher o formulário. Fonte única:
+	 * a página não guarda cópia de nenhum valor.
+	 */
+	@Get("presets")
+	presets() {
+		const presets = Object.fromEntries(
+			SEARCH_PRESET_NAMES.map((name) => [
+				name,
+				{ label: SEARCH_PRESET_LABELS[name], ...SEARCH_PRESETS[name] },
+			]),
+		);
+		return { success: true, presets };
+	}
+
+	/**
+	 * Três respostas na mesma rota, decididas pelo token e por `delivery`:
 	 *
-	 * `@Res({ passthrough: true })` em vez de dois `@HttpCode`: o status depende
-	 * do corpo da requisição, não da rota, então não dá para declará-lo no
-	 * decorator. `passthrough` mantém o Nest responsável por serializar o retorno
-	 * — sem ele seria preciso chamar `res.json()` à mão e o filter perderia o
-	 * controle da resposta.
+	 * - sem token (ou token errado): demo síncrono, **200** com até 10 jogos;
+	 * - token + `delivery: "trade"` (padrão): enfileira, **202**, e a Trade é criada
+	 *   no Sistema Estoque ao terminar;
+	 * - token + `delivery: "respond"`: síncrono, **200** com todos os jogos e sem
+	 *   criar Trade — o caso da sync de bundle.
+	 *
+	 * `@Res({ passthrough: true })` em vez de `@HttpCode`: o status depende do
+	 * corpo da requisição, não da rota, então não dá para declará-lo no decorator.
+	 * `passthrough` mantém o Nest responsável por serializar o retorno — sem ele
+	 * seria preciso chamar `res.json()` à mão e o filter perderia o controle da
+	 * resposta.
 	 */
 	@Post("research")
 	@UseFilters(ResearchLegacyErrorFilter)
@@ -120,39 +146,34 @@ export class GamesController {
 		@Body(new ZodValidationPipe(researchGamesBodySchema)) body: ResearchGamesBody,
 		@Res({ passthrough: true }) response: Response,
 	) {
-		const {
-			internal_secret: internalSecret,
-			steam_id: supplierSteamId,
-			list_code: listCode,
-			...rest
-		} = body;
+		const request = toResearchRequest(body);
 
-		const request = { ...rest, supplierSteamId, listCode };
+		// Sem token é sempre demo, diga o `delivery` o que disser.
+		const delivery = !this.isAuthenticated(body.internal_secret)
+			? "demo"
+			: (body.delivery ?? "trade");
 
-		if (this.isAuthenticated(internalSecret)) {
-			// Falha ainda no ciclo da requisição se a integração com o Sistema
-			// Estoque não estiver configurada — depois de enfileirado não há mais
-			// ninguém para receber o erro. Mesma razão do
-			// `assertTradeImporterConfigured()` do Express.
-			if (this.tradeImporter instanceof LazyGameTradeImporter) {
-				this.tradeImporter.assertConfigured();
-			}
-
-			await this.enqueueResearchGamesUseCase.execute({ request });
-			response.status(HttpStatus.ACCEPTED);
-			return { success: true, status: "queued" };
+		if (delivery !== "trade") {
+			const games = await this.researchGamesUseCase.execute({ ...request, delivery });
+			// Explícito, e não `@HttpCode(200)`: no modo `passthrough` o decorator
+			// sobrescreve o que o handler define, então o 202 abaixo seria engolido.
+			response.status(HttpStatus.OK);
+			// `demo: true` é contrato: o Sistema Estoque o usa para detectar segredo
+			// errado. Na entrega `respond` o campo não existe.
+			return delivery === "demo"
+				? { success: true, demo: true, games }
+				: { success: true, games };
 		}
 
-		const games = await this.researchGamesUseCase.execute({
-			...request,
-			demo: true,
-		});
+		// Falha ainda no ciclo da requisição se a integração com o Sistema
+		// Estoque não estiver configurada — depois de enfileirado não há mais
+		// ninguém para receber o erro.
+		if (this.tradeImporter instanceof LazyGameTradeImporter) {
+			this.tradeImporter.assertConfigured();
+		}
 
-		// Explícito, e não `@HttpCode(200)`: no modo `passthrough` o decorator
-		// sobrescreve o que o handler define, então o 202 do ramo de cima seria
-		// engolido. Com os dois ramos declarando o status, nenhum depende do
-		// default 201 do `@Post()`.
-		response.status(HttpStatus.OK);
-		return { success: true, demo: true, games };
+		await this.enqueueResearchGamesUseCase.execute({ request });
+		response.status(HttpStatus.ACCEPTED);
+		return { success: true, status: "queued" };
 	}
 }

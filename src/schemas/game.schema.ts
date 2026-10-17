@@ -1,4 +1,5 @@
 import * as z from "zod";
+import { SEARCH_PRESET_NAMES } from "@/domain/games/search-presets.js";
 
 export const gameSearchSchema = z.strictObject({
 	minPopularity: z
@@ -44,25 +45,62 @@ export type GameIdSteamResponse = z.infer<typeof gameIdSteamResponseSchema>;
 export type SteamIdLookup = z.infer<typeof steamIdLookupSchema>;
 export type SteamIdLookupResponse = z.infer<typeof steamIdLookupResponseSchema>;
 
-// A pesquisa recebe o mesmo formato estruturado da busca (`gameSearchSchema`) —
-// `minPopularity` e `gameNames` são campos de primeira classe, não um blob de
-// texto. Converter um arquivo `.txt` em `{ minPopularity, gameNames }` é
-// responsabilidade de quem chama (front-end / adaptador de arquivo), não do
-// contrato da API. `checkGamivoOffer` é opcional aqui (default `false`) porque a
-// pesquisa é acionada por integrações que nem sempre se importam com a Gamivo.
-export const researchGamesBodySchema = gameSearchSchema.extend({
-	checkGamivoOffer: z.boolean().optional().default(false),
-	// Piso de preço negociável. Omitido → default do domínio (€0,50). Bundles
-	// mandam `0` para aceitar jogos abaixo do piso. Sem default aqui de propósito:
-	// o domínio é a fonte única do valor padrão.
-	minPrice: z
-		.number()
-		.min(0, { message: "minPrice must be 0 or greater" })
-		.optional(),
-	steam_id: z.string().optional(),
-	list_code: z.string().optional(),
-	internal_secret: z.string().optional(),
-	title: z.string().optional(),
+const gameNamesSchema = z
+	.array(
+		z
+			.string()
+			.trim()
+			.min(1, { message: "Game name cannot be empty" }),
+	)
+	.min(1, { message: "At least one game name is required" });
+
+const nonNegative = (field: string) =>
+	z.number().min(0, { message: `${field} must be 0 or greater` });
+
+/** Cada campo é opcional: o que faltar vem do preset. */
+const popularityTiersSchema = z.strictObject({
+	upToThreshold: nonNegative("popularity.upToThreshold").optional(),
+	aboveThreshold: nonNegative("popularity.aboveThreshold").optional(),
+	priceThresholdEuro: nonNegative("popularity.priceThresholdEuro").optional(),
 });
+
+/**
+ * Corpo de `POST /api/games/research`.
+ *
+ * Os critérios saem de um preset (`default` se nenhum for enviado) e cada campo
+ * enviado explicitamente sobrescreve o do preset — ver `docs/SEARCH_PRESETS.md`.
+ * Converter um arquivo `.txt` em `gameNames` é responsabilidade de quem chama, não
+ * do contrato da API.
+ *
+ * `minPopularity` é um atalho **temporário** para os dois tiers iguais: o Sistema
+ * Estoque ainda o envia. Sai quando ele migrar para os presets (etapa 3 do plano).
+ * Mandar `minPopularity` e `popularity` juntos é ambíguo e vira 400.
+ */
+export const researchGamesBodySchema = z
+	.strictObject({
+		gameNames: gameNamesSchema,
+		preset: z
+			.enum(SEARCH_PRESET_NAMES, {
+				message: `preset must be one of: ${SEARCH_PRESET_NAMES.join(", ")}`,
+			})
+			.optional(),
+		popularity: popularityTiersSchema.optional(),
+		minPopularity: nonNegative("Minimum popularity").optional(),
+		checkGamivoOffer: z.boolean().optional(),
+		minPrice: nonNegative("minPrice").optional(),
+		// Só vale com token. Sem token a resposta é sempre o demo síncrono.
+		delivery: z
+			.enum(["trade", "respond"], {
+				message: "delivery must be one of: trade, respond",
+			})
+			.optional(),
+		steam_id: z.string().optional(),
+		list_code: z.string().optional(),
+		internal_secret: z.string().optional(),
+		title: z.string().optional(),
+	})
+	.refine((body) => body.minPopularity === undefined || body.popularity === undefined, {
+		message: "Send either minPopularity or popularity, not both",
+	});
 
 export type ResearchGamesBody = z.infer<typeof researchGamesBodySchema>;

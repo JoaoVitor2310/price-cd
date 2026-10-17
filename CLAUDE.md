@@ -2,14 +2,15 @@
 
 ## O que o projeto faz
 
-Serviço Node.js que automatiza a pesquisa de preço e popularidade de jogos para revendedores. Recebe um arquivo `.txt` onde a primeira linha é o **mínimo de popularidade** e as linhas seguintes são **nomes de jogos** (um por linha). O sistema:
+Serviço Node.js que automatiza a pesquisa de preço e popularidade de jogos para revendedores. Recebe uma lista de **nomes de jogos** e os **critérios de pesquisa** — um preset nomeado (`src/domain/games/search-presets.ts`) com sobrescritas campo a campo. O sistema:
 
 1. Busca cada jogo no SteamCharts para obter o pico de jogadores em 24h (popularidade).
-2. Filtra jogos abaixo do mínimo de popularidade.
+2. Descarta quem não alcança nem o **menor** tier de popularidade — antes do preço, para poupar o AllKeyShop.
 3. Pesquisa o melhor preço no AllKeyShop para os jogos qualificados.
-4. Retorna um `.txt` formatado para colar direto em planilha.
+4. Descarta quem não passa do Preço mínimo negociável ou do tier de popularidade **da faixa do seu preço** (até o limite / acima dele).
+5. Cria a Trade no Sistema Estoque, ou devolve os jogos na resposta (demo e entrega `respond`).
 
-Há também um fluxo assíncrono ("lists") que aceita um Steam ID, rastreia as listas de trade do usuário no SteamTrades, extrai os jogos e roda o mesmo pipeline com popularidade mínima fixa de 30.
+Há também dois fluxos assíncronos que raspam o SteamTrades e rodam o mesmo pipeline com os seus presets: "lists" (aceita um Steam ID e revisa as Listas do Fornecedor, preset `lists`) e a Descoberta de Fornecedores (preset `suppliers`). O plano que trouxe os presets e vai aposentar o `/api/games/search` está em `docs/SEARCH_PRESETS.md`.
 
 ## Papel do Claude neste projeto
 
@@ -161,7 +162,7 @@ O módulo `clear-string.ts` é a camada central de normalização usada em todo 
 ### Tratamento de Erros
 
 - `ZodError` (400) e `Error` genérico (500) são tratados num arquivo só, `src/nest/common/all-exceptions.filter.ts`, registrado via `APP_FILTER` (provider do container, não `useGlobalFilters`, para poder injetar dependências). Os controllers Express faziam esse `try/catch` cinco vezes.
-- O formato de erro **não é uniforme entre as rotas**: ficou congelado durante a migração para que qualquer diferença do app Nest fosse bug, não melhoria acidental. `test/contract/contract-cases.ts` continua travando o contrato como ele é. Uniformizar é o item 14 do `docs/IMPROVEMENTS.md` — PR próprio, agora desbloqueado.
+- O formato de erro **não é uniforme entre as rotas**: ficou congelado durante a migração para que qualquer diferença do app Nest fosse bug, não melhoria acidental. `test/contract/contract-cases.ts` continua travando o contrato como ele é. Uniformizar é o item 13 do `docs/IMPROVEMENTS.md` — PR próprio, agora desbloqueado.
 - Funções de service retornam `null` em falhas individuais de jogo (não fatais), permitindo que o batch continue.
 - **`biome check --write` quebra a injeção de dependência.** A regra `style/useImportType` converte `import { SharedBrowserSession }` em `import type { ... }`, o import é apagado na compilação, e o `design:paramtypes` do decorator passa a registrar nada — o Nest injeta `undefined` **sem erro no boot**, exatamente o modo de falha do ADR 0004. Aconteceu nos quatro adapters que recebem sessão de browser pelo construtor. `biome.json` desliga a regra em `src/infrastructure/**` e `src/nest/**`; os testes de módulo (`test/integration/nest/*.module.test.ts`) são o que pega se alguém religar.
 - **Variável com default no schema não é configurável pelo `.env` se o dotenv chegar tarde.** `ConfigModule.forRoot()` valida o ambiente no **import** do arquivo, e import de ESM é hoisted: por isso `src/main.ts` faz `import "dotenv/config"` antes de qualquer outro import, e `test/unit/config/dotenv-order.test.ts` trava essa ordem. Na suíte, o equivalente é `test/setup.ts` — `setupFiles` roda antes do grafo de imports. Era isso que fazia `BUMP_SCHEDULER_ENABLED=false` num `beforeAll` não desligar nada.

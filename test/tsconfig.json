@@ -1,0 +1,9 @@
+{
+	// Existe só para o editor. O VS Code usa o `tsconfig.json` mais próximo de cada
+	// arquivo, e o da raiz inclui só `src/` — sem este, os testes caem num projeto
+	// inferido, sem `paths`, e todo import `@/...` aparece como erro. Os testes em
+	// si não leem este arquivo: o Vitest tem alias próprio (`vitest.config.ts`) e
+	// transforma com SWC (`.swcrc`).
+	"extends": "../tsconfig.test.json",
+	"include": ["./**/*.ts", "../src/**/*.ts"]
+}
