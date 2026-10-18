@@ -34,6 +34,7 @@ const makeEngine = (found: FoundGames[], priced: FoundGames[]) => {
 
 const criteria = (overrides: Partial<SearchCriteria> = {}): SearchCriteria => ({
 	popularity: flatPopularity(100),
+	lookupPopularity: true,
 	minPrice: 0.5,
 	checkGamivoOffer: false,
 	...overrides,
@@ -159,22 +160,141 @@ describe("PriceGames", () => {
 			expect(priced).toHaveLength(1);
 		});
 
-		it("skips the SteamCharts lookup only when BOTH tiers are 0", async () => {
-			const { engine, popularityFetcher } = makeEngine([game("Any", undefined, 0)], [game("Any", 2, 0)]);
+		it("asks the fetcher for a lookup exactly when criteria.lookupPopularity says so", async () => {
+			// Os tiers só cortam; quem decide consultar é a flag.
+			const { engine, popularityFetcher } = makeEngine(
+				[game("Any", undefined, 0)],
+				[game("Any", 2, 0)],
+			);
 
-			const { priced } = await engine.run({ gameNames: ["Any"], criteria: criteria({ popularity: tiers(0, 0) }) });
+			await engine.run({
+				gameNames: ["Any"],
+				criteria: criteria({
+					popularity: tiers(0, 0),
+					lookupPopularity: false,
+				}),
+			});
+			await engine.run({
+				gameNames: ["Any"],
+				criteria: criteria({ popularity: tiers(0, 0), lookupPopularity: true }),
+			});
 
-			expect(popularityFetcher.fetch).toHaveBeenCalledWith(["Any"], false);
-			expect(priced).toHaveLength(1);
+			expect(popularityFetcher.fetch).toHaveBeenNthCalledWith(
+				1,
+				["Any"],
+				false,
+			);
+			expect(popularityFetcher.fetch).toHaveBeenNthCalledWith(2, ["Any"], true);
 		});
 
-		it("still looks the popularity up when only one tier is 0", async () => {
-			// O menor tier é 0, mas o de cima (100) precisa de popularidade real.
-			const { engine, popularityFetcher } = makeEngine([game("Any", undefined, 500)], []);
+		it("looks the popularity up with 0/0 when the flag asks for it, and returns the real number", async () => {
+			const { engine } = makeEngine(
+				[game("Known", undefined, 842)],
+				[game("Known", 2, 842)],
+			);
 
-			await engine.run({ gameNames: ["Any"], criteria: criteria({ popularity: tiers(0, 100) }) });
+			const { priced } = await engine.run({
+				gameNames: ["Known"],
+				criteria: criteria({ popularity: tiers(0, 0) }),
+			});
 
-			expect(popularityFetcher.fetch).toHaveBeenCalledWith(["Any"], true);
+			expect(priced[0].popularity).toBe(842);
+		});
+	});
+
+	describe("games SteamCharts does not know", () => {
+		const log = () => vi.spyOn(console, "log").mockImplementation(() => {});
+
+		it("keeps them, with popularity 0, when no tier cuts by popularity (a bundle)", async () => {
+			const spy = log();
+			// O SteamCharts só devolve "Known"; "Obscure" some do `found`.
+			const { engine, priceFetcher } = makeEngine(
+				[game("Known", undefined, 40)],
+				[game("Known", 2, 40), { ...game("Obscure", 3, 0), id: 1 }],
+			);
+
+			const { priced, found } = await engine.run({
+				gameNames: ["Known", "Obscure"],
+				criteria: criteria({ popularity: tiers(0, 0), minPrice: 0 }),
+			});
+
+			const sentToPricing = priceFetcher.fetch.mock.calls[0][0] as FoundGames[];
+			expect(sentToPricing.map((g) => [g.name, g.popularity])).toEqual([
+				["Known", 40],
+				["Obscure", 0],
+			]);
+			expect(priced.map((g) => g.name)).toEqual(["Known", "Obscure"]);
+			// `found` continua sendo o que o SteamCharts achou, sem os sintéticos.
+			expect(found.map((g) => g.name)).toEqual(["Known"]);
+			spy.mockRestore();
+		});
+
+		it("drops them once a tier asks for any popularity", async () => {
+			const spy = log();
+			const { engine, priceFetcher } = makeEngine(
+				[game("Known", undefined, 40)],
+				[game("Known", 2, 40)],
+			);
+
+			await engine.run({
+				gameNames: ["Known", "Obscure"],
+				criteria: criteria({ popularity: tiers(1, 1) }),
+			});
+
+			const sentToPricing = priceFetcher.fetch.mock.calls[0][0] as FoundGames[];
+			expect(sentToPricing.map((g) => g.name)).toEqual(["Known"]);
+			spy.mockRestore();
+		});
+
+		it("lets the tier of their price decide after pricing: 0 up to the threshold, 100 above", async () => {
+			const spy = log();
+			const { engine } = makeEngine(
+				[],
+				[game("Cheap unknown", 3, 0), game("Pricey unknown", 12, 0)],
+			);
+
+			const { priced } = await engine.run({
+				gameNames: ["Cheap unknown", "Pricey unknown"],
+				criteria: criteria({ popularity: tiers(0, 100), minPrice: 0 }),
+			});
+
+			expect(priced.map((g) => g.name)).toEqual(["Cheap unknown"]);
+			spy.mockRestore();
+		});
+
+		it("says in the log that a game was kept without popularity data", async () => {
+			const spy = log();
+			const { engine } = makeEngine([], [game("Obscure", 3, 0)]);
+
+			await engine.run({
+				gameNames: ["Obscure"],
+				criteria: criteria({ popularity: tiers(0, 0), minPrice: 0 }),
+			});
+
+			expect(spy).toHaveBeenCalledWith(
+				expect.stringContaining(
+					'"Obscure" has no SteamCharts data — kept with popularity 0',
+				),
+			);
+			spy.mockRestore();
+		});
+
+		it("does not log that when nobody was unrated", async () => {
+			const spy = log();
+			const { engine } = makeEngine(
+				[game("Known", undefined, 40)],
+				[game("Known", 2, 40)],
+			);
+
+			await engine.run({
+				gameNames: ["Known"],
+				criteria: criteria({ popularity: tiers(0, 0), minPrice: 0 }),
+			});
+
+			expect(spy).not.toHaveBeenCalledWith(
+				expect.stringContaining("has no SteamCharts data"),
+			);
+			spy.mockRestore();
 		});
 	});
 });

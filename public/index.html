@@ -408,6 +408,71 @@
       margin-bottom: 6px;
     }
     .fl span { font-weight: 400; color: var(--muted-2); }
+
+    /* Tooltip de campo: o balão ancora na linha do rótulo (não no ícone), então
+       ocupa a largura da coluna e nunca vaza para fora da tela. */
+    .fl-row {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+    .fl-row .fl { margin-bottom: 0; }
+    .tip {
+      width: 16px; height: 16px;
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      border: 1px solid var(--muted-2);
+      border-radius: 50%;
+      background: transparent;
+      color: var(--muted);
+      font: italic 600 10px/1 Georgia, serif;
+      cursor: help;
+      transition: border-color .15s, color .15s, background .15s;
+    }
+    .tip:hover, .tip:focus-visible {
+      border-color: var(--accent);
+      color: var(--accent-dk);
+      background: var(--accent-lt);
+      outline: none;
+    }
+    .tip-text {
+      display: none;
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      z-index: 20;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: var(--ink);
+      color: #e2e8f0;
+      font-size: 12.5px;
+      font-weight: 400;
+      line-height: 1.5;
+      box-shadow: 0 8px 24px rgba(15,23,42,.18);
+    }
+    .tip:hover + .tip-text,
+    .tip:focus + .tip-text { display: block; }
+    .fl-row input[type="checkbox"] {
+      width: 17px; height: 17px;
+      accent-color: var(--accent);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .fl-row input[type="checkbox"]:disabled { cursor: not-allowed; }
+    .fl-row label.fl { cursor: pointer; }
+    .field-hint {
+      margin-top: 6px;
+      font-size: 12.5px;
+      line-height: 1.5;
+      color: var(--muted);
+    }
+    .field-hint[hidden] { display: none; }
     .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
     input[type="text"],
     input[type="number"],
@@ -839,24 +904,47 @@ Counter-Strike 2</pre>
                 <label class="fl" for="preset">Preset <span>(fills the fields below)</span></label>
                 <select id="preset" onchange="applyPreset(this.value)"></select>
               </div>
-              <div class="two-col">
-                <div class="fg">
-                  <label class="fl" for="priceThreshold">Price threshold <span>(€)</span></label>
-                  <input type="text" id="priceThreshold" inputmode="decimal" autocomplete="off" />
-                </div>
-                <div class="fg">
+              <div class="fg">
+                <div class="fl-row">
                   <label class="fl" for="minPrice">Minimum price <span>(€)</span></label>
-                  <input type="text" id="minPrice" inputmode="decimal" autocomplete="off" />
+                  <button type="button" class="tip" aria-label="About the minimum price" aria-describedby="minPriceTip">i</button>
+                  <span class="tip-text" role="tooltip" id="minPriceTip">A game is kept only if its best price is above this value — a price exactly equal to it is dropped. Below it the profit per key is just cents and not worth negotiating. Checked after the price search. Use 0 to keep games regardless of how cheap they are.</span>
                 </div>
+                <input type="text" id="minPrice" inputmode="decimal" autocomplete="off" />
+              </div>
+              <div class="fg">
+                <div class="fl-row">
+                  <label class="fl" for="priceThreshold">Price threshold <span>(€)</span></label>
+                  <button type="button" class="tip" aria-label="About the price threshold" aria-describedby="priceThresholdTip">i</button>
+                  <span class="tip-text" role="tooltip" id="priceThresholdTip">Splits games into two price ranges, each with its own minimum popularity (the two fields below). A game priced up to this value — including exactly this value — uses the lower range; a game priced above it uses the higher range.</span>
+                </div>
+                <input type="text" id="priceThreshold" inputmode="decimal" autocomplete="off" oninput="updateTooltips()" />
+              </div>
+              <div class="fg">
+                <div class="fl-row">
+                  <input type="checkbox" id="lookupPopularity" checked onchange="syncLookupPopularity()" />
+                  <label class="fl" for="lookupPopularity">Look up popularity on SteamCharts</label>
+                  <button type="button" class="tip" aria-label="About the popularity lookup" aria-describedby="lookupPopularityTip">i</button>
+                  <span class="tip-text" role="tooltip" id="lookupPopularityTip">Fetches each game's 24h player peak from SteamCharts and sends it with the result. A game SteamCharts does not know is returned with popularity 0. This only gathers the number — the two minimums below are what discard games. It stays on while either minimum is above 0, because they need the number to compare. Turn it off, with both minimums at 0, to skip SteamCharts and save time.</span>
+                </div>
+                <p class="field-hint" id="lookupPopularityHint" hidden>On because a popularity minimum above 0 needs the number to compare.</p>
               </div>
               <div class="two-col">
                 <div class="fg">
-                  <label class="fl" for="popularityUpTo">Popularity, price ≤ threshold <span>(min.)</span></label>
-                  <input type="number" id="popularityUpTo" min="0" step="1" />
+                  <div class="fl-row">
+                    <label class="fl" for="popularityUpTo">Popularity, price ≤ threshold <span>(discard below)</span></label>
+                    <button type="button" class="tip" aria-label="About the popularity minimum up to the threshold" aria-describedby="popularityUpToTip">i</button>
+                    <span class="tip-text" role="tooltip" id="popularityUpToTip"></span>
+                  </div>
+                  <input type="number" id="popularityUpTo" min="0" step="1" oninput="syncLookupPopularity()" />
                 </div>
                 <div class="fg">
-                  <label class="fl" for="popularityAbove">Popularity, price &gt; threshold <span>(min.)</span></label>
-                  <input type="number" id="popularityAbove" min="0" step="1" />
+                  <div class="fl-row">
+                    <label class="fl" for="popularityAbove">Popularity, price &gt; threshold <span>(discard below)</span></label>
+                    <button type="button" class="tip" aria-label="About the popularity minimum above the threshold" aria-describedby="popularityAboveTip">i</button>
+                    <span class="tip-text" role="tooltip" id="popularityAboveTip"></span>
+                  </div>
+                  <input type="number" id="popularityAbove" min="0" step="1" oninput="syncLookupPopularity()" />
                 </div>
               </div>
               <div class="fg">
@@ -869,7 +957,7 @@ Counter-Strike 2</pre>
               </div>
               <p class="filter-note">
                 A game is kept when its best price is <strong>above the minimum price</strong> and its 24h peak
-                players meet the tier for that price (a price equal to the threshold uses the lower tier). Empty fields use the server defaults. This applies to both demo and
+                players meet the tier for that price (a price equal to the threshold uses the lower tier; a game SteamCharts does not know counts as 0 players). Empty fields use the server defaults. This applies to both demo and
                 inventory runs.
               </p>
               <button type="button" class="submit-btn" id="uploadButton" onclick="submitGames()">Search prices</button>
@@ -978,6 +1066,7 @@ Counter-Strike 2</pre>
               aboveThreshold:     numberOrUndefined("popularityAbove"),
               priceThresholdEuro: numberOrUndefined("priceThreshold"),
             },
+            lookupPopularity: document.getElementById("lookupPopularity").checked,
             minPrice:         numberOrUndefined("minPrice"),
             checkGamivoOffer: document.getElementById("checkGamivoOffer").checked,
             title:            document.getElementById("title").value.trim()           || undefined,
@@ -1047,6 +1136,10 @@ Counter-Strike 2</pre>
     // e o servidor aplica o preset padrão.
     let searchPresets = {};
 
+    // Presets que a API e `GET /api/games/presets` expõem mas a tela não oferece:
+    // `bundle-sync` é só da chamada do Sistema Estoque, ninguém o roda à mão.
+    const HIDDEN_PRESETS = ["bundle-sync"];
+
     async function loadPresets() {
       try {
         const response = await fetch("/api/games/presets");
@@ -1057,6 +1150,7 @@ Counter-Strike 2</pre>
       }
       const select = document.getElementById("preset");
       select.innerHTML = Object.entries(searchPresets)
+        .filter(([name]) => !HIDDEN_PRESETS.includes(name))
         .map(([name, preset]) => `<option value="${escHtml(name)}">${escHtml(preset.label ?? name)}</option>`)
         .join("");
       select.value = "default";
@@ -1071,6 +1165,54 @@ Counter-Strike 2</pre>
       document.getElementById("priceThreshold").value   = preset.popularity.priceThresholdEuro;
       document.getElementById("minPrice").value         = preset.minPrice;
       document.getElementById("checkGamivoOffer").checked = preset.checkGamivoOffer;
+      document.getElementById("lookupPopularity").checked = preset.lookupPopularity;
+      refreshCriteriaHints();
+    }
+
+    // O que depende dos campos de critério: a trava da caixa de consulta e os balões.
+    function refreshCriteriaHints() {
+      syncLookupPopularity();
+      updateTooltips();
+    }
+
+    // Os mínimos de popularidade só descartam; quem consulta o SteamCharts é a caixa.
+    // Mas um mínimo acima de 0 precisa do número, então a caixa fica marcada e
+    // travada enquanto algum deles for maior que 0 — o servidor aplica a mesma regra,
+    // aqui ela só fica visível. Campo vazio vale o tier do preset em vigor, que é o
+    // que o servidor usa para completá-lo; sem isso a caixa poderia ser desmarcada e
+    // a consulta aconteceria mesmo assim. Com os dois mínimos em 0 a caixa fica livre,
+    // mas não guarda a escolha anterior: um valor acima de 0 a deixa marcada, e voltar
+    // a 0 não a desmarca de novo.
+    function syncLookupPopularity() {
+      // Sem token o select está oculto e a requisição não manda `preset`: vale o padrão.
+      const presetName = (hasTokenNow() && document.getElementById("preset").value) || "default";
+      // Preset desconhecido (a carga falhou): a página não sabe o tier, então não trava.
+      const presetTiers = searchPresets[presetName]?.popularity ?? {};
+      const needed = [
+        ["popularityUpTo", "upToThreshold"],
+        ["popularityAbove", "aboveThreshold"],
+      ].some(([id, tier]) => {
+        const typed = numberOrUndefined(id);
+        return (typed === undefined ? presetTiers[tier] : typed) > 0;
+      });
+      const box = document.getElementById("lookupPopularity");
+      if (needed) box.checked = true;
+      box.disabled = needed;
+      document.getElementById("lookupPopularityHint").hidden = !needed;
+    }
+
+    // Os balões de popularidade citam o limite de preço digitado, para a regra
+    // ler "até €5" em vez de "até o limite". Sem um número válido, volta ao texto genérico.
+    function updateTooltips() {
+      const value = numberOrUndefined("priceThreshold");
+      const limit = value === undefined || Number.isNaN(value) ? null : `€${value}`;
+      const upTo  = limit ? `priced up to ${limit} (including exactly ${limit})` : "priced up to the price threshold (inclusive)";
+      const above = limit ? `priced above ${limit}` : "priced above the price threshold";
+      const cuts  = "It only cuts: 0 discards nobody, not even a game SteamCharts does not know. Whether SteamCharts is consulted is set by “Look up popularity” above.";
+      document.getElementById("popularityUpToTip").textContent =
+        `Discards games ${upTo} whose 24h Steam peak is below this value. ${cuts}`;
+      document.getElementById("popularityAboveTip").textContent =
+        `Discards games ${above} whose 24h Steam peak is below this value. ${cuts}`;
     }
 
     // Os campos em euro são `type="text"`: um `type="number"` exibe o valor no
@@ -1093,6 +1235,7 @@ Counter-Strike 2</pre>
       return document.getElementById("internalSecret").value.trim().length > 0;
     }
 
+    refreshCriteriaHints();
     loadPresets();
 
     function escHtml(str) {

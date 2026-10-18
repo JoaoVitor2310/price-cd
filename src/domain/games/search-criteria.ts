@@ -19,6 +19,16 @@ export type PopularityTiers = {
 /** Tudo que decide se um jogo pesquisado volta no resultado. */
 export type SearchCriteria = {
 	popularity: PopularityTiers;
+	/**
+	 * Consulta o SteamCharts para informar a popularidade de cada jogo. É um
+	 * critério à parte dos tiers de propósito: os tiers só **cortam** (descartam o que
+	 * está abaixo do mínimo), e esta flag só decide **se há número** para comparar ou
+	 * devolver.
+	 *
+	 * Com `false`, todo jogo tem popularidade 0. Um tier acima de 0 exige `true` —
+	 * `resolveSearchCriteria` garante isso.
+	 */
+	lookupPopularity: boolean;
 	/** Preço mínimo negociável: o preço precisa ser MAIOR que este valor. */
 	minPrice: number;
 	/** Só aceita jogos que tenham oferta na Gamivo. */
@@ -55,10 +65,10 @@ export const lowestTier = (tiers: PopularityTiers): number =>
 	Math.min(tiers.upToThreshold, tiers.aboveThreshold);
 
 /**
- * Popularidade 0 nos DOIS tiers dispensa o SteamCharts inteiro: ninguém é cortado
- * por popularidade, então não há o que consultar. Basta um tier acima de 0 para a
- * consulta ser necessária — e então jogo não encontrado no SteamCharts sai do
- * resultado, como sempre aconteceu com popularidade 1 ou mais.
+ * Um tier acima de 0 só funciona com o número de popularidade na mão: sem consulta,
+ * todo jogo teria 0 e seria cortado em silêncio. É o invariante que
+ * `resolveSearchCriteria` aplica sobre `lookupPopularity` — a flag pode pedir a
+ * consulta mesmo sem tier, mas nunca dispensá-la com um tier em jogo.
  */
 export const needsPopularityLookup = (tiers: PopularityTiers): boolean =>
 	tiers.upToThreshold > 0 || tiers.aboveThreshold > 0;
@@ -119,6 +129,7 @@ export const partitionByPopularityTier = <T extends Rated>(
  */
 export const DEFAULT_SEARCH_CRITERIA: SearchCriteria = Object.freeze({
 	popularity: DEFAULT_POPULARITY_TIERS,
+	lookupPopularity: true,
 	minPrice: MIN_PRICE_EURO,
 	checkGamivoOffer: true,
 });

@@ -48,7 +48,7 @@ describe("lowestTier", () => {
 });
 
 describe("needsPopularityLookup", () => {
-	it("is false only when both tiers are 0", () => {
+	it("is the number a tier needs to compare against: false only when both tiers are 0", () => {
 		expect(needsPopularityLookup(flatPopularity(0))).toBe(false);
 		expect(needsPopularityLookup({ ...tiers, upToThreshold: 0 })).toBe(true);
 		expect(needsPopularityLookup(flatPopularity(1))).toBe(true);

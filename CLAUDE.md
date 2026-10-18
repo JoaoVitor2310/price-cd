@@ -4,8 +4,8 @@
 
 Serviço Node.js que automatiza a pesquisa de preço e popularidade de jogos para revendedores. Recebe uma lista de **nomes de jogos** e os **critérios de pesquisa** — um preset nomeado (`src/domain/games/search-presets.ts`) com sobrescritas campo a campo. O sistema:
 
-1. Busca cada jogo no SteamCharts para obter o pico de jogadores em 24h (popularidade).
-2. Descarta quem não alcança nem o **menor** tier de popularidade — antes do preço, para poupar o AllKeyShop.
+1. Busca cada jogo no SteamCharts para obter o pico de jogadores em 24h (popularidade) — se o critério `lookupPopularity` do preset pedir; jogo que o SteamCharts não conhece vale popularidade 0.
+2. Descarta quem não alcança nem o **menor** tier de popularidade — antes do preço, para poupar o AllKeyShop. O tier só corta: com mínimo 0 ninguém sai, nem o jogo sem dados.
 3. Pesquisa o melhor preço no AllKeyShop para os jogos qualificados.
 4. Descarta quem não passa do Preço mínimo negociável ou do tier de popularidade **da faixa do seu preço** (até o limite / acima dele).
 5. Cria a Trade no Sistema Estoque, ou devolve os jogos na resposta (demo e entrega `respond`).

@@ -1,15 +1,18 @@
 import type { FoundGames } from "@/application/games/game.types.js";
 import { logDiscardedByPopularityTier } from "@/application/games/services/log-discarded-by-popularity.js";
 import { logDiscardedByPrice } from "@/application/games/services/log-discarded-by-price.js";
+import { logKeptWithoutPopularity } from "@/application/games/services/log-kept-without-popularity.js";
 import type {
 	PopularityFetcher,
 	PriceFetcher,
 } from "@/application/games/ports/game-search.ports.js";
 import { filterExcludedGames } from "@/domain/games/excluded-games.js";
-import { worthyByPopularity } from "@/domain/games/worthy-by-popularity.js";
+import {
+	withUnratedGames,
+	worthyByPopularity,
+} from "@/domain/games/worthy-by-popularity.js";
 import {
 	lowestTier,
-	needsPopularityLookup,
 	partitionByPopularityTier,
 	type SearchCriteria,
 } from "@/domain/games/search-criteria.js";
@@ -30,7 +33,7 @@ export type PriceGamesInput = {
 export type PriceGamesResult = {
 	/** Nomes efetivamente pesquisados, já sem duplicatas. */
 	requested: string[];
-	/** Tudo que o SteamCharts encontrou. */
+	/** Tudo que o SteamCharts encontrou (não inclui os jogos que ele não conhece). */
 	found: FoundGames[];
 	/**
 	 * Sobreviveu ao corte de popularidade feito ANTES do preço (o menor tier) e à
@@ -69,6 +72,11 @@ export class PriceGames {
 	 *
 	 * 1. antes do preço, pelo MENOR tier — quem não passa nele não passa em nenhum;
 	 * 2. depois do preço, pelo tier exato daquela faixa.
+	 *
+	 * Consultar e cortar são decisões separadas: `criteria.lookupPopularity` diz se o
+	 * SteamCharts é consultado, os tiers dizem quem sai. Jogo que o SteamCharts não
+	 * devolve entra com popularidade 0 e o tier decide — com mínimo 0 ele segue para
+	 * o preço, com mínimo 1 ou mais cai aqui mesmo.
 	 */
 	async run(input: PriceGamesInput): Promise<PriceGamesResult> {
 		const { criteria } = input;
@@ -79,14 +87,16 @@ export class PriceGames {
 			return { requested, found: [], worthyByPopularity: [], priced: [] };
 		}
 
-		// Com um tier em 0 e o outro acima, o menor tier é 0 mas a consulta continua
-		// necessária: quem decide consultar é `needsPopularityLookup`, não o mínimo.
 		const minimum = lowestTier(tiers);
 		const found = await this.popularityFetcher.fetch(
 			requested,
-			needsPopularityLookup(tiers),
+			criteria.lookupPopularity,
 		);
-		const worthy = filterExcludedGames(worthyByPopularity(found, minimum));
+		const worthy = filterExcludedGames(
+			worthyByPopularity(withUnratedGames(requested, found), minimum),
+		);
+		const foundNames = new Set(found.map((game) => game.name));
+		logKeptWithoutPopularity(worthy.filter((game) => !foundNames.has(game.name)));
 
 		// Não vale abrir o browser do AllKeyShop para lista vazia.
 		if (worthy.length === 0) {
