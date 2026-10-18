@@ -33,7 +33,7 @@ Price Researcher fully automates that workflow:
 
 1. Receives a list of game names + search criteria (a named preset, popularity tiers by price, minimum price)
 2. Fetches the **24h peak player count** from SteamCharts for each game — in parallel batches
-3. Filters out games below the popularity threshold (low demand = hard to resell) — cheap games need fewer players than expensive ones
+3. Filters out games below the popularity threshold (low demand = hard to resell) — cheap games need fewer players than expensive ones. Bundle research reports popularity without filtering, since the supplier sells the whole bundle
 4. Filters out known free-to-play titles that have no resale value
 5. Scrapes **AllKeyShop** for the best current market price on each qualifying game
 6. In authenticated mode, pushes the results directly into the inventory system — zero manual steps
@@ -197,6 +197,7 @@ npm test
   "gameNames": ["Half-Life", "Portal 2", "Hades"],
   "preset": "default",
   "popularity": { "upToThreshold": 30, "aboveThreshold": 100, "priceThresholdEuro": 5 },
+  "lookupPopularity": true,
   "minPrice": 0.5,
   "checkGamivoOffer": true,
   "delivery": "trade",
@@ -210,7 +211,8 @@ npm test
 Only `gameNames` (non-empty) is required. Every search criterion comes from a **preset** (`default` when none is sent) and any field sent explicitly overrides it, field by field. Unknown fields are rejected (strict schema).
 
 - `preset` — one of `default`, `bundle-research`, `bundle-sync`, `lists`, `suppliers` (`GET /api/games/presets` lists their values).
-- `popularity` — minimum 24h peak players **by price tier**: `upToThreshold` applies to games priced up to `priceThresholdEuro` (inclusive), `aboveThreshold` to pricier ones. Flat popularity is the same value in both. `0` in both skips SteamCharts entirely; any tier above `0` looks popularity up and drops games SteamCharts does not know.
+- `popularity` — minimum 24h peak players **by price tier**: `upToThreshold` applies to games priced up to `priceThresholdEuro` (inclusive), `aboveThreshold` to pricier ones. Flat popularity is the same value in both. The tiers **only discard**: `0` discards nobody, and a game SteamCharts does not know counts as popularity `0`, so it survives only a tier of `0`.
+- `lookupPopularity` — whether SteamCharts is consulted to report each game's popularity; separate from the tiers on purpose. Off, every game comes back with popularity `0`. Any tier above `0` forces it on (without the number every game would be discarded), whatever is sent. `bundle-research` turns it on with tiers `0/0`: the number is reported and nobody is discarded, not even a game SteamCharts does not know. `bundle-sync` keeps it off.
 - `minPrice` — games must be priced **above** it (default €0.50); send `0` to keep any priced game.
 - `delivery` — only with a valid token: `trade` (default) or `respond`. Ignored without a token, which always gets the demo.
 

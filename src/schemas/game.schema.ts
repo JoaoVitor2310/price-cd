@@ -68,6 +68,9 @@ export const researchGamesBodySchema = z.strictObject({
 		})
 		.optional(),
 	popularity: popularityTiersSchema.optional(),
+	// Se consulta o SteamCharts. Os tiers de `popularity` só cortam; um tier acima de
+	// 0 liga a consulta de qualquer jeito (`resolveSearchCriteria`).
+	lookupPopularity: z.boolean().optional(),
 	checkGamivoOffer: z.boolean().optional(),
 	minPrice: nonNegative("minPrice").optional(),
 	// Só vale com token. Sem token a resposta é sempre o demo síncrono.

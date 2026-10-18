@@ -1,5 +1,6 @@
 import {
 	DEFAULT_SEARCH_CRITERIA,
+	needsPopularityLookup,
 	type PopularityTiers,
 	type SearchCriteria,
 	flatPopularity,
@@ -32,22 +33,25 @@ export const SEARCH_PRESETS: Readonly<Record<SearchPresetName, SearchCriteria>> 
 		default: freeze(DEFAULT_SEARCH_CRITERIA),
 
 		/**
-		 * "Pesquisar Preços" de um bundle no Sistema Estoque. Popularidade 1, não 0:
-		 * consulta o SteamCharts e descarta o que não existe lá. Sem piso de preço —
-		 * no bundle até o jogo barato conta.
+		 * "Pesquisar Preços" de um bundle no Sistema Estoque. Consulta o SteamCharts
+		 * para informar a popularidade, mas não corta ninguém: o fornecedor vende o
+		 * bundle inteiro, inclusive o jogo com pico 0 ou que o SteamCharts não conhece.
+		 * Sem piso de preço — no bundle até o jogo barato conta.
 		 */
 		"bundle-research": freeze({
-			popularity: flatPopularity(1),
+			popularity: flatPopularity(0),
+			lookupPopularity: true,
 			minPrice: 0,
 			checkGamivoOffer: false,
 		}),
 
 		/**
-		 * Sync de bundles de hora em hora: só o preço interessa. Popularidade 0 nos
-		 * dois tiers pula o SteamCharts inteiro.
+		 * Sync de bundles de hora em hora: só o preço interessa. Sem consulta ao
+		 * SteamCharts — todo jogo volta com popularidade 0.
 		 */
 		"bundle-sync": freeze({
 			popularity: flatPopularity(0),
+			lookupPopularity: false,
 			minPrice: 0,
 			checkGamivoOffer: false,
 		}),
@@ -75,18 +79,25 @@ export const SEARCH_PRESET_LABELS: Readonly<Record<SearchPresetName, string>> =
 		default: "Default",
 		"bundle-research": "Bundle Research",
 		"bundle-sync": "Bundle Sync",
-		lists: "Supplier Restock",
+		lists: "Supplier Lists",
 		suppliers: "Supplier Discovery",
 	});
 
 /** O que a requisição pode sobrescrever, campo a campo. */
 export type SearchCriteriaOverrides = {
 	popularity?: Partial<PopularityTiers>;
+	lookupPopularity?: boolean;
 	minPrice?: number;
 	checkGamivoOffer?: boolean;
 };
 
-/** Preset + sobrescritas explícitas → critérios completos. Sem preset vale o `default`. */
+/**
+ * Preset + sobrescritas explícitas → critérios completos. Sem preset vale o `default`.
+ *
+ * Aqui mora o invariante entre os dois eixos de popularidade: um tier acima de 0
+ * precisa da consulta, então `lookupPopularity` sai `true` mesmo que o preset ou a
+ * requisição peçam `false`. Resolvido uma vez, para o motor só ler a flag.
+ */
 export const resolveSearchCriteria = (
 	preset: SearchPresetName = "default",
 	overrides: SearchCriteriaOverrides = {},
@@ -97,12 +108,18 @@ export const resolveSearchCriteria = (
 			Object.entries(values).filter(([, value]) => value !== undefined),
 		) as Partial<T>;
 
+	const popularity = { ...base.popularity, ...defined(overrides.popularity ?? {}) };
+	const lookupPopularity =
+		(overrides.lookupPopularity ?? base.lookupPopularity) ||
+		needsPopularityLookup(popularity);
+
 	return {
 		...base,
 		...defined({
 			minPrice: overrides.minPrice,
 			checkGamivoOffer: overrides.checkGamivoOffer,
 		}),
-		popularity: { ...base.popularity, ...defined(overrides.popularity ?? {}) },
+		popularity,
+		lookupPopularity,
 	};
 };

@@ -18,6 +18,7 @@ export const toResearchRequest = (body: ResearchGamesBody): ResearchGamesRequest
 	title: body.title,
 	criteria: resolveSearchCriteria(body.preset, {
 		popularity: body.popularity,
+		lookupPopularity: body.lookupPopularity,
 		minPrice: body.minPrice,
 		checkGamivoOffer: body.checkGamivoOffer,
 	}),

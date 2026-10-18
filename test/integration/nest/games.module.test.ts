@@ -91,10 +91,43 @@ describe("GamesModule", () => {
 
 		expect(response.status).toBe(200);
 		expect(response.body.games).toHaveLength(1);
-		// `bundle-sync` tem popularidade 0 nos dois tiers: o fetcher é chamado com
+		// `bundle-sync` tem `lookupPopularity: false`: o fetcher é chamado com
 		// `lookup: false`, ou seja, sem consultar o SteamCharts.
 		expect(popularity.fetch).toHaveBeenCalledWith(["Hades"], false);
 		expect(price.fetch).toHaveBeenCalledWith(expect.any(Array), false);
+	});
+
+	it("bundle-research returns a game SteamCharts does not know, with popularity 0", async () => {
+		// O fornecedor vende o bundle inteiro: o jogo que o SteamCharts não devolve
+		// tem que voltar, e a consulta acontece (`lookup: true`) para informar o número.
+		popularity.fetch.mockResolvedValueOnce([found("Hades")]);
+		price.fetch.mockResolvedValueOnce([
+			found("Hades"),
+			{ ...found("Obscure Indie"), id: 1, popularity: 0 },
+		]);
+
+		const response = await request(app.getHttpServer())
+			.post("/games/research")
+			.send({
+				gameNames: ["Hades", "Obscure Indie"],
+				preset: "bundle-research",
+			});
+
+		expect(response.status).toBe(200);
+		expect(popularity.fetch).toHaveBeenCalledWith(
+			["Hades", "Obscure Indie"],
+			true,
+		);
+		const sentToPricing = price.fetch.mock.lastCall?.[0] as Array<{
+			name: string;
+		}>;
+		expect(sentToPricing.map((game) => game.name)).toEqual([
+			"Hades",
+			"Obscure Indie",
+		]);
+		expect(
+			response.body.games.map((game: { name: string }) => game.name),
+		).toEqual(["Hades", "Obscure Indie"]);
 	});
 
 	it("resolves Steam ids and keeps games the fetcher did not find", async () => {
@@ -174,7 +207,10 @@ describe("GamesModule", () => {
 			// Este é o caso que proíbe um Guard: Guard devolveria 403, e o
 			// contrato manda devolver o resultado demo com 200.
 			process.env.INTERNAL_SECRET = "the-real-secret";
-			popularity.fetch.mockResolvedValueOnce([]);
+			// `bundle-sync` não consulta o SteamCharts: o fetcher real devolveria todo
+			// jogo (popularidade 0), nunca uma lista vazia.
+			popularity.fetch.mockResolvedValueOnce([found("Hades")]);
+			price.fetch.mockResolvedValueOnce([found("Hades")]);
 
 			const response = await request(app.getHttpServer())
 				.post("/games/research")

@@ -115,10 +115,14 @@ export const CONTRACT_CASES: ContractCase[] = [
 				default: {
 					label: "Default",
 					popularity: { upToThreshold: 30, aboveThreshold: 100, priceThresholdEuro: 5 },
+					lookupPopularity: true,
 					minPrice: 0.5,
 					checkGamivoOffer: true,
 				},
-				"bundle-research": expect.objectContaining({ label: "Bundle Research" }),
+				"bundle-research": expect.objectContaining({
+					label: "Bundle Research",
+					lookupPopularity: true,
+				}),
 				"bundle-sync": expect.any(Object),
 			},
 		},
@@ -215,6 +219,22 @@ export const CONTRACT_CASES: ContractCase[] = [
 		},
 		expectStatus: 200,
 		expectBody: { success: true, demo: true },
+	},
+	{
+		route: "/api/games/research",
+		method: "post",
+		name: "lookupPopularity is accepted next to the popularity tiers",
+		body: { ...VALID_RESEARCH_BODY, lookupPopularity: false },
+		expectStatus: 200,
+		expectBody: { success: true, demo: true },
+	},
+	{
+		route: "/api/games/research",
+		method: "post",
+		name: "a non-boolean lookupPopularity returns 400",
+		body: { ...VALID_RESEARCH_BODY, lookupPopularity: "yes" },
+		expectStatus: 400,
+		expectBody: { success: false },
 	},
 	{
 		route: "/api/games/research",

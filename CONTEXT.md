@@ -65,10 +65,15 @@ _Avoid_: usar para o corte de Popularidade mínima, que é anterior e olha jogad
 
 ### Tier de popularidade
 
-A popularidade mínima (pico de jogadores em 24h) que um jogo precisa ter, que depende do preço dele: um mínimo para jogos até um limite de preço (inclusive) e outro para os acima. Jogo barato rende pouco por key, então basta pouca procura; jogo caro só compensa com procura de verdade. Popularidade plana é o mesmo valor nos dois tiers. O corte pelo menor tier acontece antes da busca de preço; o tier exato, depois.
-_Avoid_: Popularidade mínima como valor único (é o caso particular dos dois tiers iguais)
+A popularidade mínima (pico de jogadores em 24h) que um jogo precisa ter, que depende do preço dele: um mínimo para jogos até um limite de preço (inclusive) e outro para os acima. Jogo barato rende pouco por key, então basta pouca procura; jogo caro só compensa com procura de verdade. Popularidade plana é o mesmo valor nos dois tiers. O corte pelo menor tier acontece antes da busca de preço; o tier exato, depois. O tier **só corta**: não decide se o SteamCharts é consultado (isso é a Consulta de popularidade), e `0` descarta ninguém. Jogo que o SteamCharts não conhece vale popularidade 0, então só sobrevive a um tier de mínimo 0.
+_Avoid_: Popularidade mínima como valor único (é o caso particular dos dois tiers iguais); usar `0` para dizer "não consultar"
+
+### Consulta de popularidade
+
+Se a pesquisa consulta o SteamCharts para informar o pico de jogadores em 24h de cada jogo. É um critério à parte dos Tiers de popularidade: a consulta só **traz o número**, os tiers só **cortam**. Desligada, todo jogo volta com popularidade 0. Um tier acima de 0 exige a consulta ligada (sem número, todo jogo seria cortado), e o price-cd liga sozinho. Existe para o Bundle Research: consulta, mas não corta ninguém, porque o fornecedor vende o bundle inteiro, inclusive o jogo que o SteamCharts não conhece.
+_Avoid_: Popularidade mínima (é o corte, não a consulta)
 
 ### Preset de pesquisa
 
-Conjunto nomeado de critérios de pesquisa (tiers de popularidade, limite de preço, Preço mínimo negociável, exigir oferta na Gamivo) para um caso de uso: `default`, `bundle-research`, `bundle-sync`, `lists`, `suppliers`. Mora no price-cd e é a fonte única dos valores; a interface web só preenche os campos com ele e quem chama a API pode sobrescrever qualquer critério.
+Conjunto nomeado de critérios de pesquisa (tiers de popularidade, Consulta de popularidade, limite de preço, Preço mínimo negociável, exigir oferta na Gamivo) para um caso de uso: `default`, `bundle-research`, `bundle-sync`, `lists`, `suppliers`. Mora no price-cd e é a fonte única dos valores; a interface web só preenche os campos com ele e quem chama a API pode sobrescrever qualquer critério.
 _Avoid_: modo (reservado para a entrega: demo, criar Trade ou devolver o resultado)

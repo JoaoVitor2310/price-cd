@@ -106,7 +106,7 @@ const processGame = async (
 
 		if (id_steam === "") {
 			console.log(
-				`⏭️ [INFO] No matching game found for "${gameString}", skipping`,
+				`⏭️ [INFO] No matching game found on SteamCharts for "${gameString}"`,
 			);
 			return null;
 		}
@@ -141,7 +141,7 @@ const processGame = async (
 
 		if (!popularity24hText) {
 			console.log(
-				`⚠️ [INFO] No popularity data found for "${gameString}", skipping`,
+				`⚠️ [INFO] No popularity data found on SteamCharts for "${gameString}"`,
 			);
 			return null;
 		}
@@ -189,7 +189,7 @@ const searchSteamCharts = async (
 
 	if (!lookup) {
 		console.log(
-			"⚡ [INFO] Popularity lookup disabled (both tiers are 0), returning all games without popularity check",
+			"⚡ [INFO] Popularity lookup disabled, returning all games without popularity check",
 		);
 		return gamesToSearch.map((gameName, index) => ({
 			id: index,

@@ -18,12 +18,13 @@ import type { FoundGames } from "@/application/games/game.types.js";
 export abstract class PopularityFetcher {
 	/**
 	 * Com `lookup: false` não consulta nada e devolve todo jogo com popularidade 0.
-	 * Com `true`, consulta e omite quem não foi encontrado. **Não filtra** por
-	 * popularidade mínima — isso é regra de domínio, aplicada por quem chama.
+	 * Com `true`, consulta e omite quem não foi encontrado — ou cuja consulta falhou,
+	 * que o SteamCharts não distingue de "não existe". **Não filtra** por popularidade
+	 * mínima nem decide o destino de quem foi omitido: isso é regra de domínio,
+	 * aplicada por quem chama (`withUnratedGames`).
 	 *
-	 * Era um `minPopularity: number` em que só importava se o valor era 0: o
-	 * número em si nunca era usado, e quem chamava precisava inventar um `1` para
-	 * forçar a consulta.
+	 * Vem de `criteria.lookupPopularity`, não dos tiers: quem corta por popularidade
+	 * e quem consulta são decisões separadas.
 	 */
 	abstract fetch(gameNames: string[], lookup: boolean): Promise<FoundGames[]>;
 }

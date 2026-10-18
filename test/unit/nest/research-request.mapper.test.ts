@@ -42,9 +42,30 @@ describe("toResearchRequest", () => {
 		);
 
 		expect(criteria).toEqual({
-			popularity: { upToThreshold: 1, aboveThreshold: 50, priceThresholdEuro: 5 },
+			popularity: {
+				upToThreshold: 0,
+				aboveThreshold: 50,
+				priceThresholdEuro: 5,
+			},
+			lookupPopularity: true,
 			minPrice: 0,
 			checkGamivoOffer: true,
 		});
+	});
+
+	it("passes lookupPopularity through to the resolved criteria", () => {
+		const { criteria } = toResearchRequest(
+			body({ preset: "bundle-research", lookupPopularity: false }),
+		);
+
+		expect(criteria.lookupPopularity).toBe(false);
+	});
+
+	it("still resolves the lookup on when a tier needs the number", () => {
+		const { criteria } = toResearchRequest(
+			body({ lookupPopularity: false, popularity: { upToThreshold: 30 } }),
+		);
+
+		expect(criteria.lookupPopularity).toBe(true);
 	});
 });
