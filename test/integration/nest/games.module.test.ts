@@ -4,11 +4,17 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
+	CatalogPriceSource,
 	PopularityFetcher,
 	PriceFetcher,
 } from "@/application/games/ports/game-search.ports.js";
+import { PriceCache } from "@/application/games/ports/price-cache.port.js";
+import { CachedPriceFetcher } from "@/application/games/services/cached-price-fetcher.js";
 import { GameTradeImporter } from "@/application/games/ports/game-trade-importer.port.js";
 import { ResearchGamesUseCase } from "@/application/games/use-cases/research-games.use-case.js";
+import { AllKeyShopPriceFetcher } from "@/infrastructure/games/allkeyshop-price-fetcher.js";
+import { NoopPriceCache } from "@/infrastructure/games/noop-price-cache.js";
+import { RedisPriceCache } from "@/infrastructure/games/redis-price-cache.js";
 import { SteamChartsPopularityFetcher } from "@/infrastructure/games/steam-charts-popularity-fetcher.js";
 import { AppConfigModule } from "@/nest/config/config.module.js";
 import { GamesModule } from "@/nest/games/games.module.js";
@@ -70,6 +76,55 @@ describe("GamesModule", () => {
 		await moduleRef.close();
 	});
 
+	it("puts the price cache in front of the AllKeyShop", async () => {
+		// O motor recebe o decorator; o AllKeyShop fica atrás da porta do catálogo.
+		// Sem `REDIS_URL` (o caso da suíte), o cache é o no-op.
+		const moduleRef = await Test.createTestingModule({
+			imports: [AppConfigModule, GamesModule],
+		}).compile();
+
+		expect(moduleRef.get(PriceFetcher)).toBeInstanceOf(CachedPriceFetcher);
+		expect(moduleRef.get(CatalogPriceSource)).toBeInstanceOf(
+			AllKeyShopPriceFetcher,
+		);
+		expect(moduleRef.get(PriceCache)).toBeInstanceOf(NoopPriceCache);
+		await moduleRef.close();
+	});
+
+	it("uses the Redis cache when REDIS_URL is set, without waiting for Redis to boot", async () => {
+		// Porta onde ninguém escuta: o boot tem que completar mesmo assim.
+		// Restaurado no `finally`: se uma asserção falhar, o `REDIS_URL` não pode
+		// vazar para os testes seguintes.
+		vi.stubEnv("REDIS_URL", "redis://127.0.0.1:1");
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			vi.resetModules();
+			const { GamesModule: FreshGamesModule } = await import(
+				"@/nest/games/games.module.js"
+			);
+			const { AppConfigModule: FreshConfigModule } = await import(
+				"@/nest/config/config.module.js"
+			);
+			const ports = await import("@/application/games/ports/price-cache.port.js");
+			const redis = await import("@/infrastructure/games/redis-price-cache.js");
+
+			const moduleRef = await Test.createTestingModule({
+				imports: [FreshConfigModule, FreshGamesModule],
+			}).compile();
+			try {
+				const cache = moduleRef.get(ports.PriceCache);
+
+				expect(cache).toBeInstanceOf(redis.RedisPriceCache);
+				expect(await cache.status()).toBe("down");
+			} finally {
+				await moduleRef.close();
+			}
+		} finally {
+			vi.unstubAllEnvs();
+			warn.mockRestore();
+		}
+	});
+
 	it("builds ResearchGamesUseCase with its dependencies injected", async () => {
 		// O use case não tem `@Injectable()` — `application/` não importa Nest.
 		// Este teste prova que o `useFactory` + `inject` do módulo supre isso.
@@ -94,7 +149,9 @@ describe("GamesModule", () => {
 		// `bundle-sync` tem `lookupPopularity: false`: o fetcher é chamado com
 		// `lookup: false`, ou seja, sem consultar o SteamCharts.
 		expect(popularity.fetch).toHaveBeenCalledWith(["Hades"], false);
-		expect(price.fetch).toHaveBeenCalledWith(expect.any(Array), false);
+		// O preço vai sem o critério de Gamivo: o corte é do domínio, depois
+		// do cache (ADR 0008).
+		expect(price.fetch).toHaveBeenCalledWith(expect.any(Array));
 	});
 
 	it("bundle-research returns a game SteamCharts does not know, with popularity 0", async () => {

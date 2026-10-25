@@ -20,3 +20,11 @@
  * atribuição chega em tempo.
  */
 process.env.BUMP_SCHEDULER_ENABLED = "false";
+
+/**
+ * Sem cache de preço na suíte, mesmo que o `.env` da máquina tenha `REDIS_URL`
+ * (o dotenv não sobrescreve variável já definida). Com ela, os testes de boot
+ * conectariam no Redis de quem roda a suíte — e gravariam nele. Quem testa o
+ * Redis liga a variável no próprio teste.
+ */
+process.env.REDIS_URL = "";

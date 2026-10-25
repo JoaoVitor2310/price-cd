@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import {
+	CatalogPriceSource,
 	PopularityFetcher,
 	PriceFetcher,
 } from "@/application/games/ports/game-search.ports.js";
@@ -9,6 +10,8 @@ import type {
 	ResearchGamesRequest,
 	ResearchGamesRunner,
 } from "@/application/games/ports/research-games-runner.port.js";
+import { PriceCache } from "@/application/games/ports/price-cache.port.js";
+import { CachedPriceFetcher } from "@/application/games/services/cached-price-fetcher.js";
 import { PriceGames } from "@/application/games/services/price-games.js";
 import { EnqueueResearchGamesUseCase } from "@/application/games/use-cases/enqueue-research-games.use-case.js";
 import { ResearchGamesUseCase } from "@/application/games/use-cases/research-games.use-case.js";
@@ -18,6 +21,8 @@ import { LimitedConcurrencyScheduler } from "@/infrastructure/background/limited
 import { AllKeyShopPriceFetcher } from "@/infrastructure/games/allkeyshop-price-fetcher.js";
 import { HttpGameTradeImporter } from "@/infrastructure/games/http-game-trade-importer.js";
 import { LazyGameTradeImporter } from "@/infrastructure/games/lazy-game-trade-importer.js";
+import { NoopPriceCache } from "@/infrastructure/games/noop-price-cache.js";
+import { createRedisPriceCache } from "@/infrastructure/games/redis-price-cache.js";
 import { SteamChartsPopularityFetcher } from "@/infrastructure/games/steam-charts-popularity-fetcher.js";
 import { BrowserModule } from "@/nest/browser/browser.module.js";
 import { GamesController } from "@/nest/games/games.controller.js";
@@ -53,7 +58,41 @@ import {
 	controllers: [GamesController],
 	providers: [
 		{ provide: PopularityFetcher, useClass: SteamChartsPopularityFetcher },
-		{ provide: PriceFetcher, useClass: AllKeyShopPriceFetcher },
+		{ provide: CatalogPriceSource, useClass: AllKeyShopPriceFetcher },
+
+		/**
+		 * O cache de preço (ADR 0008). Sem `REDIS_URL`, um no-op: tudo é miss.
+		 * Com ela, o cliente conecta em segundo plano — o boot não espera o Redis.
+		 * Exportado para o health informar o estado.
+		 */
+		{
+			provide: PriceCache,
+			useFactory: (config: ConfigService<Env, true>): PriceCache => {
+				const url = config.get("REDIS_URL", { infer: true });
+				if (!url) {
+					console.log(
+						"💾 [CACHE] REDIS_URL not set — searching without the price cache.",
+					);
+					return new NoopPriceCache();
+				}
+				return createRedisPriceCache(
+					url,
+					config.get("PRICE_CACHE_TTL_SECONDS", { infer: true }),
+				);
+			},
+			inject: [ConfigService],
+		},
+
+		/**
+		 * O `PriceFetcher` que o motor recebe é o decorator com cache, que chama o
+		 * AllKeyShop só para os misses. O `PriceGames` não sabe que o cache existe.
+		 */
+		{
+			provide: PriceFetcher,
+			useFactory: (source: CatalogPriceSource, cache: PriceCache) =>
+				new CachedPriceFetcher(source, cache),
+			inject: [CatalogPriceSource, PriceCache],
+		},
 
 		/**
 		 * Construção **preguiçosa**, não no boot.
@@ -146,6 +185,6 @@ import {
 	 * gerenciadores de sessão de browser no mesmo container
 	 * (`docs/nest-conceitos.md` §4).
 	 */
-	exports: [PriceGames, GameTradeImporter],
+	exports: [PriceGames, GameTradeImporter, PriceCache],
 })
 export class GamesModule {}

@@ -1,4 +1,5 @@
 import type { FoundGames } from "@/application/games/game.types.js";
+import { logDiscardedByGamivoOffer } from "@/application/games/services/log-discarded-by-gamivo-offer.js";
 import { logDiscardedByPopularityTier } from "@/application/games/services/log-discarded-by-popularity.js";
 import { logDiscardedByPrice } from "@/application/games/services/log-discarded-by-price.js";
 import { logKeptWithoutPopularity } from "@/application/games/services/log-kept-without-popularity.js";
@@ -16,6 +17,7 @@ import {
 	partitionByPopularityTier,
 	type SearchCriteria,
 } from "@/domain/games/search-criteria.js";
+import { partitionByGamivoOffer } from "@/domain/games/worthy-by-gamivo-offer.js";
 import { partitionByPrice } from "@/domain/games/worthy-by-price.js";
 
 export type PriceGamesInput = {
@@ -40,7 +42,10 @@ export type PriceGamesResult = {
 	 * lista de exclusão. É o que foi mandado ao AllKeyShop.
 	 */
 	worthyByPopularity: FoundGames[];
-	/** Tem preço acima do piso e passou no tier exato do seu preço — o resultado útil. */
+	/**
+	 * Tem preço, oferta na Gamivo se o preset exige, preço acima do piso e passou
+	 * no tier exato do seu preço — o resultado útil.
+	 */
 	priced: FoundGames[];
 };
 
@@ -103,12 +108,17 @@ export class PriceGames {
 			return { requested, found, worthyByPopularity: worthy, priced: [] };
 		}
 
-		const withPrices = await this.priceFetcher.fetch(
-			worthy,
+		const withPrices = await this.priceFetcher.fetch(worthy);
+		// O preço volta bruto (pode vir do cache de outro preset); o critério de
+		// Gamivo deste preset é aplicado aqui. Ver ADR 0008.
+		const { worthy: withGamivo, withoutGamivo } = partitionByGamivoOffer(
+			withPrices,
 			criteria.checkGamivoOffer,
 		);
+		logDiscardedByGamivoOffer(withoutGamivo);
+
 		const { worthy: aboveFloor, tooCheap } = partitionByPrice(
-			withPrices,
+			withGamivo,
 			criteria.minPrice,
 		);
 		logDiscardedByPrice(tooCheap, criteria.minPrice);

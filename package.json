@@ -34,6 +34,7 @@
 		"puppeteer-extra-plugin-anonymize-ua": "^2.4.6",
 		"puppeteer-extra-plugin-stealth": "^2.11.2",
 		"puppeteer-real-browser": "^1.4.4",
+		"redis": "^6.3.0",
 		"reflect-metadata": "^0.2.2",
 		"rxjs": "^7.8.2",
 		"zod": "^4.1.11"

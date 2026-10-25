@@ -64,6 +64,7 @@ Só remove quantificadores (`x2`, `3x`). O nome vai essencialmente intacto para 
 ```
 clearEdition → clearString → clearQuantity → lowercase
 ```
+Essa sequência é `normalizeGameName` (`src/helpers/clear-string.ts`). A chave do cache de preço usa a mesma função, mais a região e as categorias de `hasEdition` (ver `priceCacheKey` em `src/application/games/services/cached-price-fetcher.ts` e o ADR 0008): o match e o cache precisam concordar sobre quando dois nomes são o mesmo jogo.
 
 Com uma guarda extra via `hasEdition`: antes de aceitar o match, compara os keywords de edição de ambos os lados. Se um tem `"Deluxe"` e o outro não, **o match é rejeitado** — mesmo que o nome base normalize para o mesmo valor.
 

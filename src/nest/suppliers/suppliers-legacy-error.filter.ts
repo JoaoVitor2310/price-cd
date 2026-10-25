@@ -9,7 +9,7 @@ import { AllExceptionsFilter } from "@/nest/common/all-exceptions.filter.js";
  * o campo `success`**, que todas as outras rotas têm, e com a mensagem crua em
  * vez de um texto genérico.
  *
- * Congelado de propósito: some no PR de uniformização dos erros, o item 13 do
+ * Congelado de propósito: some no PR de uniformização dos erros, o item 14 do
  * `docs/IMPROVEMENTS.md`.
  */
 @Catch()

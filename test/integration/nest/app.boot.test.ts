@@ -70,6 +70,15 @@ describe("Nest app skeleton", () => {
 		expect(response.body.env).toBeTruthy();
 	});
 
+	it("reports the price cache state in the health, still answering 200", async () => {
+		// A suíte roda sem `REDIS_URL`: o cache é o no-op. Liveness não depende
+		// do cache — com ele desligado ou fora, a resposta continua 200 (ADR 0008).
+		const response = await request(app.getHttpServer()).get("/api/health");
+
+		expect(response.status).toBe(200);
+		expect(response.body.cache).toBe("disabled");
+	});
+
 	it("declares AllExceptionsFilter through APP_FILTER, not useGlobalFilters", () => {
 		// Não dá para resolver `APP_FILTER` com `app.get()`: o Nest guarda
 		// enhancers numa lista interna, fora do contexto resolvível. Então o que

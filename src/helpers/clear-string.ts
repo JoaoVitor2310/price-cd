@@ -164,6 +164,19 @@ export const clearQuantity = (stringToSearch: string): string => {
 	return stringToSearch.replace(/\bx\d+\b|\b\d+x\b/gi, "");
 };
 
+/**
+ * O nome-base de um jogo para comparação: sem Edição, pontuação especial e
+ * quantidade, em minúsculas. É o que o match de resultados do AllKeyShop compara
+ * e o que identifica o jogo na chave do cache de preço — os dois precisam
+ * concordar sobre quando dois nomes são o mesmo jogo.
+ */
+export const normalizeGameName = (name: string): string => {
+	let clean = clearEdition(name);
+	clean = clearString(clean);
+	clean = clearQuantity(clean);
+	return clean.toLowerCase().trim();
+};
+
 export const clearDLC = (stringToSearch: string): string => {
 	// Combined regex pattern to match all DLC-related terms as whole words
 	const dlcPattern = /\b(?:dlc|expansion|season|pass)\b/gi;

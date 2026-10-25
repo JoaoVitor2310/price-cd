@@ -6,7 +6,7 @@ import { AllExceptionsFilter } from "@/nest/common/all-exceptions.filter.js";
  * O formato de erro legado de `/api/games/search-id-steam` — a última rota que
  * sobrou do grupo de busca depois que `/api/games/search` saiu.
  *
- * Existe porque o contrato atual **não é uniforme**, e uniformizar é o item 13 do
+ * Existe porque o contrato atual **não é uniforme**, e uniformizar é o item 14 do
  * `docs/IMPROVEMENTS.md` — um PR de contrato, deliberado, não um efeito colateral.
  *
  * Só o **500** desta rota diverge do global — ela usa `message` e um
@@ -14,7 +14,7 @@ import { AllExceptionsFilter } from "@/nest/common/all-exceptions.filter.js";
  * **com** ponto. Por isso herda em vez de copiar: 400 e `HttpException`
  * continuam sendo os do pai, inclusive o log de validação.
  *
- * Some no PR de uniformização (item 13 do `docs/IMPROVEMENTS.md`).
+ * Some no PR de uniformização (item 14 do `docs/IMPROVEMENTS.md`).
  */
 @Catch()
 export class GamesLegacyErrorFilter extends AllExceptionsFilter {

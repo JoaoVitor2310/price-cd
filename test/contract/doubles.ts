@@ -22,6 +22,8 @@ export const contractGame = (name: string, id = 1): FoundGames => ({
 	id_steam: "1145360",
 	popularity: 5000,
 	region: "ROW",
+	// O preset `lists` exige Gamivo, e o corte agora é do motor (ADR 0008).
+	hasGamivoOffer: true,
 	GamivoPrice: 4.2,
 });
 
@@ -37,7 +39,7 @@ export const popularityFetcherDouble = () => ({
 });
 
 export const priceFetcherDouble = () => ({
-	fetch: async (games: FoundGames[], _checkGamivoOffer: boolean) => games,
+	fetch: async (games: FoundGames[]) => games,
 });
 
 export const tradeImporterDouble = () => ({

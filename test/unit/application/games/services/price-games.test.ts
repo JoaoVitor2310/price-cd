@@ -111,12 +111,50 @@ describe("PriceGames", () => {
 		});
 	});
 
-	it("forwards checkGamivoOffer to the price fetcher", async () => {
-		const { engine, priceFetcher } = makeEngine([game("Hades")], [game("Hades", 2)]);
+	describe("Gamivo offer", () => {
+		// O fetcher devolve o preço bruto (pode vir do cache de outro preset); o
+		// corte de Gamivo do preset é aplicado pelo motor. Ver ADR 0008.
+		const withGamivo = (name: string, hasGamivoOffer: boolean) => ({
+			...game(name, 2),
+			hasGamivoOffer,
+		});
 
-		await engine.run({ gameNames: ["Hades"], criteria: criteria({ checkGamivoOffer: true }) });
+		it("does not pass the Gamivo criterion to the price fetcher", async () => {
+			const { engine, priceFetcher } = makeEngine([game("Hades")], [game("Hades", 2)]);
 
-		expect(priceFetcher.fetch).toHaveBeenCalledWith(expect.any(Array), true);
+			await engine.run({ gameNames: ["Hades"], criteria: criteria({ checkGamivoOffer: true }) });
+
+			expect(priceFetcher.fetch).toHaveBeenCalledWith(expect.any(Array));
+			expect(priceFetcher.fetch.mock.calls[0]).toHaveLength(1);
+		});
+
+		it("drops games without a Gamivo offer when the criteria require one, and logs it", async () => {
+			const log = vi.spyOn(console, "log").mockImplementation(() => {});
+			const { engine } = makeEngine(
+				[game("On Gamivo"), game("Off Gamivo")],
+				[withGamivo("On Gamivo", true), withGamivo("Off Gamivo", false)],
+			);
+
+			const { priced } = await engine.run({
+				gameNames: ["On Gamivo", "Off Gamivo"],
+				criteria: criteria({ checkGamivoOffer: true }),
+			});
+
+			expect(priced.map((g) => g.name)).toEqual(["On Gamivo"]);
+			expect(log).toHaveBeenCalledWith(expect.stringContaining('Discarded "Off Gamivo" — no Gamivo offer'));
+			log.mockRestore();
+		});
+
+		it("keeps them when the criteria do not require a Gamivo offer", async () => {
+			const { engine } = makeEngine(
+				[game("Off Gamivo")],
+				[withGamivo("Off Gamivo", false)],
+			);
+
+			const { priced } = await engine.run(input(["Off Gamivo"]));
+
+			expect(priced.map((g) => g.name)).toEqual(["Off Gamivo"]);
+		});
 	});
 
 	describe("popularity tiers", () => {

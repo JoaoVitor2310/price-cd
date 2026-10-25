@@ -150,6 +150,31 @@ const baseEnvSchema = z.object({
 		.optional(),
 	API_KEY_GAMIVO: optionalNonEmpty("API_KEY_GAMIVO"),
 
+	// ── Cache de preço (ADR 0008) ─────────────────────────────────────────────
+	/**
+	 * Ausente → sem cache: toda busca vai ao AllKeyShop, e o health mostra
+	 * `cache: "disabled"`. Nunca obrigatório, nem em produção — o cache é
+	 * otimização, e o app sobe e pesquisa sem ele.
+	 *
+	 * No Docker vem do `docker-compose.yml`, não do `.env`: produção e dev leem o
+	 * mesmo `.env`, e cada um precisa apontar para o seu próprio Redis.
+	 */
+	REDIS_URL: z
+		.string()
+		.trim()
+		.transform((value) => value || undefined)
+		.pipe(
+			z
+				.url({
+					protocol: /^rediss?$/,
+					message: "REDIS_URL must be a redis:// or rediss:// URL",
+				})
+				.optional(),
+		)
+		.optional(),
+	/** Por quanto tempo um preço (ou um "não encontrado") vale no cache. */
+	PRICE_CACHE_TTL_SECONDS: positiveIntWithDefault(3600),
+
 	// ── SteamTrades ───────────────────────────────────────────────────────────
 	STEAM_ID: optionalNonEmpty("STEAM_ID"),
 	/**

@@ -47,22 +47,21 @@ export const findGamivoOffer = <T extends OfferPrice>(offers: T[]): T | null => 
 		.sort((a, b) => a.originalPrice - b.originalPrice)[0] ?? null;
 };
 
-export const bestOfferPrice = (offers: OfferPrice[], checkGamivoOffer: boolean): number | null => {
+export const hasGamivoOffer = (offers: OfferPrice[]): boolean =>
+	offers.some(o => o.merchant === GAMIVO_MERCHANT_NAME);
+
+/**
+ * O melhor preço da região/Edição, independente de haver oferta na Gamivo.
+ *
+ * "Exigir oferta na Gamivo" é critério do preset, e não mora mais aqui: o preço
+ * vai para o cache como dado bruto e o corte é aplicado depois, por
+ * `partitionByGamivoOffer` (ver `docs/adr/0008-cache-de-preco-em-redis.md`).
+ */
+export const bestOfferPrice = (offers: OfferPrice[]): number | null => {
 	if (offers.length === 0) {
 		console.log(`⚠️ [INFO] No prices found for the region.`);
 		return null;
 	}
 
-	const bestOffer = detectOfferTooLow(offers);
-	if (bestOffer == null) return null;
-
-	if (checkGamivoOffer) {
-		const hasGamivoOffer = offers.some(o => o.merchant === GAMIVO_MERCHANT_NAME);
-		if (!hasGamivoOffer) {
-			console.log(`⚠️ [INFO] Gamivo offer not found.`);
-			return null;
-		}
-	}
-
-	return bestOffer;
+	return detectOfferTooLow(offers);
 };

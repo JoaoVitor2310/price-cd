@@ -13,7 +13,7 @@ import { AllExceptionsFilter } from "@/nest/common/all-exceptions.filter.js";
  * Congelar o **formato** era obrigatório durante a migração; copiar o **código**
  * não. As subclasses declaram só o prefixo.
  *
- * Toda esta hierarquia some no item 13 do `docs/IMPROVEMENTS.md`, quando os
+ * Toda esta hierarquia some no item 14 do `docs/IMPROVEMENTS.md`, quando os
  * formatos forem uniformizados. Com o Express fora, isso está desbloqueado.
  */
 @Catch()

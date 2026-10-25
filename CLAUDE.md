@@ -6,8 +6,8 @@ Serviço Node.js que automatiza a pesquisa de preço e popularidade de jogos par
 
 1. Busca cada jogo no SteamCharts para obter o pico de jogadores em 24h (popularidade) — se o critério `lookupPopularity` do preset pedir; jogo que o SteamCharts não conhece vale popularidade 0.
 2. Descarta quem não alcança nem o **menor** tier de popularidade — antes do preço, para poupar o AllKeyShop. O tier só corta: com mínimo 0 ninguém sai, nem o jogo sem dados.
-3. Pesquisa o melhor preço no AllKeyShop para os jogos qualificados.
-4. Descarta quem não passa do Preço mínimo negociável ou do tier de popularidade **da faixa do seu preço** (até o limite / acima dele).
+3. Pesquisa o melhor preço no AllKeyShop para os jogos qualificados — antes, consulta o cache de preço (Redis, 1h); só os misses abrem o navegador. O cache guarda o dado bruto (melhor preço + se há oferta na Gamivo), nunca o resultado filtrado por um preset. Ver `docs/adr/0008-cache-de-preco-em-redis.md`.
+4. Descarta quem não tem oferta na Gamivo (se o preset exige), quem não passa do Preço mínimo negociável ou do tier de popularidade **da faixa do seu preço** (até o limite / acima dele).
 5. Cria a Trade no Sistema Estoque, ou devolve os jogos na resposta (demo e entrega `respond`).
 
 Há também dois fluxos assíncronos que raspam o SteamTrades e rodam o mesmo pipeline com os seus presets: "lists" (aceita um Steam ID e revisa as Listas do Fornecedor, preset `lists`) e a Descoberta de Fornecedores (preset `suppliers`). A decisão dos presets está em `docs/adr/0007-presets-de-pesquisa-moram-no-price-cd.md`.
@@ -101,6 +101,7 @@ src/
 ├── infrastructure/        # Implementações concretas das portas
 │   ├── background/        # Schedulers
 │   ├── browser/           # SharedBrowserSession, SuppliersBrowserSession
+│   ├── games/             # AllKeyShop, SteamCharts, Redis do cache de preço, importer HTTP
 │   ├── bump/              # Bumper do SteamTrades
 │   └── lists/             # SteamTrades fetcher + formatador de resultado
 ├── lib/                   # Utilidades compartilhadas (puppeteer factory, process tree, dispose)
@@ -130,12 +131,14 @@ Segue uma arquitetura hexagonal leve: o subdomínio `lists` declara portas expl�
 | Nest.js 12 | Camada de apresentação e composition root (`src/main.ts`) |
 | tsc-alias | Resolução dos aliases `@/*` no build |
 | SWC | Transform dos testes (`unplugin-swc`) e do `npm run dev` (`@swc-node/register`). **Obrigatório**: o esbuild do Vitest e o `tsx` não emitem `design:paramtypes`, e sem essa metadata o Nest injeta `undefined` sem erro no boot — ver ADR 0004 |
+| Redis 7 (servidor, `redis:7.4-alpine`) + `redis` 6 (cliente node-redis — numeração independente da do servidor) | Cache de preço do AllKeyShop (ADR 0008). Opcional: sem `REDIS_URL` o app usa um no-op |
 | Xvfb (Docker) | Display virtual para Chromium headed em containers Linux |
 
 ### Padrões de Concorrência
 
 - **SteamCharts**: `Promise.all` em batches de 50 jogos (paralelo dentro do batch, sequencial entre batches).
 - **AllKeyShop**: Estritamente sequencial por jogo (uma única página do navegador navegada por vez).
+- **Cache de preço** (`CachedPriceFetcher`, decorator do `PriceFetcher` em `application/games/services/`): consulta o Redis em lote antes do AllKeyShop e grava o que achou. Só `priced` e `not-found` (resposta definitiva do catálogo) vão para o cache; `failed` (timeout, Cloudflare, HTML inesperado) **nunca**, senão esconderia o jogo pelo TTL. Um preço com oferta da Gamivo e sem `gamivo_id` **é** gravado: sem `API_KEY_GAMIVO` o id nunca sai, e recusar esse caso esvaziaria o cache (ADR 0008). O corte "exigir Gamivo" é do domínio (`partitionByGamivoOffer`), aplicado pelo `PriceGames` depois do cache — por isso a porta `PriceFetcher` não recebe `checkGamivoOffer`, e o AllKeyShop implementa outra porta, `CatalogPriceSource`, que classifica cada jogo em `priced | not-found | failed`. **Fail-open:** o `RedisPriceCache` nunca lança (cliente com `disableOfflineQueue` + timeout por comando); Redis fora vira miss e o `/api/health` mostra `cache: "down"` com status 200. O `REDIS_URL` vem do `docker-compose.yml`, não do `.env`, porque produção e dev leem o mesmo `.env` e cada um tem o seu Redis. Duas buscas simultâneas do mesmo jogo ainda pesquisam duas vezes (single-flight está no `docs/IMPROVEMENTS.md`).
 - **SteamTrades**: Serializado via promise chain global (`steamTradesGate`) para evitar rate limit.
 - **Background jobs**: `LimitedConcurrencyScheduler` — filas in-process independentes por fluxo, para que uma execução longa não trave a outra:
   - `lists` (`POST /api/lists/run`): concorrência configurável via `RUN_LISTS_CONCURRENCY` (default 1).
@@ -162,7 +165,7 @@ O módulo `clear-string.ts` é a camada central de normalização usada em todo 
 ### Tratamento de Erros
 
 - `ZodError` (400) e `Error` genérico (500) são tratados num arquivo só, `src/nest/common/all-exceptions.filter.ts`, registrado via `APP_FILTER` (provider do container, não `useGlobalFilters`, para poder injetar dependências). Os controllers Express faziam esse `try/catch` cinco vezes.
-- O formato de erro **não é uniforme entre as rotas**: ficou congelado durante a migração para que qualquer diferença do app Nest fosse bug, não melhoria acidental. `test/contract/contract-cases.ts` continua travando o contrato como ele é. Uniformizar é o item 13 do `docs/IMPROVEMENTS.md` — PR próprio, agora desbloqueado.
+- O formato de erro **não é uniforme entre as rotas**: ficou congelado durante a migração para que qualquer diferença do app Nest fosse bug, não melhoria acidental. `test/contract/contract-cases.ts` continua travando o contrato como ele é. Uniformizar é o item 14 do `docs/IMPROVEMENTS.md` — PR próprio, agora desbloqueado.
 - Funções de service retornam `null` em falhas individuais de jogo (não fatais), permitindo que o batch continue.
 - **`biome check --write` quebra a injeção de dependência.** A regra `style/useImportType` converte `import { SharedBrowserSession }` em `import type { ... }`, o import é apagado na compilação, e o `design:paramtypes` do decorator passa a registrar nada — o Nest injeta `undefined` **sem erro no boot**, exatamente o modo de falha do ADR 0004. Aconteceu nos quatro adapters que recebem sessão de browser pelo construtor. `biome.json` desliga a regra em `src/infrastructure/**` e `src/nest/**`; os testes de módulo (`test/integration/nest/*.module.test.ts`) são o que pega se alguém religar.
 - **Variável com default no schema não é configurável pelo `.env` se o dotenv chegar tarde.** `ConfigModule.forRoot()` valida o ambiente no **import** do arquivo, e import de ESM é hoisted: por isso `src/main.ts` faz `import "dotenv/config"` antes de qualquer outro import, e `test/unit/config/dotenv-order.test.ts` trava essa ordem. Na suíte, o equivalente é `test/setup.ts` — `setupFiles` roda antes do grafo de imports. Era isso que fazia `BUMP_SCHEDULER_ENABLED=false` num `beforeAll` não desligar nada.
