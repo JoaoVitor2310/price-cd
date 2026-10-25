@@ -1,0 +1,27 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    # Minor/patch chegam agrupados (um PR de dev, um de prod) para a revisão
+    # semanal caber em minutos; o CI roda a suíte em cada um. Major fica fora
+    # dos grupos de propósito: chega um PR por pacote, porque exige ler o
+    # changelog — e puppeteer, puppeteer-real-browser e afins pedem teste de
+    # scraping real antes do merge, que a suíte não cobre.
+    groups:
+      dev-minor-patch:
+        dependency-type: development
+        update-types: [minor, patch]
+      prod-minor-patch:
+        dependency-type: production
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
