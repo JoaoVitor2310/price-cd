@@ -1,5 +1,7 @@
 # price-cd é stateless — persistência e decisões de negócio pertencem ao Sistema Estoque
 
+> **Revisto em parte pelo ADR 0008:** o price-cd pode guardar dado derivado e descartável (o cache de preço em Redis). Estado de negócio continua proibido, como descrito abaixo.
+
 O price-cd nunca teve banco de dados próprio e não deve ganhar um. Seu papel é scraping e manipulação de HTML/browser — buscar preço e popularidade de jogos, extrair tópicos do SteamTrades, bump topics. Qualquer dado que precise sobreviver entre execuções (histórico de fornecedores contatados, se os jogos mudaram desde o último contato, decisão de comentar ou não em um tópico) é responsabilidade do Sistema Estoque, consultado via portas como `ProfitabilityChecker`.
 
 ## Consequences

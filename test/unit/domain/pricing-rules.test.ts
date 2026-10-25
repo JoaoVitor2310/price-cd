@@ -4,6 +4,7 @@ import {
 	bestOfferPrice,
 	findGamivoOffer,
 	GAMIVO_MERCHANT_NAME,
+	hasGamivoOffer,
 } from "@/domain/games/pricing-rules.js";
 import type { OfferPrice } from "@/domain/games/pricing-rules.js";
 
@@ -85,27 +86,40 @@ describe("findGamivoOffer", () => {
 
 describe("bestOfferPrice", () => {
 	it("returns null when there are no offers", () => {
-		expect(bestOfferPrice([], false)).toBeNull();
+		expect(bestOfferPrice([])).toBeNull();
 	});
 
 	it("returns price as a number when offers exist", () => {
 		const offers = [makeOffer(4.99), makeOffer(5.49, { merchant: GAMIVO_MERCHANT_NAME })];
-		const result = bestOfferPrice(offers, false);
+		const result = bestOfferPrice(offers);
 		expect(result).not.toBeNull();
 		expect(typeof result).toBe("number");
 	});
 
-	it("returns null when checkGamivoOffer=true and there is no Gamivo offer, regardless of price", () => {
+	it("returns the price even without a Gamivo offer — the Gamivo cut is the preset's, applied later", () => {
+		// Antes devolvia null com `checkGamivoOffer`; o preço agora vai bruto
+		// para o cache (ADR 0008).
 		const offers = [makeOffer(4.99, { merchant: "Steam" })];
-		expect(bestOfferPrice(offers, true)).toBeNull();
+		expect(bestOfferPrice(offers)).toBe(4.99);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// hasGamivoOffer
+// ---------------------------------------------------------------------------
+
+describe("hasGamivoOffer", () => {
+	it("is true when any offer comes from Gamivo", () => {
+		expect(
+			hasGamivoOffer([makeOffer(4.99), makeOffer(5.49, { merchant: GAMIVO_MERCHANT_NAME })]),
+		).toBe(true);
 	});
 
-	it("returns price when checkGamivoOffer=true and Gamivo is present", () => {
-		const offers = [
-			makeOffer(4.99, { merchant: "Steam" }),
-			makeOffer(5.49, { merchant: GAMIVO_MERCHANT_NAME }),
-		];
-		const result = bestOfferPrice(offers, true);
-		expect(result).not.toBeNull();
+	it("is false when no offer comes from Gamivo", () => {
+		expect(hasGamivoOffer([makeOffer(4.99, { merchant: "Steam" })])).toBe(false);
+	});
+
+	it("is false for no offers", () => {
+		expect(hasGamivoOffer([])).toBe(false);
 	});
 });

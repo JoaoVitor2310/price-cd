@@ -165,7 +165,7 @@ use case ganha ~5 linhas de wiring manual, e você reimplementa parte do que o c
 
 | Forma         | Quando usar                                       | Exemplo aqui                                                   |
 | ------------- | ------------------------------------------------- | -------------------------------------------------------------- |
-| `useClass`    | O container constrói e injeta as dependências     | `{ provide: PriceFetcher, useClass: AllKeyShopPriceFetcher }`  |
+| `useClass`    | O container constrói e injeta as dependências     | `{ provide: CatalogPriceSource, useClass: AllKeyShopPriceFetcher }` |
 | `useValue`    | Valor pronto — config, constante, dublê em teste  | `{ provide: MAX_ACTIVE_LISTS, useValue: 3 }`                   |
 | `useFactory`  | Construção precisa de lógica ou de outro provider | `HttpGameTradeImporter`, que precisa de URL e secret do config |
 | `useExisting` | Apelido para um provider já registrado            | Duas portas atendidas pelo mesmo adapter                       |

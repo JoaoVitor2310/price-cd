@@ -78,6 +78,7 @@ This allows the tool to be publicly accessible for demonstration while keeping t
 - **Inventory integration** — `HttpGameTradeImporter` implements the `GameTradeImporter` port using native `fetch` with a 15 s `AbortController` timeout, posting structured results to the inventory system over a private bearer-authenticated API
 - **Domain-level exclusion list** — `filterExcludedGames` is a pure domain function applied after the popularity filter; free-to-play games are excluded before the price fetcher is ever called
 - **Domain-level price floor** — `partitionByPrice` splits off any game whose best price is not above the floor (default €0.50); games that cheap return a few cents of profit and are not worth negotiating; every discarded game is logged with its price, so it never disappears silently between the price fetcher and the result. Applied in one place — `PriceGames` (`application/games/services/price-games.ts`), the pricing engine shared by the search endpoint, the research endpoint, the `lists` flow and supplier discovery — so no consumer repeats the rule. The `research` endpoint can override the floor per request via `minPrice` (bundles send `0`); the floor value is an argument to `partitionByPrice`, so the €0.50 default lives in one place (`MIN_PRICE_EURO`)
+- **Price cache** — the AllKeyShop price of each game is kept in Redis for 1 hour (`PRICE_CACHE_TTL_SECONDS`), keyed by normalised name + region + edition, so a game that shows up in several supplier lists is scraped once. Only the raw best price is cached — the preset's "require a Gamivo offer" cut is applied afterwards, in the domain — and only a definitive "not on AllKeyShop" is cached as a miss, never a transient failure. Fail-open: with Redis down, every read is a miss and the search carries on. See `docs/adr/0008-cache-de-preco-em-redis.md`
 - **Async background jobs** — `LimitedConcurrencyScheduler` queues list-processing jobs in-process with configurable concurrency; on completion the Trade is created in the inventory system (there is no callback to the caller)
 - **Game name normalisation** — `clear-string.ts` normalises roman numerals, K-suffixed numbers, edition keywords, DLC tags, regional tags and special characters to maximise match accuracy across different naming conventions
 - **Full test suite** — 159 tests (unit + integration) with zero real network or browser calls; integration layer tests the full HTTP pipeline via supertest with vitest mocks at the infrastructure boundary
@@ -95,6 +96,7 @@ This allows the tool to be publicly accessible for demonstration while keeping t
 | Scraping | Puppeteer Real Browser + stealth/adblocker plugins |
 | HTTP Client | Native fetch (Node.js 22) |
 | HTML Parsing | Cheerio |
+| Price cache | Redis 7 server (`redis:7.4-alpine`) + `redis` 6 Node client (node-redis; its version line is independent of the server's) — optional, see `REDIS_URL` |
 | Testing | Vitest + Supertest |
 | Linting / Formatting | Biome |
 | Containerisation | Docker + Xvfb (headless Chromium in Linux containers) |
@@ -121,8 +123,8 @@ src/
 ├── application/       # Application layer, one directory per subdomain
 │   ├── games/
 │   │   ├── use-cases/ #   ResearchGamesUseCase, EnqueueResearchGamesUseCase
-│   │   ├── services/  #   PriceGames — the pricing engine shared by every flow
-│   │   └── ports/     #   PopularityFetcher, PriceFetcher, GameTradeImporter
+│   │   ├── services/  #   PriceGames — the pricing engine shared by every flow; CachedPriceFetcher
+│   │   └── ports/     #   PopularityFetcher, PriceFetcher, CatalogPriceSource, PriceCache, GameTradeImporter
 │   ├── lists/         #   RunListsUseCase, EnqueueRunListsUseCase
 │   ├── suppliers/     #   FindNewSuppliersUseCase
 │   └── bump/          #   BumpTopicsUseCase
@@ -131,7 +133,7 @@ src/
 │   ├── lists/         #   ListTopic entity
 │   └── suppliers/     #   HaveListing parsing
 ├── infrastructure/    # Concrete adapters implementing port interfaces
-│   ├── games/         #   AllKeyShopPriceFetcher, HttpGameTradeImporter
+│   ├── games/         #   AllKeyShopPriceFetcher, RedisPriceCache, HttpGameTradeImporter
 │   ├── background/    #   LimitedConcurrencyScheduler
 │   ├── browser/       #   SharedBrowserSession, SuppliersBrowserSession
 │   ├── bump/          #   PuppeteerSteamTradesBumper
@@ -171,6 +173,13 @@ npm run dev
 docker compose up price-researcher-dev
 ```
 
+This also starts `redis-dev`, the development price cache. Production uses its own `redis` service; the two never share a cache. Outside Docker, leave `REDIS_URL` empty to run without a cache.
+
+**Flush the price cache** — after a deploy that changes the search logic (matching, edition, region), cached prices from the old logic are served for up to 1 hour. To see the new results right away:
+```bash
+docker compose exec redis redis-cli FLUSHDB
+```
+
 **Run tests:**
 ```bash
 npm test
@@ -187,7 +196,7 @@ npm test
 | `POST` | `/api/games/search-id-steam` | Resolve Steam IDs for a list of games |
 | `POST` | `/api/lists/run` | Async: crawl a Steam user's trade lists and run full analysis |
 | `POST` | `/api/suppliers/find-new` | Async, queued: scan SteamTrades for new suppliers offering games for TF2 keys, PayPal, euros or dollars |
-| `GET` | `/api/health` | Liveness probe |
+| `GET` | `/api/health` | Liveness probe, plus the price cache state |
 
 <details>
 <summary><strong>POST /api/games/research — request body</strong></summary>
@@ -284,6 +293,17 @@ Returns as soon as the scan is queued — scanning up to 100 SteamTrades pages p
 ```json
 { "error": "<missing env var message>" }
 ```
+
+</details>
+
+<details>
+<summary><strong>GET /api/health</strong></summary>
+
+**Response** — `200`:
+```json
+{ "status": "ok", "app": "nest", "env": "production", "cache": "up" }
+```
+`cache` is the price cache state: `up`, `down` (Redis configured but not answering) or `disabled` (no `REDIS_URL`). The response stays `200` when the cache is down — the app still searches, only slower — so a container healthcheck never restarts the app because of Redis. An external monitor that wants to know about a Redis outage should check this field.
 
 </details>
 

@@ -1,7 +1,7 @@
 import "reflect-metadata";
 import { Test } from "@nestjs/testing";
 import { describe, expect, it, vi } from "vitest";
-import { PriceFetcher } from "@/application/games/ports/game-search.ports.js";
+import { CatalogPriceSource } from "@/application/games/ports/game-search.ports.js";
 import { TradePaginator } from "@/application/suppliers/ports/trade-paginator.port.js";
 import { SharedBrowserSession } from "@/infrastructure/browser/shared-browser-session.js";
 import { SuppliersBrowserSession } from "@/infrastructure/browser/suppliers-browser-session.js";
@@ -97,7 +97,7 @@ describe("BrowserShutdown", () => {
 		const sessionOf = (adapter: unknown) =>
 			(adapter as { session: unknown }).session;
 
-		expect(sessionOf(moduleRef.get(PriceFetcher))).toBe(
+		expect(sessionOf(moduleRef.get(CatalogPriceSource))).toBe(
 			moduleRef.get(SharedBrowserSession),
 		);
 		expect(sessionOf(moduleRef.get(TradePaginator))).toBe(

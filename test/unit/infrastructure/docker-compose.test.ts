@@ -54,10 +54,12 @@ const readServiceBlocks = (): Map<string, string> => {
 describe("docker-compose", () => {
 	const blocks = readServiceBlocks();
 
-	it("declares both application services", () => {
+	it("declares both application services and their Redis caches", () => {
 		expect([...blocks.keys()].sort()).toEqual([
 			"price-researcher",
 			"price-researcher-dev",
+			"redis",
+			"redis-dev",
 		]);
 	});
 
@@ -93,6 +95,36 @@ describe("docker-compose", () => {
 		it("is not shared with the dev service, which must keep building its own target", () => {
 			// Se o dev herdasse o `image:` de produção, um `up` do dev sobrescreveria a tag local da imagem de produção.
 			expect(blocks.get("price-researcher-dev")).not.toMatch(/^\s*image:/m);
+		});
+	});
+
+	describe("price cache (ADR 0008)", () => {
+		it.each([
+			["price-researcher", "redis"],
+			["price-researcher-dev", "redis-dev"],
+		])("%s points at its own Redis, %s", (app, redis) => {
+			// Produção e dev leem o mesmo `.env`: a URL tem que vir do compose, ou
+			// o dev gravaria no cache que a produção lê.
+			const block = blocks.get(app);
+			expect(block).toMatch(new RegExp(`^\\s*REDIS_URL:\\s*redis://${redis}:6379\\s*$`, "m"));
+			expect(block).toMatch(new RegExp(`^\\s*${redis}:\\s*\\n\\s*condition:\\s*service_started\\s*$`, "m"));
+		});
+
+		it.each(["redis", "redis-dev"])("%s is never published on the host", (redis) => {
+			expect(blocks.get(redis)).not.toMatch(/^\s*ports:/m);
+		});
+
+		it.each(["redis", "redis-dev"])("%s has no disk persistence and evicts by LRU when full", (redis) => {
+			const block = blocks.get(redis);
+			expect(block).toMatch(/--save ""/);
+			expect(block).toMatch(/--appendonly no/);
+			expect(block).toMatch(/--maxmemory \d+mb/);
+			expect(block).toMatch(/--maxmemory-policy allkeys-lru/);
+		});
+
+		it("keeps the dev Redis behind the dev profile", () => {
+			// Sem perfil, um `up` sem argumento subiria o Redis do dev em produção.
+			expect(blocks.get("redis-dev")).toMatch(/^\s*profiles:\s*\["dev"\]\s*$/m);
 		});
 	});
 });

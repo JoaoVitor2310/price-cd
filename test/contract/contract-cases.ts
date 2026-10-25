@@ -13,7 +13,7 @@ import { expect } from "vitest";
  * propósito**: `/games/research` devolve a mensagem de erro em `data`,
  * `/games/search-id-steam` devolve em `error` + `details`, `/suppliers/find-new` nem tem
  * campo `success` no 500, e "Internal server error" aparece com e sem ponto
- * final. Uniformizar é o item 13 do `docs/IMPROVEMENTS.md`: uma mudança de
+ * final. Uniformizar é o item 14 do `docs/IMPROVEMENTS.md`: uma mudança de
  * contrato deliberada, num PR próprio que atualiza esta tabela junto — nunca um
  * efeito colateral de outra mudança.
  *

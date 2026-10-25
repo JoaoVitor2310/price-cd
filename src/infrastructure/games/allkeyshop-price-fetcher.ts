@@ -1,21 +1,23 @@
 import { Injectable } from "@nestjs/common";
 import * as cheerio from "cheerio";
 import dotenv from "dotenv";
-import type { FoundGames } from "@/application/games/game.types.js";
-import type { PriceFetcher } from "@/application/games/ports/game-search.ports.js";
+import type {
+	CatalogPriceSource,
+	PriceLookup,
+} from "@/application/games/ports/game-search.ports.js";
 import type { OfferPrice } from "@/domain/games/pricing-rules.js";
 import {
 	bestOfferPrice,
 	findGamivoOffer,
 	GAMIVO_MERCHANT_NAME,
+	hasGamivoOffer,
 } from "@/domain/games/pricing-rules.js";
 import {
 	clearEdition,
 	clearQuantity,
-	clearString,
 	getRegion,
 	hasEdition,
-	removeRegion,
+	normalizeGameName,
 } from "@/helpers/clear-string.js";
 import {
 	ALLKEYSHOP_BASE_URL,
@@ -106,13 +108,6 @@ export const findEditionKey = (
 	);
 };
 
-const normalizeForMatching = (name: string): string => {
-	let clean = clearEdition(name);
-	clean = clearString(clean);
-	clean = clearQuantity(clean);
-	return clean.toLowerCase().trim();
-};
-
 // ---------------------------------------------------------------------------
 // Exported only so tests can reach them directly — not part of this module's
 // real public surface. The only thing other files in the app import from
@@ -159,11 +154,11 @@ export const matchSearchResult = (
 	gameName: string,
 	searchResults: SearchResult[],
 ): { link: string; name: string } | null => {
-	const gameNameClean = normalizeForMatching(gameName);
+	const gameNameClean = normalizeGameName(gameName);
 	const gameNameKeywords = hasEdition(gameName);
 
 	const candidates = searchResults.filter(
-		(searchResult) => normalizeForMatching(searchResult.name) === gameNameClean,
+		(searchResult) => normalizeGameName(searchResult.name) === gameNameClean,
 	);
 
 	if (candidates.length === 0) return null;
@@ -220,27 +215,35 @@ export const fetchGamivoIdBySlug = async (
 // (controllers, services) actually import and depend on.
 // ---------------------------------------------------------------------------
 
+/**
+ * Classifica cada jogo como `priced`, `not-found` (o AllKeyShop respondeu que não
+ * tem) ou `failed` (não conseguimos perguntar). A distinção existe para o cache de
+ * preço: só o definitivo pode ser guardado. Ver `PriceLookup`.
+ */
 const searchAllKeyShop = async (
-	gamesToSearch: FoundGames[],
-	checkGamivoOffer: boolean,
+	gameNames: string[],
 	session: SharedBrowserSession,
-): Promise<FoundGames[]> => {
+): Promise<Map<string, PriceLookup>> => {
 	console.log(
-		`📋 [INFO] Processing ${gamesToSearch.length} AllKeyShop price search games`,
+		`📋 [INFO] Processing ${gameNames.length} AllKeyShop price search games`,
 	);
 
 	return session.enqueue(async () => {
-		const foundGames: FoundGames[] = [];
+		const results = new Map<string, PriceLookup>();
+		const notFound = (gameName: string) =>
+			results.set(gameName, { status: "not-found" });
+		const failed = (gameName: string) =>
+			results.set(gameName, { status: "failed" });
 
 		const { page } = await session.get();
 
 		try {
-			for (const [index, game] of gamesToSearch.entries()) {
+			for (const [index, gameName] of gameNames.entries()) {
 				console.log(
-					`🔍 [INFO] Searching AllKeyShop ${index + 1} for: ${game.name}`,
+					`🔍 [INFO] Searching AllKeyShop ${index + 1} for: ${gameName}`,
 				);
 
-				let searchString = game.name;
+				let searchString = gameName;
 				searchString = clearEdition(searchString);
 				searchString = clearQuantity(searchString);
 				searchString = new URLSearchParams({
@@ -251,7 +254,10 @@ const searchAllKeyShop = async (
 					page,
 					`${ALLKEYSHOP_SEARCH_URL}${searchString}${ALLKEYSHOP_SEARCH_FILTERS}`,
 				);
-				if (!browseURL) continue;
+				if (!browseURL) {
+					failed(gameName);
+					continue;
+				}
 
 				const initialHtml = await page.content();
 				const $initial = cheerio.load(initialHtml);
@@ -263,8 +269,9 @@ const searchAllKeyShop = async (
 					).length > 0
 				) {
 					console.log(
-						`⚠️ [INFO] No results found on AllKeyShop for "${game.name}". Skipping.`,
+						`⚠️ [INFO] No results found on AllKeyShop for "${gameName}". Skipping.`,
 					);
+					notFound(gameName);
 					continue;
 				}
 
@@ -274,17 +281,19 @@ const searchAllKeyShop = async (
 					});
 				} catch (error) {
 					console.log(
-						`⚠️ [INFO] Timeout waiting for selector for "${game.name}". Skipping to the next game.`,
+						`⚠️ [INFO] Timeout waiting for selector for "${gameName}". Skipping to the next game.`,
 					);
+					failed(gameName);
 					continue;
 				}
 
 				const htmlSearchPage = await page.content();
 				const searchResults = scrapSearchResults(htmlSearchPage);
 
-				const match = matchSearchResult(game.name, searchResults);
+				const match = matchSearchResult(gameName, searchResults);
 				if (!match) {
 					console.log(`⚠️ [INFO] Game not found. Skipping to the next game.`);
+					notFound(gameName);
 					continue;
 				}
 
@@ -296,26 +305,32 @@ const searchAllKeyShop = async (
 				try {
 					gamePageHtml = await fetchWithRetry(gamePageUrl);
 				} catch (_error) {
+					failed(gameName);
 					continue;
 				}
 
 				const gamePageData = scrapGamePage(gamePageHtml);
-				if (!gamePageData) continue;
+				if (!gamePageData) {
+					failed(gameName);
+					continue;
+				}
 
-				const region = getRegion(game.name);
+				const region = getRegion(gameName);
 
 				const regionKey = findRegionKey(gamePageData.regions, region);
 				if (!regionKey) {
 					console.log(`⚠️ [INFO] Region not found.`);
+					notFound(gameName);
 					continue;
 				}
 
 				const editionKey = findEditionKey(
 					gamePageData.editions,
-					hasEdition(game.name),
+					hasEdition(gameName),
 				);
 				if (!editionKey) {
-					console.log(`⚠️ [INFO] Edition not found for "${game.name}".`);
+					console.log(`⚠️ [INFO] Edition not found for "${gameName}".`);
+					notFound(gameName);
 					continue;
 				}
 
@@ -327,8 +342,11 @@ const searchAllKeyShop = async (
 					gamivoMerchantKey,
 				);
 
-				const price = bestOfferPrice(offers, checkGamivoOffer);
-				if (!price) continue;
+				const price = bestOfferPrice(offers);
+				if (!price) {
+					notFound(gameName);
+					continue;
+				}
 
 				let gamivo_id: string | undefined;
 
@@ -340,27 +358,26 @@ const searchAllKeyShop = async (
 					}
 				}
 
-				const displayRegion = region === "global" ? "" : region.toUpperCase();
-				game.name = removeRegion(game.name);
-
-				foundGames.push({
-					id: game.id,
-					name: game.name,
-					foundName: match.name,
-					popularity: game.popularity,
-					region: displayRegion,
-					id_steam: game.id_steam,
-					gamivo_id,
-					GamivoPrice: price,
+				results.set(gameName, {
+					status: "priced",
+					price: {
+						bestPrice: price,
+						hasGamivoOffer: hasGamivoOffer(offers),
+						gamivo_id,
+						foundName: match.name,
+					},
 				});
 
 				console.log(`🔍 [INFO] Price found: ${price}`);
 			}
 
+			const pricedCount = [...results.values()].filter(
+				(result) => result.status === "priced",
+			).length;
 			console.log(
-				`✅ [INFO] Completed AllKeyShop search - found prices for ${foundGames.length}/${gamesToSearch.length} games`,
+				`✅ [INFO] Completed AllKeyShop search - found prices for ${pricedCount}/${gameNames.length} games`,
 			);
-			return foundGames;
+			return results;
 		} catch (error) {
 			// Aguarda o fechamento antes de propagar: sem o await, o browser
 			// quebrado ficaria vivo enquanto a próxima busca já sobe outro.
@@ -378,15 +395,15 @@ const searchAllKeyShop = async (
  * coexistência com o Express. Com o Express fora, quem é dono da sessão é o
  * container: o `BrowserModule` a registra e quem precisa dela declara no
  * construtor.
+ *
+ * Implementa `CatalogPriceSource`, não `PriceFetcher`: quem o `PriceGames`
+ * recebe é o `CachedPriceFetcher`, que chama este adapter só para os misses.
  */
 @Injectable()
-export class AllKeyShopPriceFetcher implements PriceFetcher {
+export class AllKeyShopPriceFetcher implements CatalogPriceSource {
 	constructor(private readonly session: SharedBrowserSession) {}
 
-	async fetch(
-		games: FoundGames[],
-		checkGamivoOffer: boolean,
-	): Promise<FoundGames[]> {
-		return searchAllKeyShop(games, checkGamivoOffer, this.session);
+	async lookup(gameNames: string[]): Promise<Map<string, PriceLookup>> {
+		return searchAllKeyShop(gameNames, this.session);
 	}
 }

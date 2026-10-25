@@ -152,6 +152,46 @@ describe("validateEnv", () => {
 		);
 	});
 
+	describe("price cache (ADR 0008)", () => {
+		it("leaves the cache off and the TTL at one hour by default", () => {
+			const env = validateEnv({});
+			expect(env.REDIS_URL).toBeUndefined();
+			expect(env.PRICE_CACHE_TTL_SECONDS).toBe(3600);
+		});
+
+		it("treats an empty REDIS_URL as absent, like the blank line in .env.example", () => {
+			expect(validateEnv({ REDIS_URL: "" }).REDIS_URL).toBeUndefined();
+		});
+
+		it("accepts redis:// and rediss:// URLs", () => {
+			expect(validateEnv({ REDIS_URL: "redis://redis:6379" }).REDIS_URL).toBe("redis://redis:6379");
+			expect(validateEnv({ REDIS_URL: "rediss://cache.test:6380" }).REDIS_URL).toBe(
+				"rediss://cache.test:6380",
+			);
+		});
+
+		it("rejects a URL that is not Redis", () => {
+			expect(() => validateEnv({ REDIS_URL: "http://redis:6379" })).toThrow(
+				/REDIS_URL must be a redis:\/\/ or rediss:\/\/ URL/,
+			);
+		});
+
+		it("never requires REDIS_URL, not even in production", () => {
+			expect(() =>
+				validateEnv({
+					NODE_ENV: "production",
+					STEAMTRADES_SESSION: "session",
+					SISTEMA_ESTOQUE_URL: "http://sistema-estoque.test",
+					EXTERNAL_SECRET: "secret",
+				}),
+			).not.toThrow();
+		});
+
+		it("reads a custom TTL", () => {
+			expect(validateEnv({ PRICE_CACHE_TTL_SECONDS: "600" }).PRICE_CACHE_TTL_SECONDS).toBe(600);
+		});
+	});
+
 	describe("requirements that only apply in production", () => {
 		const productionEnv = {
 			NODE_ENV: "production",

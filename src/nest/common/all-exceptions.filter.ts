@@ -34,7 +34,7 @@ import { ZodError } from "zod";
  * `SuppliersLegacyErrorFilter`. A bateria de contrato cobre os formatos de 500 e
  * falha se um controller perder o seu.
  *
- * Mudar qualquer um desses formatos é mudança de contrato: item 13 do
+ * Mudar qualquer um desses formatos é mudança de contrato: item 14 do
  * `docs/IMPROVEMENTS.md`, num PR isolado que atualiza a bateria no mesmo
  * commit.
  */

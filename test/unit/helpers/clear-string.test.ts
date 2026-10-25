@@ -5,6 +5,7 @@ import {
 	clearString,
 	getRegion,
 	hasEdition,
+	normalizeGameName,
 	removeRegion,
 } from "@/helpers/clear-string.js";
 
@@ -292,5 +293,21 @@ describe("removeRegion", () => {
 
 	it("does not alter string without region", () => {
 		expect(removeRegion("The Witcher 3")).toBe("The Witcher 3");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// normalizeGameName
+// ---------------------------------------------------------------------------
+
+describe("normalizeGameName", () => {
+	it("reduces a name to its lowercase base, without edition, punctuation or quantity", () => {
+		expect(normalizeGameName("Crysis™ 2: Deluxe Edition x2")).toBe(
+			normalizeGameName("crysis 2"),
+		);
+	});
+
+	it("keeps distinct games distinct", () => {
+		expect(normalizeGameName("Crysis 2")).not.toBe(normalizeGameName("Crysis 3"));
 	});
 });

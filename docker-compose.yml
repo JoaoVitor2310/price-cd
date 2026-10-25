@@ -10,6 +10,13 @@ networks:
   sistema-estoque-cd:
     external: true
 
+  # Rede só do price-cd, onde mora o Redis do cache de preço (ADR 0008). Fica
+  # fora da `sistema-estoque-cd` de propósito: ninguém além do price-cd precisa
+  # do Redis, e um Redis sem senha numa rede compartilhada é superfície à toa.
+  # `internal: true` corta a saída para a internet — o Redis não precisa dela.
+  price-cd-internal:
+    internal: true
+
 services:
   price-researcher-dev:
     # Perfil `dev`: este serviço NÃO sobe com `docker compose up -d`.
@@ -48,6 +55,18 @@ services:
       PORT: 5555
       CHROME_PATH: /usr/bin/chromium
 
+      # O Redis do dev, nunca o da produção: os dois serviços leem o mesmo
+      # `.env`, por isso a URL mora aqui e não lá. Se o dev usasse o Redis de
+      # produção, código em desenvolvimento gravaria preços no cache que a
+      # produção lê (ADR 0008).
+      REDIS_URL: redis://redis-dev:6379
+
+    # Só sobe o Redis junto; não espera ele ficar pronto — o app pesquisa sem
+    # cache até a conexão sair (ADR 0008).
+    depends_on:
+      redis-dev:
+        condition: service_started
+
     volumes:
       - ./src:/app/src
       - ./public:/app/public
@@ -60,6 +79,7 @@ services:
 
     networks:
       - sistema-estoque-cd
+      - price-cd-internal
 
   price-researcher:
     # Em produção a imagem vem do GHCR, construída pelo CI (.github/workflows/deploy.yml;
@@ -114,6 +134,19 @@ services:
       # Caminho do Chromium instalado via apt na imagem. O chrome-launcher / fluxo real-browser usa isso em vez do Chrome baixado pelo Puppeteer.
       CHROME_PATH: /usr/bin/chromium
 
+      # Cache de preço (ADR 0008). Aqui, e não no `.env`, porque o dev lê o
+      # mesmo `.env` e precisa apontar para o próprio Redis.
+      REDIS_URL: redis://redis:6379
+
+    # O `docker compose up -d price-researcher` do deploy só sobe o que o serviço
+    # declara aqui — sem isto o Redis nunca subiria. `service_started`, não
+    # `service_healthy`: o boot não espera o Redis, e o app pesquisa sem cache
+    # até a conexão sair. Como o deploy não recria o Redis, o cache sobrevive a
+    # ele (ADR 0008).
+    depends_on:
+      redis:
+        condition: service_started
+
     # Memória compartilhada (/dev/shm) maior que o padrão (~64MB). Chromium usa muito shm para GPU/texturas;
     # sem isso o browser pode crashar ou ficar instável no Docker.
     shm_size: 1gb
@@ -134,3 +167,46 @@ services:
 
     networks:
       - sistema-estoque-cd
+      - price-cd-internal
+
+  # Cache de preço do AllKeyShop (ADR 0008). O dado vive 1h e é descartável:
+  # perder tudo só deixa a próxima busca mais lenta.
+  redis:
+    image: redis:7.4-alpine
+    container_name: price-researcher-redis
+
+    # - Sem persistência (`--save ""`, sem AOF): gravar snapshot de dado que
+    #   expira em 1h é I/O à toa. Reiniciar o Redis perde o cache, e só.
+    # - `maxmemory` + LRU: se encher, descarta o menos usado em vez de recusar
+    #   escrita. Uma entrada tem ~150 bytes; 64 MB é muito mais que o uso real.
+    command: >-
+      redis-server --save "" --appendonly no
+      --maxmemory 64mb --maxmemory-policy allkeys-lru
+
+    restart: unless-stopped
+
+    # Mesma rede de segurança dos serviços do app: a VPS já caiu por OOM
+    # (2026-08-24) e por esgotamento de PIDs (2026-09-18). O teto de memória
+    # do container fica acima do `maxmemory`, que não conta o overhead do processo.
+    init: true
+    mem_limit: 128m
+    pids_limit: 64
+
+    # Sem `ports:` — nunca exposto na VPS. Só o price-cd o alcança.
+    networks:
+      - price-cd-internal
+
+  # O Redis do dev — separado do de produção pelo mesmo motivo da `REDIS_URL`
+  # do `price-researcher-dev`. Sobe só com `--profile dev`.
+  redis-dev:
+    profiles: ["dev"]
+    image: redis:7.4-alpine
+    container_name: price-researcher-redis-dev
+    command: >-
+      redis-server --save "" --appendonly no
+      --maxmemory 64mb --maxmemory-policy allkeys-lru
+    init: true
+    mem_limit: 128m
+    pids_limit: 64
+    networks:
+      - price-cd-internal
