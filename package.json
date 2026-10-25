@@ -31,7 +31,6 @@
 		"puppeteer": "^24.22.2",
 		"puppeteer-extra": "^3.3.6",
 		"puppeteer-extra-plugin-adblocker": "^2.13.6",
-		"puppeteer-extra-plugin-anonymize-ua": "^2.4.6",
 		"puppeteer-extra-plugin-stealth": "^2.11.2",
 		"puppeteer-real-browser": "^1.4.4",
 		"redis": "^6.3.0",
@@ -39,29 +38,15 @@
 		"rxjs": "^7.8.2",
 		"zod": "^4.1.11"
 	},
-	"pkg": {
-		"assets": [
-			"node_modules/puppeteer/**/*",
-			"node_modules/vm2/**/*"
-		],
-		"targets": [
-			"node18-macos-arm64",
-			"node18-win-arm64"
-		]
-	},
 	"devDependencies": {
 		"@biomejs/biome": "2.2.4",
 		"@nestjs/testing": "^12.0.4",
 		"@swc-node/register": "^1.12.1",
 		"@swc/core": "^1.16.2",
-		"@types/cheerio": "^0.22.35",
 		"@types/express": "^5.0.6",
 		"@types/node": "^22.20.5",
 		"@types/supertest": "^7.2.0",
-		"nodemon": "^3.1.9",
 		"supertest": "^7.2.2",
-		"ts-node": "^10.9.2",
-		"ts-node-dev": "^2.0.0",
 		"tsc-alias": "^1.8.16",
 		"typescript": "^5.7.3",
 		"unplugin-swc": "^2.0.0",
