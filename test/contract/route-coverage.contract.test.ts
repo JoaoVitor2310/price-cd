@@ -1,6 +1,7 @@
 import "reflect-metadata";
 import { vi } from "vitest";
 import {
+	asConstructor,
 	listTopicFetcherDouble,
 	popularityFetcherDouble,
 	priceFetcherDouble,
@@ -16,25 +17,28 @@ import {
  * reais está a um passo de abrir Chromium, e a trava do `initializeBrowser()` é
  * a última linha de defesa, não a primeira.
  *
+ * Mocks de classe passam por `asConstructor`: desde o Vitest 4 um mock com
+ * arrow não é construtível.
+ *
  * `vi.mock` é hoisted por arquivo, então não dá para compartilhar estas linhas
  * com os irmãos; só os corpos vêm de `doubles.ts`.
  */
 vi.mock("@/infrastructure/games/steam-charts-popularity-fetcher.js", () => ({
-	SteamChartsPopularityFetcher: vi.fn(popularityFetcherDouble),
+	SteamChartsPopularityFetcher: vi.fn(asConstructor(popularityFetcherDouble)),
 }));
 vi.mock("@/infrastructure/games/allkeyshop-price-fetcher.js", () => ({
-	AllKeyShopPriceFetcher: vi.fn(priceFetcherDouble),
+	AllKeyShopPriceFetcher: vi.fn(asConstructor(priceFetcherDouble)),
 }));
 vi.mock("@/infrastructure/games/http-game-trade-importer.js", () => ({
-	HttpGameTradeImporter: vi.fn(tradeImporterDouble),
+	HttpGameTradeImporter: vi.fn(asConstructor(tradeImporterDouble)),
 }));
 vi.mock("@/infrastructure/background/limited-concurrency.scheduler.js", () => ({
-	LimitedConcurrencyScheduler: vi.fn(schedulerDouble),
+	LimitedConcurrencyScheduler: vi.fn(asConstructor(schedulerDouble)),
 	createLimitedConcurrencySchedulerFromEnv: vi.fn(schedulerDouble),
 }));
 vi.mock("@/infrastructure/lists/fetch-list-topic.js", () => ({
 	fetchListTopic: vi.fn(listTopicFetcherDouble),
-	FetchListTopic: vi.fn(listTopicFetcherDouble),
+	FetchListTopic: vi.fn(asConstructor(listTopicFetcherDouble)),
 }));
 
 import { RequestMethod } from "@nestjs/common";
