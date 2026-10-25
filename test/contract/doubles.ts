@@ -27,6 +27,18 @@ export const contractGame = (name: string, id = 1): FoundGames => ({
 	GamivoPrice: 4.2,
 });
 
+/**
+ * Torna um dublê construtível: mock de classe é chamado com `new` (pelo
+ * `useClass` do Nest ou direto no módulo), e desde o Vitest 4 um `vi.fn` com
+ * arrow function lança `is not a constructor`. Por isso `function`, não arrow.
+ */
+export const asConstructor = <T extends object>(make: () => T) => {
+	// biome-ignore lint/complexity/useArrowFunction: precisa ser construtível (`new`)
+	return function () {
+		return make();
+	};
+};
+
 export const popularityFetcherDouble = () => ({
 	fetch: async (gameNames: string[], _lookup: boolean) => {
 		// O único jeito declarativo de um caso de contrato provocar um 500: sem
