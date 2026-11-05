@@ -28,7 +28,7 @@
 		"@nestjs/schedule": "^12.0.2",
 		"bullmq": "^5.81.5",
 		"cheerio": "^1.0.0",
-		"dotenv": "^17.2.2",
+		"dotenv": "^18.0.9",
 		"ioredis": "^5.11.1",
 		"puppeteer": "^24.22.2",
 		"puppeteer-extra": "^3.3.6",
