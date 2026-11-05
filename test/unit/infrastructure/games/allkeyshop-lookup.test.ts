@@ -269,10 +269,65 @@ describe("AllKeyShopPriceFetcher.lookup", () => {
 		]);
 	});
 
-	it("closes the browser session and rethrows on a fatal error, caching nothing", async () => {
+	it("closes the browser session and rethrows on a fatal error, reporting nothing for that game", async () => {
 		vi.mocked(gotoWithRetry).mockRejectedValue(new Error("browser died"));
+		const onResult = vi.fn().mockResolvedValue(undefined);
 
-		await expect(fetcher().lookup(["Hades"])).rejects.toThrow("browser died");
+		await expect(fetcher().lookup(["Hades"], onResult)).rejects.toThrow("browser died");
 		expect(session.invalidate).toHaveBeenCalled();
+		expect(onResult).not.toHaveBeenCalled();
+	});
+
+	describe("reporting each result as it comes out", () => {
+		it("reports every game, in order, waiting for the listener before the next search", async () => {
+			const events: string[] = [];
+			vi.mocked(gotoWithRetry).mockImplementation(async (_page, url) => {
+				events.push(`search ${new URL(url).searchParams.get("search_name")}`);
+				return true;
+			});
+			page.content.mockResolvedValue(NO_RESULTS_HTML);
+			const onResult = vi.fn(async (name: string) => {
+				await Promise.resolve();
+				events.push(`reported ${name}`);
+			});
+
+			await fetcher().lookup(["Gone", "Missing"], onResult);
+
+			expect(events).toEqual([
+				"search Gone",
+				"reported Gone",
+				"search Missing",
+				"reported Missing",
+			]);
+			expect(onResult).toHaveBeenCalledWith("Gone", { status: "not-found" });
+		});
+
+		it("keeps the games reported before a fatal error", async () => {
+			// O browser morre no segundo jogo: o primeiro já saiu para o cache.
+			vi.mocked(gotoWithRetry)
+				.mockResolvedValueOnce(true)
+				.mockRejectedValueOnce(new Error("browser died"));
+			page.content.mockResolvedValue(NO_RESULTS_HTML);
+			const onResult = vi.fn().mockResolvedValue(undefined);
+
+			await expect(fetcher().lookup(["Gone", "Hades"], onResult)).rejects.toThrow(
+				"browser died",
+			);
+			expect(onResult.mock.calls).toEqual([["Gone", { status: "not-found" }]]);
+		});
+
+		it("does not let a failing listener stop the search", async () => {
+			vi.mocked(gotoWithRetry)
+				.mockResolvedValueOnce(true)
+				.mockResolvedValueOnce(false);
+			page.content.mockResolvedValue(NO_RESULTS_HTML);
+			vi.spyOn(console, "warn").mockImplementation(() => {});
+			const onResult = vi.fn().mockRejectedValue(new Error("redis down"));
+
+			const results = await fetcher().lookup(["Gone", "Flaky"], onResult);
+
+			expect([...results.keys()]).toEqual(["Gone", "Flaky"]);
+			expect(onResult).toHaveBeenCalledTimes(2);
+		});
 	});
 });

@@ -15,7 +15,8 @@ export type ResearchGamesRequest = {
 
 /**
  * Porta para executar o fluxo completo de pesquisa (popularidade + preço + Criar Trade).
- * Isola `EnqueueResearchGamesUseCase` da montagem concreta das dependências.
+ * É o que a `ResearchQueue` executa ao consumir um pedido — isola a fila da
+ * montagem concreta das dependências.
  */
 export interface ResearchGamesRunner {
 	run(request: ResearchGamesRequest): Promise<void>;

@@ -28,3 +28,10 @@ process.env.BUMP_SCHEDULER_ENABLED = "false";
  * Redis liga a variável no próprio teste.
  */
 process.env.REDIS_URL = "";
+
+/**
+ * Mesmo motivo para a fila da pesquisa (ADR 0009): sem `QUEUE_REDIS_URL` a fila
+ * é a em memória. Com ela, o boot do app conectaria no Redis de quem roda a
+ * suíte e o worker consumiria jobs de verdade de lá.
+ */
+process.env.QUEUE_REDIS_URL = "";

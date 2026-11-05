@@ -1,9 +1,9 @@
 /**
  * Tokens de injeção do módulo `lists`.
  *
- * `LISTS_SCHEDULER` existe separado do `RESEARCH_SCHEDULER` por uma razão de
- * comportamento, não de organização: são **duas filas**, com concorrências
- * diferentes e propósitos diferentes.
+ * `LISTS_SCHEDULER` existe separado da fila da pesquisa (`ResearchQueue`) por
+ * uma razão de comportamento, não de organização: são **duas filas**, com
+ * concorrências diferentes e propósitos diferentes.
  *
  * | Fila | Concorrência | Por quê |
  * |---|---|---|

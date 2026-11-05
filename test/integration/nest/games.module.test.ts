@@ -9,9 +9,11 @@ import {
 	PriceFetcher,
 } from "@/application/games/ports/game-search.ports.js";
 import { PriceCache } from "@/application/games/ports/price-cache.port.js";
+import { ResearchQueue } from "@/application/games/ports/research-queue.port.js";
 import { CachedPriceFetcher } from "@/application/games/services/cached-price-fetcher.js";
 import { GameTradeImporter } from "@/application/games/ports/game-trade-importer.port.js";
 import { ResearchGamesUseCase } from "@/application/games/use-cases/research-games.use-case.js";
+import { InMemoryResearchQueue } from "@/infrastructure/background/in-memory-research-queue.js";
 import { AllKeyShopPriceFetcher } from "@/infrastructure/games/allkeyshop-price-fetcher.js";
 import { NoopPriceCache } from "@/infrastructure/games/noop-price-cache.js";
 import { RedisPriceCache } from "@/infrastructure/games/redis-price-cache.js";
@@ -116,6 +118,64 @@ describe("GamesModule", () => {
 
 				expect(cache).toBeInstanceOf(redis.RedisPriceCache);
 				expect(await cache.status()).toBe("down");
+			} finally {
+				await moduleRef.close();
+			}
+		} finally {
+			vi.unstubAllEnvs();
+			warn.mockRestore();
+		}
+	});
+
+	it("queues research in memory when QUEUE_REDIS_URL is not set", async () => {
+		// O caso da suíte e do dev sem Docker. Em produção o schema exige a URL.
+		const moduleRef = await Test.createTestingModule({
+			imports: [AppConfigModule, GamesModule],
+		}).compile();
+
+		const queue = moduleRef.get(ResearchQueue);
+		expect(queue).toBeInstanceOf(InMemoryResearchQueue);
+		expect(await queue.status()).toBe("in-memory");
+		await moduleRef.close();
+	});
+
+	it("uses the durable queue when QUEUE_REDIS_URL is set, booting and closing without Redis", async () => {
+		// Porta onde ninguém escuta. O boot não espera o Redis, e o `close` não
+		// pode ficar pendurado nas conexões que tentam reconectar — senão um
+		// deploy com o Redis da fila fora travaria o desligamento.
+		vi.stubEnv("QUEUE_REDIS_URL", "redis://127.0.0.1:1");
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			vi.resetModules();
+			const { GamesModule: FreshGamesModule } = await import(
+				"@/nest/games/games.module.js"
+			);
+			const { AppConfigModule: FreshConfigModule } = await import(
+				"@/nest/config/config.module.js"
+			);
+			const ports = await import("@/application/games/ports/research-queue.port.js");
+			const bullmq = await import("@/infrastructure/background/bullmq-research-queue.js");
+
+			const moduleRef = await Test.createTestingModule({
+				imports: [FreshConfigModule, FreshGamesModule],
+			}).compile();
+			try {
+				const queue = moduleRef.get(ports.ResearchQueue);
+
+				expect(queue).toBeInstanceOf(bullmq.BullmqResearchQueue);
+				expect(await queue.status()).toBe("down");
+				// O pedido é recusado na hora, não pendurado até o Redis voltar.
+				await expect(
+					queue.enqueue({
+						gameNames: ["Hades"],
+						criteria: {
+							popularity: { upToThreshold: 0, aboveThreshold: 0, priceThresholdEuro: 5 },
+							lookupPopularity: false,
+							minPrice: 0.5,
+							checkGamivoOffer: false,
+						},
+					}),
+				).rejects.toThrow();
 			} finally {
 				await moduleRef.close();
 			}

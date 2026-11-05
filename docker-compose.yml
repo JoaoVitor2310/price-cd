@@ -56,16 +56,22 @@ services:
       CHROME_PATH: /usr/bin/chromium
 
       # O Redis do dev, nunca o da produção: os dois serviços leem o mesmo
-      # `.env`, por isso a URL mora aqui e não lá. Se o dev usasse o Redis de
+      # `.env`, por isso as URLs moram aqui e não lá. Se o dev usasse o Redis de
       # produção, código em desenvolvimento gravaria preços no cache que a
-      # produção lê (ADR 0008).
-      REDIS_URL: redis://redis-dev:6379
+      # produção lê (ADR 0008) — e um worker de dev consumiria pedidos reais da
+      # fila (ADR 0009). Cache no banco 0, fila no banco 1, mesmo servidor.
+      REDIS_URL: redis://redis-dev:6379/0
+      QUEUE_REDIS_URL: redis://redis-dev:6379/1
 
     # Só sobe o Redis junto; não espera ele ficar pronto — o app pesquisa sem
-    # cache até a conexão sair (ADR 0008).
+    # cache até a conexão sair (ADR 0008), e recusa a pesquisa autenticada até a
+    # fila conectar (ADR 0009).
     depends_on:
       redis-dev:
         condition: service_started
+
+    # Mesmo motivo do serviço de produção — ver o comentário lá embaixo.
+    stop_grace_period: 60s
 
     volumes:
       - ./src:/app/src
@@ -134,18 +140,30 @@ services:
       # Caminho do Chromium instalado via apt na imagem. O chrome-launcher / fluxo real-browser usa isso em vez do Chrome baixado pelo Puppeteer.
       CHROME_PATH: /usr/bin/chromium
 
-      # Cache de preço (ADR 0008). Aqui, e não no `.env`, porque o dev lê o
-      # mesmo `.env` e precisa apontar para o próprio Redis.
-      REDIS_URL: redis://redis:6379
+      # Cache de preço (ADR 0008) no banco 0 e fila durável da pesquisa (ADR
+      # 0009) no banco 1 — o mesmo servidor, bancos lógicos separados para que
+      # limpar o cache (`redis-cli -n 0 FLUSHDB`) nunca toque na fila. Aqui, e
+      # não no `.env`, porque o dev lê o mesmo `.env` e precisa apontar para o
+      # próprio Redis.
+      REDIS_URL: redis://redis:6379/0
+      QUEUE_REDIS_URL: redis://redis:6379/1
 
     # O `docker compose up -d price-researcher` do deploy só sobe o que o serviço
     # declara aqui — sem isto o Redis nunca subiria. `service_started`, não
-    # `service_healthy`: o boot não espera o Redis, e o app pesquisa sem cache
-    # até a conexão sair. Como o deploy não recria o Redis, o cache sobrevive a
-    # ele (ADR 0008).
+    # `service_healthy`: o boot não espera o Redis — o app pesquisa sem cache e
+    # recusa a pesquisa autenticada até a conexão sair. Como o deploy não recria
+    # o Redis, cache e fila sobrevivem a ele.
     depends_on:
       redis:
         condition: service_started
+
+    # Quanto o Docker espera entre o SIGTERM e o SIGKILL. O default (10s) não
+    # cobre o desligamento ordenado: devolver o job à fila é rápido, mas fechar
+    # os três donos de Chromium pode levar `BROWSER_CLOSE_TIMEOUT_MS` (15s) +
+    # `BROWSER_KILL_GRACE_MS` (3s) cada. Morto antes disso, o job em andamento
+    # ainda não se perde — volta como travado no próximo boot (ADR 0009) —, mas
+    # o Chromium vira órfão, o modo de falha de 2026-08-24.
+    stop_grace_period: 60s
 
     # Memória compartilhada (/dev/shm) maior que o padrão (~64MB). Chromium usa muito shm para GPU/texturas;
     # sem isso o browser pode crashar ou ficar instável no Docker.
@@ -169,21 +187,37 @@ services:
       - sistema-estoque-cd
       - price-cd-internal
 
-  # Cache de preço do AllKeyShop (ADR 0008). O dado vive 1h e é descartável:
-  # perder tudo só deixa a próxima busca mais lenta.
+  # Um Redis só para dois papéis (ADR 0009): o cache de preço do AllKeyShop
+  # (banco 0, ADR 0008) e a fila durável da pesquisa (banco 1). A configuração é
+  # a que a FILA exige — o cache convive com ela sem custo.
   redis:
     image: redis:7.4-alpine
     container_name: price-researcher-redis
 
-    # - Sem persistência (`--save ""`, sem AOF): gravar snapshot de dado que
-    #   expira em 1h é I/O à toa. Reiniciar o Redis perde o cache, e só.
-    # - `maxmemory` + LRU: se encher, descarta o menos usado em vez de recusar
-    #   escrita. Uma entrada tem ~150 bytes; 64 MB é muito mais que o uso real.
+    # - AOF com fsync por segundo: um restart do Redis perde no máximo ~1s de
+    #   pedidos da fila. Sem RDB (`--save ""`): o AOF já é a persistência. O
+    #   cache vai junto para o disco — poucas escritas por minuto, e passa a
+    #   sobreviver ao restart do Redis.
+    # - `noeviction`: cheio, recusa escrita em vez de apagar uma chave. Para a
+    #   fila é obrigatório (a BullMQ avisa no boot se não for): um lock de job
+    #   despejado faz o job rodar de novo e duplicar a Trade. `volatile-lru`
+    #   (despejar só o que tem TTL) também não serve: os locks da BullMQ têm TTL.
+    #   O cache não precisa de despejo: toda entrada expira em 1h sozinha.
+    # - 64 MB: o cache fica em poucos MB (uma entrada tem ~150 bytes, e o
+    #   AllKeyShop pesquisa um jogo a cada poucos segundos), um job tem poucos KB
+    #   e o registro de execuções é limpo por idade (7 dias os concluídos, 30 os
+    #   falhos). Se encher, a escrita do cache falha em silêncio (fail-open) e a
+    #   pesquisa autenticada responde 500 — nada é perdido.
     command: >-
-      redis-server --save "" --appendonly no
-      --maxmemory 64mb --maxmemory-policy allkeys-lru
+      redis-server --appendonly yes --appendfsync everysec --save ""
+      --maxmemory 64mb --maxmemory-policy noeviction
 
     restart: unless-stopped
+
+    # O AOF mora no volume: sem ele, recriar o container (todo deploy que mudar
+    # este serviço) apagaria a fila.
+    volumes:
+      - redis-data:/data
 
     # Mesma rede de segurança dos serviços do app: a VPS já caiu por OOM
     # (2026-08-24) e por esgotamento de PIDs (2026-09-18). O teto de memória
@@ -196,17 +230,26 @@ services:
     networks:
       - price-cd-internal
 
-  # O Redis do dev — separado do de produção pelo mesmo motivo da `REDIS_URL`
-  # do `price-researcher-dev`. Sobe só com `--profile dev`.
+  # O Redis do dev — separado do de produção pelo mesmo motivo das URLs do
+  # `price-researcher-dev`, e com a mesma configuração do de produção. Sobe só
+  # com `--profile dev`.
   redis-dev:
     profiles: ["dev"]
     image: redis:7.4-alpine
     container_name: price-researcher-redis-dev
     command: >-
-      redis-server --save "" --appendonly no
-      --maxmemory 64mb --maxmemory-policy allkeys-lru
+      redis-server --appendonly yes --appendfsync everysec --save ""
+      --maxmemory 64mb --maxmemory-policy noeviction
+    volumes:
+      - redis-dev-data:/data
     init: true
     mem_limit: 128m
     pids_limit: 64
     networks:
       - price-cd-internal
+
+volumes:
+  # O AOF do Redis: a fila (e o cache, de carona). Um `docker compose down` não
+  # apaga; `down -v` apaga a fila junto.
+  redis-data:
+  redis-dev-data:

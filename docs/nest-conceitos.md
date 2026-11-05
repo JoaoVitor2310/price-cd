@@ -563,7 +563,7 @@ Saber o que ficou de fora, e por quê, vale tanto quanto saber o que entrou.
 | Guards para autenticação                | O contrato do modo demo exige 200 com token errado. Ver §6.                                                                                                                                  |
 | Interceptors                            | Nenhum caso hoje. Candidatos futuros em §6.                                                                                                                                                  |
 | Fastify adapter                         | O Express platform foi o que preservou paridade de comportamento durante o strangler, e nenhuma medição pede mais throughput. Trocar só com motivo medido.                                   |
-| BullMQ (`@nestjs/bullmq`)               | A fila in-process resolve hoje. Vira candidato se os itens 3 e 4 do `IMPROVEMENTS.md` exigirem sobreviver a restart — e aí o `BackgroundScheduler` já é uma porta, então troca-se o adapter. |
+| `@nestjs/bullmq`                        | A BullMQ entrou (ADR 0009), mas como adapter em `infrastructure/` atrás da porta `ResearchQueue`, não pelo módulo do Nest: os decorators de worker colocariam a fila na camada de apresentação. A porta precisou mudar — closure não serializa — e o use case não. |
 
 
 A última linha é o argumento de que a arquitetura atual estava certa: adotar Nest não obriga

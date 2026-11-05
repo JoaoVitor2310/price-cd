@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -70,10 +70,24 @@ describe("docker/start.sh", () => {
 });
 
 describe("docker/start.dev.sh", () => {
-	it("starts the dev server", () => {
+	it("starts the dev server with node itself, never through npm", () => {
+		// O npm não repassa o SIGTERM do `docker stop`: o app morreria sem os hooks
+		// de desligamento (Chromium órfão, job da fila sem voltar — ADR 0009).
 		const { output, status } = runEntrypoint("docker/start.dev.sh");
 
 		expect(status).toBe(0);
-		expect(output).toContain("RAN npm run dev");
+		expect(output).toMatch(/^RAN node /m);
+		expect(output).not.toContain("RAN npm");
+	});
+
+	it("runs exactly the `dev` script of package.json", () => {
+		// Duas cópias do mesmo comando: esta trava as duas iguais, senão `npm run
+		// dev` e o container de dev divergiriam em silêncio.
+		const pkg = JSON.parse(readFileSync("package.json", "utf8")) as {
+			scripts: { dev: string };
+		};
+		const { output } = runEntrypoint("docker/start.dev.sh");
+
+		expect(output).toContain(`RAN ${pkg.scripts.dev}`);
 	});
 });

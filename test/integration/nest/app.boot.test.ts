@@ -79,6 +79,14 @@ describe("Nest app skeleton", () => {
 		expect(response.body.cache).toBe("disabled");
 	});
 
+	it("reports the research queue state in the health, still answering 200", async () => {
+		// A suíte roda sem `QUEUE_REDIS_URL`: a fila é a em memória (ADR 0009).
+		const response = await request(app.getHttpServer()).get("/api/health");
+
+		expect(response.status).toBe(200);
+		expect(response.body.queue).toBe("in-memory");
+	});
+
 	it("declares AllExceptionsFilter through APP_FILTER, not useGlobalFilters", () => {
 		// Não dá para resolver `APP_FILTER` com `app.get()`: o Nest guarda
 		// enhancers numa lista interna, fora do contexto resolvível. Então o que

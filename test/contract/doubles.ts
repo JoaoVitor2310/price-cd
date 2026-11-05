@@ -12,7 +12,8 @@
  */
 
 import type { FoundGames } from "@/application/games/game.types.js";
-import { CONTRACT_BOOM } from "./contract-cases.js";
+import { ResearchQueueUnavailableError } from "@/application/games/ports/research-queue.port.js";
+import { CONTRACT_BOOM, CONTRACT_QUEUE_DOWN } from "./contract-cases.js";
 
 /** Um jogo plausível, com preço e popularidade acima de qualquer piso. */
 export const contractGame = (name: string, id = 1): FoundGames => ({
@@ -72,6 +73,26 @@ export const schedulerDouble = () => {
 		schedule: (task: () => Promise<void>) => {
 			scheduled.push(task);
 		},
+	};
+};
+
+/**
+ * Fila da pesquisa inerte: guarda o pedido e **não o executa**, pelo mesmo
+ * motivo do `schedulerDouble`. Responde `in-memory` no health, como a fila real
+ * da suíte (que roda sem `QUEUE_REDIS_URL`).
+ */
+export const researchQueueDouble = () => {
+	const enqueued: unknown[] = [];
+	return {
+		enqueued,
+		enqueue: async (request: { gameNames: string[] }) => {
+			// O mesmo erro do adapter real com o Redis fora (`bullmq-research-queue.ts`).
+			if (request.gameNames.includes(CONTRACT_QUEUE_DOWN)) {
+				throw new ResearchQueueUnavailableError("Redis is not connected");
+			}
+			enqueued.push(request);
+		},
+		status: async () => "in-memory" as const,
 	};
 };
 

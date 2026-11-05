@@ -13,7 +13,7 @@ import { expect } from "vitest";
  * propósito**: `/games/research` devolve a mensagem de erro em `data`,
  * `/games/search-id-steam` devolve em `error` + `details`, `/suppliers/find-new` nem tem
  * campo `success` no 500, e "Internal server error" aparece com e sem ponto
- * final. Uniformizar é o item 15 do `docs/IMPROVEMENTS.md`: uma mudança de
+ * final. Uniformizar é o item 16 do `docs/IMPROVEMENTS.md`: uma mudança de
  * contrato deliberada, num PR próprio que atualiza esta tabela junto — nunca um
  * efeito colateral de outra mudança.
  *
@@ -54,6 +54,12 @@ export const CONTRACT_SECRET = "contract-secret";
  * um jeito declarativo de provocar a falha não haveria como travar esses formatos.
  */
 export const CONTRACT_BOOM = "__contract_boom__";
+
+/**
+ * Nome de jogo que faz o dublê da fila da pesquisa recusar o pedido, como o
+ * adapter real faz com o Redis da fila fora (`doubles.ts`, ADR 0009).
+ */
+export const CONTRACT_QUEUE_DOWN = "__contract_queue_down__";
 
 const VALID_RESEARCH_BODY = {
 	gameNames: ["Hades"],
@@ -155,6 +161,23 @@ export const CONTRACT_CASES: ContractCase[] = [
 		env: { INTERNAL_SECRET: CONTRACT_SECRET },
 		expectStatus: 202,
 		expectBody: { success: true, status: "queued" },
+	},
+	{
+		route: "/api/games/research",
+		method: "post",
+		name: "queue unavailable returns 500 instead of a 202 for a request that was not stored",
+		body: {
+			...VALID_RESEARCH_BODY,
+			gameNames: [CONTRACT_QUEUE_DOWN],
+			internal_secret: CONTRACT_SECRET,
+		},
+		env: { INTERNAL_SECRET: CONTRACT_SECRET },
+		expectStatus: 500,
+		expectBody: {
+			success: false,
+			error: "Internal server error.",
+			details: "Research queue unavailable: Redis is not connected",
+		},
 	},
 	{
 		route: "/api/games/research",

@@ -140,7 +140,10 @@ describe("CachedPriceFetcher", () => {
 			game("Celeste", 2),
 		]);
 
-		expect(source.lookup).toHaveBeenCalledWith(["Celeste"]);
+		expect(source.lookup).toHaveBeenCalledWith(
+			["Celeste"],
+			expect.any(Function),
+		);
 		expect(cache.store.get(priceCacheKey("Celeste"))).toEqual(
 			priced({ bestPrice: 2, foundName: "Celeste" }),
 		);
@@ -202,7 +205,10 @@ describe("CachedPriceFetcher", () => {
 			game("crysis 2", 2),
 		]);
 
-		expect(source.lookup).toHaveBeenCalledWith(["Crysis™ 2"]);
+		expect(source.lookup).toHaveBeenCalledWith(
+			["Crysis™ 2"],
+			expect.any(Function),
+		);
 		expect(result.map((g) => [g.id, g.GamivoPrice])).toEqual([
 			[1, 7],
 			[2, 7],
@@ -254,6 +260,114 @@ describe("CachedPriceFetcher", () => {
 		expect(await build(source, cache).fetch([])).toEqual([]);
 		expect(cache.get).not.toHaveBeenCalled();
 		expect(source.lookup).not.toHaveBeenCalled();
+	});
+
+	describe("storing as the catalog answers, game by game", () => {
+		/**
+		 * Catálogo que responde pelo callback, como o AllKeyShop: cada resultado
+		 * sai assim que é pesquisado. `stopAfter` simula a busca morrendo no meio
+		 * (deploy, browser morto) depois de N jogos.
+		 */
+		const streamingSource = (
+			results: Record<string, PriceLookup>,
+			stopAfter = Number.POSITIVE_INFINITY,
+		) => ({
+			lookup: vi.fn(
+				async (
+					names: string[],
+					onResult?: (name: string, lookup: PriceLookup) => Promise<void>,
+				) => {
+					const found = new Map<string, PriceLookup>();
+					for (const [index, name] of names.entries()) {
+						if (index >= stopAfter) throw new Error("browser died");
+						const lookup = results[name];
+						if (!lookup) continue;
+						found.set(name, lookup);
+						await onResult?.(name, lookup);
+					}
+					return found;
+				},
+			),
+		});
+
+		it("stores each result as soon as the catalog reports it", async () => {
+			const cache = fakeCache();
+			const storedWhileSearching: number[] = [];
+			const source = {
+				lookup: vi.fn(
+					async (
+						names: string[],
+						onResult?: (name: string, lookup: PriceLookup) => Promise<void>,
+					) => {
+						const found = new Map<string, PriceLookup>();
+						for (const name of names) {
+							const lookup = priced({ foundName: name });
+							found.set(name, lookup);
+							await onResult?.(name, lookup);
+							storedWhileSearching.push(cache.store.size);
+						}
+						return found;
+					},
+				),
+			};
+
+			await build(source as never, cache).fetch([
+				game("Hades"),
+				game("Celeste", 2),
+				game("Portal 2", 3),
+			]);
+
+			// A cada jogo pesquisado o cache já tinha o jogo — não só no fim.
+			expect(storedWhileSearching).toEqual([1, 2, 3]);
+		});
+
+		it("keeps what was already searched when the search dies, and the retry skips it", async () => {
+			// É o que faz uma pesquisa interrompida por deploy continuar, na
+			// prática, de onde parou: o job recomeça, mas lê do cache o que já
+			// tinha preço (ADR 0009).
+			const cache = fakeCache();
+			const results = {
+				Hades: priced({ foundName: "Hades" }),
+				Celeste: { status: "not-found" } as PriceLookup,
+				"Portal 2": priced({ foundName: "Portal 2", bestPrice: 3 }),
+			};
+			const games = [game("Hades"), game("Celeste", 2), game("Portal 2", 3)];
+			vi.spyOn(console, "log").mockImplementation(() => {});
+
+			const dying = streamingSource(results, 2);
+			await expect(build(dying, cache).fetch(games)).rejects.toThrow("browser died");
+			expect([...cache.store.keys()]).toEqual([
+				priceCacheKey("Hades"),
+				priceCacheKey("Celeste"),
+			]);
+
+			const retry = streamingSource(results);
+			const result = await build(retry, cache).fetch(games);
+
+			expect(retry.lookup).toHaveBeenCalledWith(["Portal 2"], expect.any(Function));
+			expect(result.map((g) => g.name)).toEqual(["Hades", "Portal 2"]);
+		});
+
+		it("never stores a transient failure reported along the way", async () => {
+			const cache = fakeCache();
+			const source = streamingSource({ Flaky: { status: "failed" } });
+
+			await build(source, cache).fetch([game("Flaky")]);
+
+			expect(cache.set).not.toHaveBeenCalled();
+		});
+
+		it("writes each result once, not again at the end of the batch", async () => {
+			const cache = fakeCache();
+			const source = streamingSource({
+				Hades: priced(),
+				Celeste: priced({ foundName: "Celeste" }),
+			});
+
+			await build(source, cache).fetch([game("Hades"), game("Celeste", 2)]);
+
+			expect(cache.set).toHaveBeenCalledTimes(2);
+		});
 	});
 
 	it("propagates a fatal catalog error, like a dead browser", async () => {

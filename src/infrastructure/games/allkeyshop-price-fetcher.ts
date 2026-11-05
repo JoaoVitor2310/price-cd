@@ -3,6 +3,7 @@ import * as cheerio from "cheerio";
 import dotenv from "dotenv";
 import type {
 	CatalogPriceSource,
+	CatalogResultListener,
 	PriceLookup,
 } from "@/application/games/ports/game-search.ports.js";
 import type { OfferPrice } from "@/domain/games/pricing-rules.js";
@@ -223,6 +224,7 @@ export const fetchGamivoIdBySlug = async (
 const searchAllKeyShop = async (
 	gameNames: string[],
 	session: SharedBrowserSession,
+	onResult?: CatalogResultListener,
 ): Promise<Map<string, PriceLookup>> => {
 	console.log(
 		`📋 [INFO] Processing ${gameNames.length} AllKeyShop price search games`,
@@ -230,10 +232,23 @@ const searchAllKeyShop = async (
 
 	return session.enqueue(async () => {
 		const results = new Map<string, PriceLookup>();
+		// Todo resultado passa por aqui: entra no `Map` e sai na hora para quem
+		// escuta (o cache grava jogo a jogo). Quem escuta não derruba a busca.
+		const record = async (gameName: string, lookup: PriceLookup) => {
+			results.set(gameName, lookup);
+			if (!onResult) return;
+			try {
+				await onResult(gameName, lookup);
+			} catch (error) {
+				console.warn(
+					`⚠️ [ALLKEYSHOP] Result listener failed for "${gameName}":`,
+					error,
+				);
+			}
+		};
 		const notFound = (gameName: string) =>
-			results.set(gameName, { status: "not-found" });
-		const failed = (gameName: string) =>
-			results.set(gameName, { status: "failed" });
+			record(gameName, { status: "not-found" });
+		const failed = (gameName: string) => record(gameName, { status: "failed" });
 
 		const { page } = await session.get();
 
@@ -255,7 +270,7 @@ const searchAllKeyShop = async (
 					`${ALLKEYSHOP_SEARCH_URL}${searchString}${ALLKEYSHOP_SEARCH_FILTERS}`,
 				);
 				if (!browseURL) {
-					failed(gameName);
+					await failed(gameName);
 					continue;
 				}
 
@@ -271,7 +286,7 @@ const searchAllKeyShop = async (
 					console.log(
 						`⚠️ [INFO] No results found on AllKeyShop for "${gameName}". Skipping.`,
 					);
-					notFound(gameName);
+					await notFound(gameName);
 					continue;
 				}
 
@@ -283,7 +298,7 @@ const searchAllKeyShop = async (
 					console.log(
 						`⚠️ [INFO] Timeout waiting for selector for "${gameName}". Skipping to the next game.`,
 					);
-					failed(gameName);
+					await failed(gameName);
 					continue;
 				}
 
@@ -293,7 +308,7 @@ const searchAllKeyShop = async (
 				const match = matchSearchResult(gameName, searchResults);
 				if (!match) {
 					console.log(`⚠️ [INFO] Game not found. Skipping to the next game.`);
-					notFound(gameName);
+					await notFound(gameName);
 					continue;
 				}
 
@@ -305,13 +320,13 @@ const searchAllKeyShop = async (
 				try {
 					gamePageHtml = await fetchWithRetry(gamePageUrl);
 				} catch (_error) {
-					failed(gameName);
+					await failed(gameName);
 					continue;
 				}
 
 				const gamePageData = scrapGamePage(gamePageHtml);
 				if (!gamePageData) {
-					failed(gameName);
+					await failed(gameName);
 					continue;
 				}
 
@@ -320,7 +335,7 @@ const searchAllKeyShop = async (
 				const regionKey = findRegionKey(gamePageData.regions, region);
 				if (!regionKey) {
 					console.log(`⚠️ [INFO] Region not found.`);
-					notFound(gameName);
+					await notFound(gameName);
 					continue;
 				}
 
@@ -330,7 +345,7 @@ const searchAllKeyShop = async (
 				);
 				if (!editionKey) {
 					console.log(`⚠️ [INFO] Edition not found for "${gameName}".`);
-					notFound(gameName);
+					await notFound(gameName);
 					continue;
 				}
 
@@ -344,7 +359,7 @@ const searchAllKeyShop = async (
 
 				const price = bestOfferPrice(offers);
 				if (!price) {
-					notFound(gameName);
+					await notFound(gameName);
 					continue;
 				}
 
@@ -358,7 +373,7 @@ const searchAllKeyShop = async (
 					}
 				}
 
-				results.set(gameName, {
+				await record(gameName, {
 					status: "priced",
 					price: {
 						bestPrice: price,
@@ -403,7 +418,10 @@ const searchAllKeyShop = async (
 export class AllKeyShopPriceFetcher implements CatalogPriceSource {
 	constructor(private readonly session: SharedBrowserSession) {}
 
-	async lookup(gameNames: string[]): Promise<Map<string, PriceLookup>> {
-		return searchAllKeyShop(gameNames, this.session);
+	async lookup(
+		gameNames: string[],
+		onResult?: CatalogResultListener,
+	): Promise<Map<string, PriceLookup>> {
+		return searchAllKeyShop(gameNames, this.session, onResult);
 	}
 }
