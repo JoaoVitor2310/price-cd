@@ -95,13 +95,33 @@ export class CachedPriceFetcher implements PriceFetcher {
 
 		const misses = [...nameByKey].filter(([key]) => !lookups.has(key));
 		if (misses.length > 0) {
-			const fresh = await this.source.lookup(misses.map(([, name]) => name));
+			// Grava **jogo a jogo**, conforme o catálogo responde, e não no fim do
+			// lote. Uma busca de 200 jogos leva minutos; interrompida no meio
+			// (deploy, browser morto), ela deixa no cache o que já pesquisou, e a
+			// próxima execução do mesmo pedido lê dali em vez de abrir o navegador
+			// de novo — na prática, continua de onde parou (ADR 0008, ADR 0009).
+			const keyByName = new Map(misses.map(([key, name]) => [name, key]));
+			const stored = new Set<string>();
+			const storeAsFound = async (name: string, lookup: PriceLookup) => {
+				const key = keyByName.get(name);
+				if (!key || !isCacheable(lookup)) return;
+				await this.cache.set(new Map([[key, lookup]]));
+				stored.add(key);
+			};
+
+			const fresh = await this.source.lookup(
+				misses.map(([, name]) => name),
+				storeAsFound,
+			);
+
+			// O que a fonte não informou pelo callback é gravado aqui, no fim: o
+			// callback é a otimização, e isto é a garantia.
 			const toStore = new Map<string, CachedPrice>();
 			for (const [key, name] of misses) {
 				const lookup = fresh.get(name);
 				if (!lookup) continue;
 				lookups.set(key, lookup);
-				if (isCacheable(lookup)) toStore.set(key, lookup);
+				if (isCacheable(lookup) && !stored.has(key)) toStore.set(key, lookup);
 			}
 			if (toStore.size > 0) await this.cache.set(toStore);
 		}

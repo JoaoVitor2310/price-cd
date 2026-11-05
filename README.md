@@ -78,8 +78,9 @@ This allows the tool to be publicly accessible for demonstration while keeping t
 - **Inventory integration** — `HttpGameTradeImporter` implements the `GameTradeImporter` port using native `fetch` with a 15 s `AbortController` timeout, posting structured results to the inventory system over a private bearer-authenticated API
 - **Domain-level exclusion list** — `filterExcludedGames` is a pure domain function applied after the popularity filter; free-to-play games are excluded before the price fetcher is ever called
 - **Domain-level price floor** — `partitionByPrice` splits off any game whose best price is not above the floor (default €0.50); games that cheap return a few cents of profit and are not worth negotiating; every discarded game is logged with its price, so it never disappears silently between the price fetcher and the result. Applied in one place — `PriceGames` (`application/games/services/price-games.ts`), the pricing engine shared by the search endpoint, the research endpoint, the `lists` flow and supplier discovery — so no consumer repeats the rule. The `research` endpoint can override the floor per request via `minPrice` (bundles send `0`); the floor value is an argument to `partitionByPrice`, so the €0.50 default lives in one place (`MIN_PRICE_EURO`)
-- **Price cache** — the AllKeyShop price of each game is kept in Redis for 1 hour (`PRICE_CACHE_TTL_SECONDS`), keyed by normalised name + region + edition, so a game that shows up in several supplier lists is scraped once. Only the raw best price is cached — the preset's "require a Gamivo offer" cut is applied afterwards, in the domain — and only a definitive "not on AllKeyShop" is cached as a miss, never a transient failure. Fail-open: with Redis down, every read is a miss and the search carries on. See `docs/adr/0008-cache-de-preco-em-redis.md`
-- **Async background jobs** — `LimitedConcurrencyScheduler` queues list-processing jobs in-process with configurable concurrency; on completion the Trade is created in the inventory system (there is no callback to the caller)
+- **Price cache** — the AllKeyShop price of each game is kept in Redis for 1 hour (`PRICE_CACHE_TTL_SECONDS`), keyed by normalised name + region + edition, so a game that shows up in several supplier lists is scraped once. Only the raw best price is cached — the preset's "require a Gamivo offer" cut is applied afterwards, in the domain — and only a definitive "not on AllKeyShop" is cached as a miss, never a transient failure. Written game by game as AllKeyShop answers, not at the end of the batch: a research interrupted by a deploy resumes from the cache, re-scraping only what was missing. Fail-open: with Redis down, every read is a miss and the search carries on. See `docs/adr/0008-cache-de-preco-em-redis.md`
+- **Durable research queue** — authenticated research is a BullMQ job on the same Redis as the price cache, in database 1 (the cache uses 0), with the server configured as the queue needs it (AOF on, `noeviction`), stored before the `202` is sent. On `SIGTERM` the job in progress goes back to the queue without spending an attempt and runs again on the next boot; a process that dies outright has its job recovered as stalled. Finished jobs are kept as an execution log (7 days completed, 30 days failed). See `docs/adr/0009-fila-duravel-da-pesquisa.md`
+- **Async background jobs** — the `lists` and supplier-discovery flows still use `LimitedConcurrencyScheduler`, an in-process queue with configurable concurrency; on completion the Trade is created in the inventory system (there is no callback to the caller)
 - **Game name normalisation** — `clear-string.ts` normalises roman numerals, K-suffixed numbers, edition keywords, DLC tags, regional tags and special characters to maximise match accuracy across different naming conventions
 - **Full test suite** — unit, integration and contract tests with zero real network or browser calls; integration layer tests the full HTTP pipeline via supertest with vitest mocks at the infrastructure boundary
 - **CI/CD** — GitHub Actions runs the full test suite on every pull request; merging to `main` builds the Docker image in CI, publishes it to GHCR (`ghcr.io/joaovitor2310/price-cd`) and triggers a deploy over SSH that only pulls and restarts the container — the VPS never compiles anything
@@ -97,6 +98,7 @@ This allows the tool to be publicly accessible for demonstration while keeping t
 | HTTP Client | Native fetch (Node.js 22) |
 | HTML Parsing | Cheerio |
 | Price cache | Redis 7 server (`redis:7.4-alpine`) + `redis` 6 Node client (node-redis; its version line is independent of the server's) — optional, see `REDIS_URL` |
+| Research queue | BullMQ 5 + `ioredis`, on the same Redis 7 as the cache (database 1, AOF) — required in production, see `QUEUE_REDIS_URL` |
 | Testing | Vitest + Supertest |
 | Linting / Formatting | Biome |
 | Containerisation | Docker + Xvfb (headless Chromium in Linux containers) |
@@ -124,7 +126,7 @@ src/
 │   ├── games/
 │   │   ├── use-cases/ #   ResearchGamesUseCase, EnqueueResearchGamesUseCase
 │   │   ├── services/  #   PriceGames — the pricing engine shared by every flow; CachedPriceFetcher
-│   │   └── ports/     #   PopularityFetcher, PriceFetcher, CatalogPriceSource, PriceCache, GameTradeImporter
+│   │   └── ports/     #   PopularityFetcher, PriceFetcher, CatalogPriceSource, PriceCache, GameTradeImporter, ResearchQueue
 │   ├── lists/         #   RunListsUseCase, EnqueueRunListsUseCase
 │   ├── suppliers/     #   FindNewSuppliersUseCase
 │   └── bump/          #   BumpTopicsUseCase
@@ -134,7 +136,7 @@ src/
 │   └── suppliers/     #   HaveListing parsing
 ├── infrastructure/    # Concrete adapters implementing port interfaces
 │   ├── games/         #   AllKeyShopPriceFetcher, RedisPriceCache, HttpGameTradeImporter
-│   ├── background/    #   LimitedConcurrencyScheduler
+│   ├── background/    #   BullmqResearchQueue (+ its job payload, BullMQ clients, ioredis connections), InMemoryResearchQueue, LimitedConcurrencyScheduler
 │   ├── browser/       #   SharedBrowserSession, SuppliersBrowserSession
 │   ├── bump/          #   PuppeteerSteamTradesBumper
 │   ├── lists/         #   FetchListTopic (Puppeteer), FormatListResult
@@ -173,16 +175,36 @@ npm run dev
 docker compose up price-researcher-dev
 ```
 
-This also starts `redis-dev`, the development price cache. Production uses its own `redis` service; the two never share a cache. Outside Docker, leave `REDIS_URL` empty to run without a cache.
+The dev image installs `node_modules` at build time (only `src/` and `public/` are mounted), so after a dependency change rebuild it — otherwise the app crashes at boot with `Cannot find package`:
+```bash
+docker compose --profile dev up -d --build price-researcher-dev
+```
+
+This also starts `redis-dev`, the development Redis: price cache in database 0, research queue in database 1. Production uses its own `redis` service, laid out the same way; dev and production never share one. Outside Docker, leave `REDIS_URL` empty to run without a cache and `QUEUE_REDIS_URL` empty for an in-memory research queue (not allowed in production: the app refuses to boot without it).
 
 **Flush the price cache** — after a deploy that changes the search logic (matching, edition, region), cached prices from the old logic are served for up to 1 hour. To see the new results right away:
 ```bash
-docker compose exec redis redis-cli FLUSHDB
+docker compose exec redis redis-cli -n 0 FLUSHDB
 ```
+`-n 0` is the cache database, which is also `redis-cli`'s default — written out so nobody copies the line with `-n 1`. The research queue lives in database 1 of the same Redis: `FLUSHALL`, or `FLUSHDB` with `-n 1`, would delete it.
+
+**Inspect the research queue** — jobs waiting, running, finished and failed (with the reason), kept 7 days when completed and 30 days when failed:
+```bash
+docker compose exec redis redis-cli -n 1 KEYS 'bull:research:*'
+```
+Never flush database 1: unlike the cache, what is there is a request someone already got a `202` for.
 
 **Run tests:**
 ```bash
 npm test
+```
+
+The real-Redis queue tests are opt-in (CI has no Redis). Run them against a throwaway Redis — they `FLUSHDB` the database in the URL:
+```bash
+docker run -d --rm --name redis-queue-test -p 6390:6379 redis:7.4-alpine
+```
+```bash
+QUEUE_REDIS_TEST_URL=redis://127.0.0.1:6390/15 npx vitest run test/integration/queue
 ```
 
 ---
@@ -241,7 +263,12 @@ Runs synchronously and is capped at the first 10 games. Nothing is sent to the i
 ```json
 { "success": true, "status": "queued" }
 ```
-Returns as soon as the work is queued. The full list is processed in the background and the Trade is created in the inventory system when it finishes. A failure during background processing is currently only logged — see `docs/IMPROVEMENTS.md`.
+Returns once the request is stored in the durable queue (ADR 0009). The full list is processed in the background and the Trade is created in the inventory system when it finishes. A restart or deploy in the middle does not lose it: it runs again from the start on the next boot, reading from the price cache what was already priced before the interruption (within the 1-hour TTL), so only the rest goes to AllKeyShop. A failure during background processing is recorded in the job (kept 30 days) but nobody is notified yet — see `docs/IMPROVEMENTS.md`.
+
+**Authenticated, queue unavailable** — `500`, when the queue Redis is configured but not answering. The request is refused instead of accepted without being stored; `GET /api/health` shows `queue: "down"`. The body is the route's legacy error format:
+```json
+{ "success": false, "error": "Internal server error.", "details": "Research queue unavailable: Redis is not connected" }
+```
 
 **Authenticated, `delivery: "respond"`** — `200`, valid token:
 ```json
@@ -301,9 +328,11 @@ Returns as soon as the scan is queued — scanning up to 100 SteamTrades pages p
 
 **Response** — `200`:
 ```json
-{ "status": "ok", "app": "nest", "env": "production", "cache": "up" }
+{ "status": "ok", "app": "nest", "env": "production", "cache": "up", "queue": "up" }
 ```
 `cache` is the price cache state: `up`, `down` (Redis configured but not answering) or `disabled` (no `REDIS_URL`). The response stays `200` when the cache is down — the app still searches, only slower — so a container healthcheck never restarts the app because of Redis. An external monitor that wants to know about a Redis outage should check this field.
+
+`queue` is the research queue state: `up`, `down` (queue Redis configured but not answering — authenticated research is refused with `500`) or `in-memory` (no `QUEUE_REDIS_URL`; only possible outside production). It does not change the `200` either: demo, `respond`, `lists` and supplier discovery keep working.
 
 </details>
 

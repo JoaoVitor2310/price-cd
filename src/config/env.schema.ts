@@ -98,6 +98,22 @@ const optionalNonEmpty = (label: string) =>
 		.min(1, { message: `${label} cannot be empty` })
 		.optional();
 
+/** URL de Redis opcional: vazio conta como ausente. */
+const optionalRedisUrl = (label: string) =>
+	z
+		.string()
+		.trim()
+		.transform((value) => value || undefined)
+		.pipe(
+			z
+				.url({
+					protocol: /^rediss?$/,
+					message: `${label} must be a redis:// or rediss:// URL`,
+				})
+				.optional(),
+		)
+		.optional();
+
 /** `"true"` liga; qualquer outra coisa (inclusive ausente) desliga. */
 const optionalFlag = z
 	.string()
@@ -159,21 +175,22 @@ const baseEnvSchema = z.object({
 	 * No Docker vem do `docker-compose.yml`, não do `.env`: produção e dev leem o
 	 * mesmo `.env`, e cada um precisa apontar para o seu próprio Redis.
 	 */
-	REDIS_URL: z
-		.string()
-		.trim()
-		.transform((value) => value || undefined)
-		.pipe(
-			z
-				.url({
-					protocol: /^rediss?$/,
-					message: "REDIS_URL must be a redis:// or rediss:// URL",
-				})
-				.optional(),
-		)
-		.optional(),
+	REDIS_URL: optionalRedisUrl("REDIS_URL"),
 	/** Por quanto tempo um preço (ou um "não encontrado") vale no cache. */
 	PRICE_CACHE_TTL_SECONDS: positiveIntWithDefault(3600),
+
+	// ── Fila da pesquisa (ADR 0009) ───────────────────────────────────────────
+	/**
+	 * O Redis da fila durável de `POST /api/games/research`. No Docker é o
+	 * **mesmo servidor** do cache, noutro banco lógico (`/1`; o cache fica no `/0`),
+	 * configurado como a fila exige — AOF e `noeviction`. São duas variáveis, e não
+	 * uma, porque são dois papéis: separá-los de novo é trocar uma URL.
+	 *
+	 * Obrigatória em produção: sem ela a fila é em memória e um deploy perde os
+	 * pedidos já confirmados com `202`. Em dev e teste, ausente é fila em memória.
+	 * No Docker vem do `docker-compose.yml`, pelo mesmo motivo da `REDIS_URL`.
+	 */
+	QUEUE_REDIS_URL: optionalRedisUrl("QUEUE_REDIS_URL"),
 
 	// ── SteamTrades ───────────────────────────────────────────────────────────
 	STEAM_ID: optionalNonEmpty("STEAM_ID"),
@@ -234,6 +251,8 @@ const REQUIRED_IN_PRODUCTION = [
 	"STEAMTRADES_SESSION",
 	"SISTEMA_ESTOQUE_URL",
 	"EXTERNAL_SECRET",
+	// Sem ela o `202 queued` da pesquisa não sobrevive a um deploy (ADR 0009).
+	"QUEUE_REDIS_URL",
 ] as const;
 
 export const envSchema = baseEnvSchema.superRefine((env, ctx) => {

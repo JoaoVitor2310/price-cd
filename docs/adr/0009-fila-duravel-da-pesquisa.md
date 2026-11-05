@@ -1,0 +1,96 @@
+# A fila da pesquisa autenticada é durável, em BullMQ sobre o Redis do cache
+
+`POST /api/games/research` autenticado responde `202 queued` e pesquisa em background. A fila era um array em memória (`LimitedConcurrencyScheduler`): um deploy ou um restart com pedidos na fila os descartava em silêncio, depois de quem pediu já ter recebido a confirmação. Para o chatbot, que espera o resultado por webhook (`docs/INTEGRACAO_CHATBOT.md`), um pedido perdido é um Supplier esperando até o alarme de 6 horas disparar.
+
+**Decisão:** a pesquisa autenticada passa a ser um job **BullMQ** no **mesmo Redis do cache**, noutro banco lógico, com o servidor reconfigurado para o que a fila exige: AOF ligado e `noeviction`. O pedido é guardado antes do `202`; um pedido interrompido por um desligamento volta para a fila e roda inteiro quando o serviço sobe.
+
+## A porta recebe dado, não uma função
+
+A `BackgroundScheduler` recebe uma closure (`schedule(task: () => Promise<void>)`), e uma closure não sai do processo. A pesquisa ganhou uma porta própria, `ResearchQueue.enqueue(request)`, que recebe o `ResearchGamesRequest`, já só dado (critérios resolvidos, sem dependência). O worker que consome a fila chama o mesmo `ResearchGamesRunner` de antes. O use case de pesquisa não sabe que a fila existe.
+
+`lists` e `suppliers` continuam na `BackgroundScheduler` em memória: o pedido do chatbot é só sobre a pesquisa, e migrá-los é outro PR (`docs/IMPROVEMENTS.md`).
+
+## Um Redis só, com a configuração da fila
+
+O cache (ADR 0008) rodava sem persistência e com `allkeys-lru`. Para a fila, as duas escolhas perdem pedidos: no restart, e por despejo de memória. O servidor passa a ter a configuração da fila: `--appendonly yes --appendfsync everysec` (um restart do Redis perde no máximo ~1s), `noeviction` (cheio, recusa escrita em vez de apagar uma chave) e um volume nomeado para o AOF. O cache fica no banco `0`, a fila no `1`.
+
+O cache convive com isso sem custo. Ele **não precisa de despejo para caber**: toda entrada já é gravada com TTL de 1h e expira sozinha, e o AllKeyShop pesquisa um jogo a cada poucos segundos, então o cache fica em poucos milhares de chaves de ~150 bytes (poucos MB, contra `maxmemory 64mb`). Ir para o disco são poucas escritas por minuto, e o cache passa a sobreviver ao restart do Redis.
+
+`volatile-lru` (despejar só chave com TTL, que pouparia a fila) **não** serve: os locks dos jobs da BullMQ têm TTL, e um lock despejado faz o job parecer travado e rodar de novo — Trade duplicada. É por isso que a BullMQ exige `noeviction` e avisa no boot.
+
+Se o Redis encher mesmo assim, nada se perde: a escrita do cache falha em silêncio (o cache é fail-open) e a pesquisa autenticada responde 500. O dev tem o próprio Redis, com a mesma configuração: um worker de dev na fila de produção consumiria pedidos reais.
+
+**Alternativa considerada: um Redis para cada papel.** Foi a primeira versão deste ADR — isolamento total de memória e nenhum risco de um `FLUSHDB` no banco errado apagar a fila. Descartada por custar um container e um volume a mais para isolar um cache que, medido, ocupa poucos MB. O risco operacional que sobra é o flush: o do cache é `redis-cli -n 0 FLUSHDB` (o `0` é o default do `redis-cli`, então o `FLUSHDB` de antes continua seguro), nunca `FLUSHALL` nem `FLUSHDB` com `-n 1`. As duas variáveis (`REDIS_URL` e `QUEUE_REDIS_URL`) continuam separadas, então voltar a dois servidores é trocar uma URL.
+
+## Sem Redis da fila: memória fora de produção, boot recusado em produção
+
+O cache é fail-open, porque sem ele nada fica errado, só mais lento. A fila não pode seguir a mesma regra: em memória, o `202` volta a ser uma promessa que um deploy quebra, e é exatamente o que este ADR resolve. Por isso `QUEUE_REDIS_URL` é **obrigatória em produção** (o schema do ambiente recusa o boot sem ela). Em dev e teste, ausente é a fila em memória de antes, para mexer numa rota sem subir Redis.
+
+Com a URL configurada e o Redis fora do ar, o pedido é **recusado com 500** na hora, e o `GET /api/health` mostra `queue: "down"`, ainda com status 200: demo, `respond`, `lists` e a Descoberta continuam funcionando. Recusar é melhor que aceitar sem guardar. Um detalhe medido: o `add` da BullMQ **espera** a conexão ficar pronta mesmo com a fila offline do ioredis desligada, e a requisição ficaria pendurada até o Redis voltar. O adapter confere o estado da conexão antes de chamar o `add`, e põe um teto de 5s nele.
+
+## Parada ordenada: o job em andamento volta para a fila
+
+Uma pesquisa leva minutos, e o Docker espera `stop_grace_period` (agora 60s) entre o SIGTERM e o SIGKILL. O `worker.close()` da BullMQ **espera o job terminar**; não serve. O que o adapter faz:
+
+1. No `beforeApplicationShutdown`, que o Nest roda em todos os providers antes de qualquer `onApplicationShutdown` (onde o `BrowserShutdown` fecha o Chromium), o job ativo é devolvido com `moveToDelayed(agora)`. Ele volta para a fila **sem consumir tentativa**.
+2. O worker fecha com `close(true)`, sem esperar o processador.
+3. O processador segue até o browser fechar e falha. Durante o desligamento, essa falha vira `DelayedError`, que diz à BullMQ para não marcar o job como falho.
+
+Se a devolução falhar (Redis fora no desligamento) ou o processo morrer sem desligar (OOM, SIGKILL), o lock do job expira e o próximo worker o recupera como *stalled*. É mais lento (até ~1 minuto depois do boot) e chega ao mesmo resultado. `maxStalledCount: 2`: um job que derruba o processo duas vezes falha, em vez de entrar em loop.
+
+## Sem nova tentativa automática
+
+`attempts` fica em 1. Repetir uma pesquisa que falhou depois de chamar o Sistema Estoque pode criar uma segunda Trade, e o Estoque ainda não tem idempotência (item 2 do backlog dele). A interrupção por deploy não conta como tentativa (passo 1 acima). Quando o `request_uuid` virar chave de idempotência no Estoque, retry passa a ser seguro e pode ser ligado.
+
+**Janela conhecida:** se o SIGTERM chega enquanto a chamada ao Estoque está em voo e ela termina com sucesso depois de o job ter sido devolvido, o job roda de novo e cria outra Trade. O adapter loga um aviso quando isso acontece. A mesma idempotência fecha essa janela.
+
+## O que a retomada reaproveita
+
+O job volta **inteiro**: não há marcação de progresso dentro dele. O que evita refazer o trabalho é o cache de preço, gravado jogo a jogo (ADR 0008). Na execução seguinte do mesmo pedido:
+
+- **SteamCharts:** consultado de novo para todos os jogos. É `fetch` em lotes paralelos, sem navegador, e não é cacheado.
+- **AllKeyShop:** o que já tinha resultado definitivo (preço ou "não tem") vem do cache, se a retomada acontecer dentro do TTL de 1h. O navegador só abre para o que faltava e para o que tinha falhado de forma transitória. Na prática, continua de onde parou.
+- **Trade:** só é criada no fim, então a retomada nunca deixa Trade pela metade.
+
+Marcar o progresso no job (`job.updateProgress` com os jogos já pesquisados) foi descartado: duplicaria o cache, só serviria à pesquisa, e o cache já beneficia qualquer fluxo e qualquer pedido que repita o jogo.
+
+## Onde cada parte mora
+
+Tudo em `infrastructure/background/` — a Application só conhece a porta `ResearchQueue` e o tipo `ResearchGamesRequest` —, um arquivo por motivo de mudança:
+
+- `bullmq-research-queue.ts`: o comportamento da fila (enfileirar, consumir, devolver no desligamento, estado para o health).
+- `research-job-payload.ts`: o formato **persistido** do job. Não fica em `src/schemas/`, que é o contrato HTTP: este é o formato de armazenamento, lido pelo worker.
+- `bullmq-clients.ts`: a visão estreita da BullMQ que os testes substituem por dublês.
+- `bullmq-connections.ts`: as conexões ioredis e a reconexão com teto.
+- `src/lib/with-timeout.ts`: o teto de tempo de uma promessa, que o Node não tem pronto (`AbortSignal.timeout()` só serve a quem aceita `signal`).
+
+`bullmq-clients.ts` e `bullmq-connections.ts` não falam de pesquisa: são o que as filas de `lists` e `suppliers` vão reaproveitar.
+
+## Registro das execuções
+
+Jobs concluídos ficam 7 dias e falhos 30 dias no Redis, com o motivo da falha (`failedReason`). A retenção é por idade, não por contagem, para que uma rajada de pedidos não apague o histórico. Consultar é com `redis-cli` ou com qualquer painel de BullMQ apontado para o Redis da fila. Ainda não há painel no price-cd: é o item 10 do `docs/IMPROVEMENTS.md` (Bull Board, somente leitura — um *retry* pelo painel duplicaria a Trade).
+
+## Por que BullMQ 5 e não 6
+
+A 6 saiu em julho de 2026 e passou de 40 patches em três meses. No build ESM dela, passar opções de conexão depende de carregar o `ioredis` com `require`, que não existe em ESM. Só funcionaria entregando um cliente pronto, pelo caminho de adaptação de clientes, que é justamente o mais novo da biblioteca. A 5.81 é a linha madura, com o `ioredis` como dependência direta. A migração para a 6 fica para quando ela estabilizar; o Dependabot vai propor.
+
+## Por que não as alternativas
+
+- **RabbitMQ:** mais um broker para operar, para um processo só que é produtor e consumidor ao mesmo tempo. Reavaliar se outro sistema passar a publicar pesquisas direto na fila.
+- **Fila no Sistema Estoque (tabela + polling):** o Estoque tem banco, mas a fila guarda o pedido do price-cd, critérios de pesquisa incluídos. Seria detalhe de execução do price-cd vazando para o sistema principal.
+- **Persistir a fila em memória num arquivo:** reinventaria lock, retry e recuperação de job travado.
+- **`@nestjs/bullmq`:** acopla o worker a decorators do Nest. Aqui o adapter vive em `infrastructure/` e implementa uma porta da Application, como o resto.
+
+## Revê o ADR 0001 num ponto
+
+O ADR 0008 já permitiu ao price-cd guardar dado derivado e descartável. Um job da fila **não** é descartável, mas também não é estado de negócio: é o pedido em trânsito, que deixa de existir quando a pesquisa termina (o histórico é apagado por idade). O que foi decidido e o que foi ofertado continuam sendo do Sistema Estoque.
+
+## Consequences
+
+- O Redis do cache muda de configuração (AOF, `noeviction`) e ganha um volume (`redis-data`; `redis-dev-data` no dev). Um `docker compose down -v` apaga a fila. O primeiro deploy recria o container do Redis e o cache começa vazio uma vez.
+- Limpar o cache continua sendo `FLUSHDB` no banco 0 (o default do `redis-cli`; o README escreve `-n 0` explícito). O que apaga a fila é `FLUSHALL`, ou `FLUSHDB` com `-n 1`.
+- O `/api/health` ganha o campo `queue: "up" | "down" | "in-memory"`.
+- Sem `QUEUE_REDIS_URL` em produção, o app não sobe. O `docker-compose.yml` já a define.
+- `stop_grace_period: 60s` nos dois serviços do app.
+- O container de dev sobe o app com `node` direto, não `npm run dev`: o npm não repassa o SIGTERM do `docker stop` (medido: o app morria em 0,2s, sem rodar os hooks).
+- A falha de uma execução continua sem avisar quem pediu; agora ao menos fica registrada no job. O aviso é o webhook (PR 2 de `docs/INTEGRACAO_CHATBOT.md`).

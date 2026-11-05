@@ -12,7 +12,9 @@ import {
 } from "@/application/lists/ports/list-run.ports.js";
 import { RunListsUseCase } from "@/application/lists/use-cases/run-lists.use-case.js";
 import { AppConfigModule } from "@/nest/config/config.module.js";
-import { RESEARCH_SCHEDULER } from "@/nest/games/games.tokens.js";
+import { ResearchQueue } from "@/application/games/ports/research-queue.port.js";
+import { resolveSearchCriteria } from "@/domain/games/search-presets.js";
+import { RESEARCH_RUNNER } from "@/nest/games/games.tokens.js";
 import { ListsModule } from "@/nest/lists/lists.module.js";
 import {
 	LISTS_SCHEDULER,
@@ -88,19 +90,34 @@ describe("ListsModule", () => {
 	});
 
 	describe("the two queues", () => {
-		it("gives lists and research different scheduler instances", async () => {
-			// Sem override: é o wiring real que está sob teste.
+		it("never runs a research on the lists scheduler", async () => {
+			// O wiring real, com só as pontas trocadas: o scheduler de listas vira
+			// um espião e o runner da pesquisa um dublê (nada de scraping). A
+			// suíte roda sem `QUEUE_REDIS_URL`, então a pesquisa usa a fila em
+			// memória — que também anda sobre um scheduler, e ele não pode ser o
+			// de listas.
+			const listsScheduler = { schedule: vi.fn() };
+			const researchRunner = { run: vi.fn().mockResolvedValue(undefined) };
 			const moduleRef = await Test.createTestingModule({
 				imports: [AppConfigModule, ListsModule],
-			}).compile();
+			})
+				.overrideProvider(LISTS_SCHEDULER)
+				.useValue(listsScheduler)
+				.overrideProvider(RESEARCH_RUNNER)
+				.useValue(researchRunner)
+				.compile();
 
-			const listsQueue = moduleRef.get(LISTS_SCHEDULER);
-			const researchQueue = moduleRef.get(RESEARCH_SCHEDULER, { strict: false });
+			const researchQueue = moduleRef.get(ResearchQueue, { strict: false });
+			await researchQueue.enqueue({
+				gameNames: ["Hades"],
+				criteria: resolveSearchCriteria("default", {}),
+			});
+			await vi.waitFor(() => expect(researchRunner.run).toHaveBeenCalled());
 
-			// Mesma instância significaria uma execução longa de listas segurando
+			// Mesmo scheduler significaria uma execução longa de listas segurando
 			// a pesquisa manual de alguém que está esperando na tela — sem erro
 			// nenhum aparecer.
-			expect(listsQueue).not.toBe(researchQueue);
+			expect(listsScheduler.schedule).not.toHaveBeenCalled();
 			await moduleRef.close();
 		});
 	});

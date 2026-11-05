@@ -2,6 +2,7 @@ import { Controller, Get } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 // Import de VALOR: a classe abstrata é o token de injeção (ADR 0004).
 import { PriceCache } from "@/application/games/ports/price-cache.port.js";
+import { ResearchQueue } from "@/application/games/ports/research-queue.port.js";
 import type { Env } from "@/config/env.schema.js";
 
 /**
@@ -16,12 +17,18 @@ import type { Env } from "@/config/env.schema.js";
  * `200` com o cache fora: liveness não depende de dependência opcional, senão um
  * healthcheck reiniciaria o app por causa do Redis. Quem quer ser avisado da
  * queda olha o campo — é o alvo do monitor externo (`docs/IMPROVEMENTS.md`).
+ *
+ * `queue` é o estado da fila da pesquisa (ADR 0009): `up`, `down` (Redis da fila
+ * fora — a pesquisa autenticada é recusada com 500) ou `in-memory` (sem
+ * `QUEUE_REDIS_URL`, só fora de produção). Também não muda o `200`, pelo mesmo
+ * motivo: demo, `respond`, `lists` e a Descoberta continuam funcionando.
  */
 @Controller("health")
 export class HealthController {
 	constructor(
 		private readonly config: ConfigService<Env, true>,
 		private readonly priceCache: PriceCache,
+		private readonly researchQueue: ResearchQueue,
 	) {}
 
 	@Get()
@@ -31,6 +38,7 @@ export class HealthController {
 			app: "nest",
 			env: this.config.get("NODE_ENV", { infer: true }),
 			cache: await this.priceCache.status(),
+			queue: await this.researchQueue.status(),
 		};
 	}
 }

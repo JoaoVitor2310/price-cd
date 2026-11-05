@@ -71,7 +71,21 @@ export type PriceLookup =
  * Separada do `PriceFetcher` porque o cache precisa distinguir "não tem" de "não
  * consegui perguntar", e o `PriceGames` não precisa saber de nenhum dos dois.
  * Erro fatal (browser morto) continua sendo lançado, como antes.
+ *
+ * `onResult` é chamado **a cada jogo**, assim que o resultado dele sai, e
+ * aguardado antes do próximo. Existe para o cache gravar conforme a busca anda:
+ * uma busca interrompida (deploy, browser morto) deixa no cache tudo o que já
+ * tinha pesquisado, e a retomada lê dali em vez de pesquisar de novo. Uma falha
+ * do `onResult` não interrompe a busca. O `Map` devolvido continua completo.
  */
+export type CatalogResultListener = (
+	gameName: string,
+	lookup: PriceLookup,
+) => Promise<void>;
+
 export abstract class CatalogPriceSource {
-	abstract lookup(gameNames: string[]): Promise<Map<string, PriceLookup>>;
+	abstract lookup(
+		gameNames: string[],
+		onResult?: CatalogResultListener,
+	): Promise<Map<string, PriceLookup>>;
 }

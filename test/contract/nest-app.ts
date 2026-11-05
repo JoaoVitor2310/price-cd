@@ -4,16 +4,17 @@ import {
 	PopularityFetcher,
 	PriceFetcher,
 } from "@/application/games/ports/game-search.ports.js";
+import { ResearchQueue } from "@/application/games/ports/research-queue.port.js";
 import { ListTopicFetcherFactory } from "@/application/lists/ports/list-run.ports.js";
 import { AppModule } from "@/nest/app.module.js";
 import { configureNestApp } from "@/nest/configure-app.js";
-import { RESEARCH_SCHEDULER } from "@/nest/games/games.tokens.js";
 import { LISTS_SCHEDULER } from "@/nest/lists/lists.tokens.js";
 import { SUPPLIERS_SCHEDULER } from "@/nest/suppliers/suppliers.tokens.js";
 import {
 	listTopicFetcherDouble,
 	popularityFetcherDouble,
 	priceFetcherDouble,
+	researchQueueDouble,
 	schedulerDouble,
 } from "./doubles.js";
 
@@ -60,8 +61,8 @@ export async function createContractNestApp(): Promise<NestExpressApplication> {
 		// e executar a tarefa arrastaria scraping real para dentro do teste.
 		.overrideProvider(LISTS_SCHEDULER)
 		.useValue(schedulerDouble())
-		.overrideProvider(RESEARCH_SCHEDULER)
-		.useValue(schedulerDouble())
+		.overrideProvider(ResearchQueue)
+		.useValue(researchQueueDouble())
 		.overrideProvider(SUPPLIERS_SCHEDULER)
 		.useValue(schedulerDouble())
 		.compile();

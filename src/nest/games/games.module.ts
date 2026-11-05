@@ -11,12 +11,14 @@ import type {
 	ResearchGamesRunner,
 } from "@/application/games/ports/research-games-runner.port.js";
 import { PriceCache } from "@/application/games/ports/price-cache.port.js";
+import { ResearchQueue } from "@/application/games/ports/research-queue.port.js";
 import { CachedPriceFetcher } from "@/application/games/services/cached-price-fetcher.js";
 import { PriceGames } from "@/application/games/services/price-games.js";
 import { EnqueueResearchGamesUseCase } from "@/application/games/use-cases/enqueue-research-games.use-case.js";
 import { ResearchGamesUseCase } from "@/application/games/use-cases/research-games.use-case.js";
-import type { BackgroundScheduler } from "@/application/shared/ports/background-scheduler.port.js";
 import type { Env } from "@/config/env.schema.js";
+import { createBullmqResearchQueue } from "@/infrastructure/background/bullmq-research-queue.js";
+import { InMemoryResearchQueue } from "@/infrastructure/background/in-memory-research-queue.js";
 import { LimitedConcurrencyScheduler } from "@/infrastructure/background/limited-concurrency.scheduler.js";
 import { AllKeyShopPriceFetcher } from "@/infrastructure/games/allkeyshop-price-fetcher.js";
 import { HttpGameTradeImporter } from "@/infrastructure/games/http-game-trade-importer.js";
@@ -26,10 +28,7 @@ import { createRedisPriceCache } from "@/infrastructure/games/redis-price-cache.
 import { SteamChartsPopularityFetcher } from "@/infrastructure/games/steam-charts-popularity-fetcher.js";
 import { BrowserModule } from "@/nest/browser/browser.module.js";
 import { GamesController } from "@/nest/games/games.controller.js";
-import {
-	RESEARCH_RUNNER,
-	RESEARCH_SCHEDULER,
-} from "@/nest/games/games.tokens.js";
+import { RESEARCH_RUNNER } from "@/nest/games/games.tokens.js";
 
 /**
  * O wiring das rotas de `games` — o que `src/services/games/` fazia à mão.
@@ -139,21 +138,6 @@ import {
 		},
 
 		/**
-		 * A fila da pesquisa manual. Singleton (escopo default) **de propósito**:
-		 * é estado compartilhado — o limite de concorrência 1 só significa algo se
-		 * todas as requisições passarem pela mesma instância. Declarar este
-		 * provider em dois módulos criaria duas filas de 1, ou seja, concorrência
-		 * 2 sem ninguém perceber (`docs/nest-conceitos.md` §4).
-		 *
-		 * Concorrência fixa em 1, não configurável: o scraping do AllKeyShop já é
-		 * serializado pelo browser compartilhado.
-		 */
-		{
-			provide: RESEARCH_SCHEDULER,
-			useValue: new LimitedConcurrencyScheduler(1),
-		},
-
-		/**
 		 * O que a fila executa. É só composição — nenhuma regra de negócio mora
 		 * aqui, só a tradução "rodar a pesquisa completa e criar a Trade".
 		 */
@@ -166,13 +150,50 @@ import {
 			}),
 			inject: [ResearchGamesUseCase],
 		},
+
+		/**
+		 * A fila da pesquisa autenticada (ADR 0009). Com `QUEUE_REDIS_URL`, durável
+		 * (BullMQ); sem ela — só fora de produção, o schema a exige em produção —
+		 * a fila em memória de antes.
+		 *
+		 * Singleton (escopo default) **de propósito**: é estado compartilhado — a
+		 * concorrência 1 só significa algo se todas as requisições passarem pela
+		 * mesma instância, e com BullMQ uma segunda instância seria um segundo
+		 * worker. Declarar este provider em dois módulos daria concorrência 2 sem
+		 * ninguém perceber (`docs/nest-conceitos.md` §4).
+		 *
+		 * Concorrência fixa em 1, não configurável: o scraping do AllKeyShop já é
+		 * serializado pelo browser compartilhado.
+		 *
+		 * O adapter BullMQ tem os hooks de ciclo de vida: começa a consumir no
+		 * `onApplicationBootstrap` e para no `beforeApplicationShutdown`, antes de
+		 * o `BrowserShutdown` fechar o Chromium.
+		 */
+		{
+			provide: ResearchQueue,
+			useFactory: (
+				config: ConfigService<Env, true>,
+				runner: ResearchGamesRunner,
+			): ResearchQueue => {
+				const url = config.get("QUEUE_REDIS_URL", { infer: true });
+				if (!url) {
+					console.log(
+						"📥 [QUEUE] QUEUE_REDIS_URL not set — research queue in memory; a restart drops queued requests.",
+					);
+					return new InMemoryResearchQueue(
+						new LimitedConcurrencyScheduler(1),
+						runner,
+					);
+				}
+				return createBullmqResearchQueue(url, runner);
+			},
+			inject: [ConfigService, RESEARCH_RUNNER],
+		},
 		{
 			provide: EnqueueResearchGamesUseCase,
-			useFactory: (
-				scheduler: BackgroundScheduler,
-				runner: ResearchGamesRunner,
-			) => new EnqueueResearchGamesUseCase(scheduler, runner),
-			inject: [RESEARCH_SCHEDULER, RESEARCH_RUNNER],
+			useFactory: (queue: ResearchQueue) =>
+				new EnqueueResearchGamesUseCase(queue),
+			inject: [ResearchQueue],
 		},
 	],
 	/**
@@ -185,6 +206,6 @@ import {
 	 * gerenciadores de sessão de browser no mesmo container
 	 * (`docs/nest-conceitos.md` §4).
 	 */
-	exports: [PriceGames, GameTradeImporter, PriceCache],
+	exports: [PriceGames, GameTradeImporter, PriceCache, ResearchQueue],
 })
 export class GamesModule {}

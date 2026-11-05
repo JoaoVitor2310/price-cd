@@ -54,7 +54,8 @@ const readServiceBlocks = (): Map<string, string> => {
 describe("docker-compose", () => {
 	const blocks = readServiceBlocks();
 
-	it("declares both application services and their Redis caches", () => {
+	it("declares both application services and one Redis for each", () => {
+		// Um Redis por ambiente, com cache e fila em bancos lógicos (ADR 0009).
 		expect([...blocks.keys()].sort()).toEqual([
 			"price-researcher",
 			"price-researcher-dev",
@@ -98,33 +99,49 @@ describe("docker-compose", () => {
 		});
 	});
 
-	describe("price cache (ADR 0008)", () => {
+	describe("Redis: price cache and research queue (ADR 0008, ADR 0009)", () => {
 		it.each([
 			["price-researcher", "redis"],
 			["price-researcher-dev", "redis-dev"],
-		])("%s points at its own Redis, %s", (app, redis) => {
-			// Produção e dev leem o mesmo `.env`: a URL tem que vir do compose, ou
-			// o dev gravaria no cache que a produção lê.
+		])("%s points the cache at database 0 and the queue at database 1 of its own Redis, %s", (app, redis) => {
+			// Produção e dev leem o mesmo `.env`: as URLs têm que vir do compose,
+			// ou o dev gravaria no cache que a produção lê e consumiria pedidos
+			// reais da fila. Bancos separados: limpar o cache (`-n 0 FLUSHDB`)
+			// nunca apaga a fila.
 			const block = blocks.get(app);
-			expect(block).toMatch(new RegExp(`^\\s*REDIS_URL:\\s*redis://${redis}:6379\\s*$`, "m"));
+			expect(block).toMatch(new RegExp(`^\\s*REDIS_URL:\\s*redis://${redis}:6379/0\\s*$`, "m"));
+			expect(block).toMatch(new RegExp(`^\\s*QUEUE_REDIS_URL:\\s*redis://${redis}:6379/1\\s*$`, "m"));
 			expect(block).toMatch(new RegExp(`^\\s*${redis}:\\s*\\n\\s*condition:\\s*service_started\\s*$`, "m"));
+		});
+
+		it.each(["redis", "redis-dev"])("%s persists to an AOF on a volume and never evicts a key", (redis) => {
+			// É a configuração que a fila exige: uma chave despejada é um pedido
+			// perdido, ou um lock de job perdido — o job roda de novo e duplica a
+			// Trade. O cache não precisa de despejo: toda entrada expira em 1h.
+			const block = blocks.get(redis);
+			expect(block).toMatch(/--appendonly yes/);
+			expect(block).toMatch(/--maxmemory \d+mb/);
+			expect(block).toMatch(/--maxmemory-policy noeviction/);
+			expect(block).toMatch(new RegExp(`^\\s*-\\s*${redis}-data:/data\\s*$`, "m"));
 		});
 
 		it.each(["redis", "redis-dev"])("%s is never published on the host", (redis) => {
 			expect(blocks.get(redis)).not.toMatch(/^\s*ports:/m);
 		});
 
-		it.each(["redis", "redis-dev"])("%s has no disk persistence and evicts by LRU when full", (redis) => {
-			const block = blocks.get(redis);
-			expect(block).toMatch(/--save ""/);
-			expect(block).toMatch(/--appendonly no/);
-			expect(block).toMatch(/--maxmemory \d+mb/);
-			expect(block).toMatch(/--maxmemory-policy allkeys-lru/);
-		});
-
 		it("keeps the dev Redis behind the dev profile", () => {
 			// Sem perfil, um `up` sem argumento subiria o Redis do dev em produção.
 			expect(blocks.get("redis-dev")).toMatch(/^\s*profiles:\s*\["dev"\]\s*$/m);
 		});
+
+		it.each(["price-researcher", "price-researcher-dev"])(
+			"%s gives the ordered shutdown more than the 10s default",
+			(app) => {
+				// Fechar os três donos de Chromium pode passar de 10s; morto antes,
+				// o Chromium fica órfão.
+				const match = blocks.get(app)?.match(/^\s*stop_grace_period:\s*(\d+)s\s*$/m);
+				expect(Number(match?.[1])).toBeGreaterThanOrEqual(60);
+			},
+		);
 	});
 });

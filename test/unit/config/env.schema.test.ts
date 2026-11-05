@@ -183,8 +183,19 @@ describe("validateEnv", () => {
 					STEAMTRADES_SESSION: "session",
 					SISTEMA_ESTOQUE_URL: "http://sistema-estoque.test",
 					EXTERNAL_SECRET: "secret",
+					QUEUE_REDIS_URL: "redis://redis:6379/1",
 				}),
 			).not.toThrow();
+		});
+
+		it("rejects a queue URL that is not Redis", () => {
+			expect(() => validateEnv({ QUEUE_REDIS_URL: "http://redis:6379/1" })).toThrow(
+				/QUEUE_REDIS_URL must be a redis:\/\/ or rediss:\/\/ URL/,
+			);
+		});
+
+		it("treats an empty QUEUE_REDIS_URL as absent outside production", () => {
+			expect(validateEnv({ QUEUE_REDIS_URL: "" }).QUEUE_REDIS_URL).toBeUndefined();
 		});
 
 		it("reads a custom TTL", () => {
@@ -198,13 +209,14 @@ describe("validateEnv", () => {
 			STEAMTRADES_SESSION: "session-cookie",
 			SISTEMA_ESTOQUE_URL: "http://sistema-estoque.test",
 			EXTERNAL_SECRET: "external",
+			QUEUE_REDIS_URL: "redis://redis:6379/1",
 		};
 
 		it("accepts a fully configured production environment", () => {
 			expect(validateEnv(productionEnv).NODE_ENV).toBe("production");
 		});
 
-		it.each(["STEAMTRADES_SESSION", "SISTEMA_ESTOQUE_URL", "EXTERNAL_SECRET"])(
+		it.each(["STEAMTRADES_SESSION", "SISTEMA_ESTOQUE_URL", "EXTERNAL_SECRET", "QUEUE_REDIS_URL"])(
 			"refuses to boot in production without %s",
 			(missing) => {
 				const env: Record<string, unknown> = { ...productionEnv };
