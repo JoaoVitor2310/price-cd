@@ -80,6 +80,7 @@ This allows the tool to be publicly accessible for demonstration while keeping t
 - **Domain-level price floor** — `partitionByPrice` splits off any game whose best price is not above the floor (default €0.50); games that cheap return a few cents of profit and are not worth negotiating; every discarded game is logged with its price, so it never disappears silently between the price fetcher and the result. Applied in one place — `PriceGames` (`application/games/services/price-games.ts`), the pricing engine shared by the search endpoint, the research endpoint, the `lists` flow and supplier discovery — so no consumer repeats the rule. The `research` endpoint can override the floor per request via `minPrice` (bundles send `0`); the floor value is an argument to `partitionByPrice`, so the €0.50 default lives in one place (`MIN_PRICE_EURO`)
 - **Price cache** — the AllKeyShop price of each game is kept in Redis for 1 hour (`PRICE_CACHE_TTL_SECONDS`), keyed by normalised name + region + edition, so a game that shows up in several supplier lists is scraped once. Only the raw best price is cached — the preset's "require a Gamivo offer" cut is applied afterwards, in the domain — and only a definitive "not on AllKeyShop" is cached as a miss, never a transient failure. Written game by game as AllKeyShop answers, not at the end of the batch: a research interrupted by a deploy resumes from the cache, re-scraping only what was missing. Fail-open: with Redis down, every read is a miss and the search carries on. See `docs/adr/0008-cache-de-preco-em-redis.md`
 - **Durable research queue** — authenticated research is a BullMQ job on the same Redis as the price cache, in database 1 (the cache uses 0), with the server configured as the queue needs it (AOF on, `noeviction`), stored before the `202` is sent. On `SIGTERM` the job in progress goes back to the queue without spending an attempt and runs again on the next boot; a process that dies outright has its job recovered as stalled. Finished jobs are kept as an execution log (7 days completed, 30 days failed). See `docs/adr/0009-fila-duravel-da-pesquisa.md`
+- **Signed result webhook** — a caller that sends `webhook_url` is told the outcome (`trade_created` with the Trade uuid, `no_trade`, or `failed` with its kind) once the inventory system answered. The body is signed with HMAC-SHA256 (the secret never travels), only hosts in an allowlist are called (the URL comes from the request, and the service sits inside the internal network), and delivery is a second BullMQ queue retrying for ~24 hours. One result per `request_uuid`. See `docs/adr/0010-webhook-do-resultado-da-pesquisa.md`
 - **Async background jobs** — the `lists` and supplier-discovery flows still use `LimitedConcurrencyScheduler`, an in-process queue with configurable concurrency; on completion the Trade is created in the inventory system (there is no callback to the caller)
 - **Game name normalisation** — `clear-string.ts` normalises roman numerals, K-suffixed numbers, edition keywords, DLC tags, regional tags and special characters to maximise match accuracy across different naming conventions
 - **Full test suite** — unit, integration and contract tests with zero real network or browser calls; integration layer tests the full HTTP pipeline via supertest with vitest mocks at the infrastructure boundary
@@ -99,6 +100,7 @@ This allows the tool to be publicly accessible for demonstration while keeping t
 | HTML Parsing | Cheerio |
 | Price cache | Redis 7 server (`redis:7.4-alpine`) + `redis` 6 Node client (node-redis; its version line is independent of the server's) — optional, see `REDIS_URL` |
 | Research queue | BullMQ 5 + `ioredis`, on the same Redis 7 as the cache (database 1, AOF) — required in production, see `QUEUE_REDIS_URL` |
+| Result webhook | `node:crypto` HMAC-SHA256 + native `fetch`; delivery is a second BullMQ queue (`webhooks`) — see `WEBHOOK_ALLOWED_HOSTS` and `WEBHOOK_SIGNING_SECRET` |
 | Testing | Vitest + Supertest |
 | Linting / Formatting | Biome |
 | Containerisation | Docker + Xvfb (headless Chromium in Linux containers) |
@@ -124,9 +126,9 @@ src/
 ├── schemas/           # Zod schemas + parse helpers
 ├── application/       # Application layer, one directory per subdomain
 │   ├── games/
-│   │   ├── use-cases/ #   ResearchGamesUseCase, EnqueueResearchGamesUseCase
+│   │   ├── use-cases/ #   ResearchGamesUseCase, EnqueueResearchGamesUseCase, RunResearchJobUseCase
 │   │   ├── services/  #   PriceGames — the pricing engine shared by every flow; CachedPriceFetcher
-│   │   └── ports/     #   PopularityFetcher, PriceFetcher, CatalogPriceSource, PriceCache, GameTradeImporter, ResearchQueue
+│   │   └── ports/     #   PopularityFetcher, PriceFetcher, CatalogPriceSource, PriceCache, GameTradeImporter, TradeWithOfferCreator, ResearchQueue, ResearchResultNotifier
 │   ├── lists/         #   RunListsUseCase, EnqueueRunListsUseCase
 │   ├── suppliers/     #   FindNewSuppliersUseCase
 │   └── bump/          #   BumpTopicsUseCase
@@ -135,8 +137,9 @@ src/
 │   ├── lists/         #   ListTopic entity
 │   └── suppliers/     #   HaveListing parsing
 ├── infrastructure/    # Concrete adapters implementing port interfaces
-│   ├── games/         #   AllKeyShopPriceFetcher, RedisPriceCache, HttpGameTradeImporter
-│   ├── background/    #   BullmqResearchQueue (+ its job payload, BullMQ clients, ioredis connections), InMemoryResearchQueue, LimitedConcurrencyScheduler
+│   ├── games/         #   AllKeyShopPriceFetcher, RedisPriceCache, HttpGameTradeImporter, HttpTradeWithOfferCreator
+│   ├── background/    #   BullmqResearchQueue (+ its job payload, BullMQ clients, ioredis connections), BullmqWebhookQueue, in-memory versions of both, LimitedConcurrencyScheduler
+│   ├── webhooks/      #   HttpWebhookSender, the HMAC signature and the webhook body
 │   ├── browser/       #   SharedBrowserSession, SuppliersBrowserSession
 │   ├── bump/          #   PuppeteerSteamTradesBumper
 │   ├── lists/         #   FetchListTopic (Puppeteer), FormatListResult
@@ -191,6 +194,7 @@ docker compose exec redis redis-cli -n 0 FLUSHDB
 **Inspect the research queue** — jobs waiting, running, finished and failed (with the reason), kept 7 days when completed and 30 days when failed:
 ```bash
 docker compose exec redis redis-cli -n 1 KEYS 'bull:research:*'
+docker compose exec redis redis-cli -n 1 KEYS 'bull:webhooks:*'
 ```
 Never flush database 1: unlike the cache, what is there is a request someone already got a `202` for.
 
@@ -235,7 +239,10 @@ QUEUE_REDIS_TEST_URL=redis://127.0.0.1:6390/15 npx vitest run test/integration/q
   "internal_secret": "optional-token",
   "steam_id": "optional-supplier-steam-id",
   "list_code": "optional-list-identifier",
-  "title": "optional-trade-title"
+  "title": "optional-trade-title",
+  "currency": "optional: tf2 | eur | usd",
+  "request_uuid": "optional-uuid",
+  "webhook_url": "optional-https-url"
 }
 ```
 
@@ -263,7 +270,82 @@ Runs synchronously and is capped at the first 10 games. Nothing is sent to the i
 ```json
 { "success": true, "status": "queued" }
 ```
-Returns once the request is stored in the durable queue (ADR 0009). The full list is processed in the background and the Trade is created in the inventory system when it finishes. A restart or deploy in the middle does not lose it: it runs again from the start on the next boot, reading from the price cache what was already priced before the interruption (within the 1-hour TTL), so only the rest goes to AllKeyShop. A failure during background processing is recorded in the job (kept 30 days) but nobody is notified yet — see `docs/IMPROVEMENTS.md`.
+Returns once the request is stored in the durable queue (ADR 0009). The full list is processed in the background and the Trade is created in the inventory system when it finishes. A restart or deploy in the middle does not lose it: it runs again from the start on the next boot, reading from the price cache what was already priced before the interruption (within the 1-hour TTL), so only the rest goes to AllKeyShop. A failure during background processing is recorded in the job (kept 30 days); a caller that sent `webhook_url` is told the result, failure included (below).
+
+**Trade with an offer and result webhook** — `202`, valid token. Three more fields, sent together by callers that want to be told the outcome (the chatbot, ADR 0010):
+
+```json
+{
+  "gameNames": ["Rust ROW", "Hades"],
+  "internal_secret": "token",
+  "steam_id": "76561198012345678",
+  "currency": "eur",
+  "request_uuid": "8c1f6a2e-3b4d-4c5e-9f00-1a2b3c4d5e6f",
+  "webhook_url": "https://chatbot.example.com/webhooks/price-cd"
+}
+```
+
+- `currency` — `tf2`, `eur` or `usd`, the currency the supplier chose. With it, the Trade is created **with an offer** in the inventory system's `POST /api/trades` (the inventory system decides the offer); without it, the usual Trade without an offer (`/trades/from-price-researcher`). Requires `steam_id` as a SteamID64 (17 digits starting with `7656119`).
+- `request_uuid` — the caller's id for the request. The same uuid sent again is recognized: still queued or running → nothing happens (it will report); completed → its stored result is delivered again, without researching again; failed → it runs again from scratch.
+- `webhook_url` — where to send the result. Requires `request_uuid` and `currency`. Its host must be listed in `WEBHOOK_ALLOWED_HOSTS` (exact host match, any port).
+
+These fields return **`400`** — in the route's `data` format, `"Invalid file content: ..."` — when:
+
+| Case | Message |
+|---|---|
+| sent without a valid token (not demo: whoever sends them expects a Trade and a webhook) | `currency, request_uuid and webhook_url require a valid internal_secret` |
+| `currency` without a SteamID64 `steam_id` | `currency requires steam_id as a SteamID64` |
+| `webhook_url` without `request_uuid` / `currency` | `webhook_url requires request_uuid` / `webhook_url requires currency` |
+| `webhook_url` host not in `WEBHOOK_ALLOWED_HOSTS` | `webhook_url host is not allowed` |
+| with `delivery: "respond"` | `delivery "respond" does not accept currency, request_uuid or webhook_url` |
+
+Without these fields the route behaves exactly as before.
+
+<details>
+<summary><strong>Result webhook — what the price researcher sends</strong></summary>
+
+Sent once the request finishes, **after** the inventory system answered: with `trade_created`, the Trade already exists.
+
+```http
+POST {webhook_url}
+Content-Type: application/json
+X-Webhook-Timestamp: 1762268400
+X-Webhook-Signature: sha256=<64 hex chars>
+```
+```json
+{ "request_uuid": "8c1f…", "result": "trade_created", "trade_uuid": "3a9e…" }
+{ "request_uuid": "8c1f…", "result": "no_trade" }
+{ "request_uuid": "8c1f…", "result": "failed", "failure": { "kind": "stock_unavailable", "message": "Sistema Estoque could not create the Trade right now." } }
+```
+
+| `result` | When |
+|---|---|
+| `trade_created` | The inventory system created the Trade (`201`); `trade_uuid` is its uuid |
+| `no_trade` | No game passed the filters (the inventory system is not even called), or it had nothing to offer (`200 { created: false }`). Never sent when a game could not be looked up and nothing passed: that is `failed` |
+| `failed` | `failure.kind` is `pricing_failed` (the research itself failed, no game passed while at least one could not be looked up, the inventory system rejected the request with `422`, or it answered `201` without a readable uuid — do not retry blindly: in that last case the Trade exists) or `stock_unavailable` (the inventory system could not answer: `503`, timeout, any other error — retrying later may work) |
+
+When only some games cannot be looked up, the Trade is created with the ones that could, and the rest are logged.
+
+`failure.message` is a fixed sentence per `kind`, never the internal error; the details stay in the price researcher's logs and job record. No market price, popularity or margin is ever sent.
+
+**Signature.** `X-Webhook-Signature` is `sha256=` + the hex HMAC-SHA256 of `"<X-Webhook-Timestamp>.<raw body>"`, keyed with `WEBHOOK_SIGNING_SECRET`, which the receiver holds too — the secret itself is never sent. To verify, the receiver must hash the **raw bytes** it received (before any JSON parsing), compare in constant time, and reject timestamps older than 5 minutes (replay):
+
+```ts
+import { createHmac, timingSafeEqual } from "node:crypto";
+
+function isValid(rawBody: string, timestamp: string, signature: string, secret: string): boolean {
+  const sentAt = Number(timestamp);
+  if (!Number.isFinite(sentAt) || Math.abs(Date.now() / 1000 - sentAt) > 300) return false;
+  const expected = `sha256=${createHmac("sha256", secret).update(`${timestamp}.${rawBody}`).digest("hex")}`;
+  return expected.length === signature.length && timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+}
+```
+
+**Delivery.** Only a `2xx` counts as delivered; anything else — including a redirect, which is never followed — is retried: 30 s, doubling up to 1 h, for about 24 hours (31 attempts), then given up and recorded. The receiver must be idempotent by `request_uuid`: a retry may arrive after a timeout that the receiver did process. One result per `request_uuid`: a later result for the same request never replaces a delivered one, except after a failed request is sent again.
+
+Without `QUEUE_REDIS_URL` (outside production only) the webhook is attempted once, not retried.
+
+</details>
 
 **Authenticated, queue unavailable** — `500`, when the queue Redis is configured but not answering. The request is refused instead of accepted without being stored; `GET /api/health` shows `queue: "down"`. The body is the route's legacy error format:
 ```json

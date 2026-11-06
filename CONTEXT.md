@@ -25,7 +25,7 @@ Dono de uma Lista no SteamTrades que oferece jogos — é fornecedor independent
 _Avoid_: Supplier, Trader
 
 **Moeda de oferta**:
-A moeda em que o CarcaDeals propõe pagar o Fornecedor por uma Lista: TF2 Key, euro ou dólar. Sai do que a Lista aceita no `.want`, não de configuração — o mesmo Fornecedor pode receber TF2 Keys numa Lista e euros em outra. Precedência quando a Lista aceita mais de uma: **TF2 Key**, depois **dólar**, depois **euro** (dólar vence euro porque quem cita dólar pensa em dólar). PayPal não é moeda: é meio de pagamento em euro, então cai em euro. Quem calcula e converte o valor é o Sistema Estoque; o price-cd só o repassa ao comentário (ver `docs/adr/0001`).
+A moeda em que o CarcaDeals propõe pagar o Fornecedor por uma Lista: TF2 Key, euro ou dólar. Na Descoberta de Fornecedores sai do que a Lista aceita no `.want`, não de configuração — o mesmo Fornecedor pode receber TF2 Keys numa Lista e euros em outra. Precedência quando a Lista aceita mais de uma: **TF2 Key**, depois **dólar**, depois **euro** (dólar vence euro porque quem cita dólar pensa em dólar). PayPal não é moeda: é meio de pagamento em euro, então cai em euro. Na pesquisa pedida pelo chatbot, é o Fornecedor quem escolhe a moeda no chat, e ela chega no pedido. Quem calcula e converte o valor é o Sistema Estoque; o price-cd só o repassa ao comentário (ver `docs/adr/0001`).
 _Avoid_: Moeda de pagamento, Meio de pagamento (PayPal é meio de pagamento, não moeda)
 
 **Lista**:
@@ -33,12 +33,16 @@ A relação de jogos/keys que um Fornecedor está oferecendo em `.have` num tóp
 _Avoid_: Trade (nome antigo — hoje reservado para o registro no Sistema Estoque, ver abaixo), Topic
 
 **Trade**:
-Proposta de negociação persistida no Sistema Estoque — relaciona as keys que o Fornecedor tem com os valores ofertados. Nasce de duas formas: via `GameTradeImporter` (Reabastecimento e Pesquisa Manual, quando o price-cd já tem jogos precificados prontos) ou como efeito colateral do `ProfitabilityChecker.evaluate()` (Descoberta de Fornecedores — o Sistema Estoque cria a Trade ali mesmo, ao decidir `should_comment`). Fica editável manualmente (preço ofertado, keys recebidas) até se concretizar; quando concretiza, o Sistema Estoque efetivamente coloca as keys no estoque.
+Proposta de negociação persistida no Sistema Estoque — relaciona as keys que o Fornecedor tem com os valores ofertados. Nasce de três formas: via `GameTradeImporter` (Reabastecimento e Pesquisa Manual, quando o price-cd já tem jogos precificados prontos — Trade **sem oferta**), via `TradeWithOfferCreator` (pesquisa com Moeda de oferta, pedida pelo chatbot — Trade **com oferta**, decidida pelo Sistema Estoque, que devolve o uuid dela) ou como efeito colateral do `ProfitabilityChecker.evaluate()` (Descoberta de Fornecedores — o Sistema Estoque cria a Trade ali mesmo, ao decidir `should_comment`). Fica editável manualmente (preço ofertado, keys recebidas) até se concretizar; quando concretiza, o Sistema Estoque efetivamente coloca as keys no estoque.
 _Avoid_: usar para a listagem do SteamTrades — isso é Lista
 
 **Criar Trade**:
 Ação do price-cd de enviar jogos precificados ao Sistema Estoque (via `GameTradeImporter`), dando origem a uma Trade nova em estado de proposta. Usado no Reabastecimento e na Pesquisa Manual — na Descoberta de Fornecedores, quem cria a Trade é o próprio Sistema Estoque dentro do `evaluate()`, não o price-cd.
 _Avoid_: Importar (verbo reservado para a ação do Sistema Estoque, ver abaixo)
+
+**Resultado da pesquisa**:
+O desfecho de um pedido de pesquisa, avisado a quem pediu pelo webhook: `trade_created` (com o uuid da Trade), `no_trade` (nenhum jogo passou nos filtros, ou o Sistema Estoque não viu nada a ofertar; se algum jogo não pôde ser pesquisado e nada passou, é `failed`) ou `failed` (com o tipo: `pricing_failed` ou `stock_unavailable`). Um por pedido, identificado pelo uuid que quem pediu gerou. Nunca carrega Preço de mercado, popularidade nem margem.
+_Avoid_: Resposta (a resposta HTTP é só o `202` de que o pedido foi aceito)
 
 **Importar**:
 Ação do Sistema Estoque de finalizar uma Trade concretizada, colocando as keys recebidas no Estoque de fato. Ação interna do Sistema Estoque — o price-cd não participa dela, apesar do método `GameTradeImporter.import()` usar esse verbo (nomenclatura a corrigir, ver `docs/IMPROVEMENTS.md`).

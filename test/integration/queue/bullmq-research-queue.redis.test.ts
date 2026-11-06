@@ -92,7 +92,7 @@ describe.skipIf(!url)("BullmqResearchQueue against a real Redis", () => {
 		await waitFor(
 			async () => (await inspector.getJobCounts("completed")).completed === 1,
 		);
-		expect(runner.run).toHaveBeenCalledWith(request);
+		expect(runner.run).toHaveBeenCalledWith(request, expect.any(AbortSignal));
 	});
 
 	it("records a failed run with its reason, without retrying it", async () => {
@@ -151,7 +151,10 @@ describe.skipIf(!url)("BullmqResearchQueue against a real Redis", () => {
 		await waitFor(
 			async () => (await inspector.getJobCounts("completed")).completed === 1,
 		);
-		expect(secondRunner.run).toHaveBeenCalledWith(request);
+		expect(secondRunner.run).toHaveBeenCalledWith(
+			request,
+			expect.any(AbortSignal),
+		);
 		const [completed] = await inspector.getCompleted();
 		// Interrupção não é tentativa: o job não gastou a única que tem.
 		expect(completed.attemptsMade).toBe(1);
@@ -175,6 +178,44 @@ describe.skipIf(!url)("BullmqResearchQueue against a real Redis", () => {
 		await waitFor(
 			async () => (await inspector.getJobCounts("completed")).completed === 1,
 		);
-		expect(runner.run).toHaveBeenCalledWith(request);
+		expect(runner.run).toHaveBeenCalledWith(request, expect.any(AbortSignal));
+	});
+
+	it("recognizes a request_uuid: one job while pending, and a failed one can be forgotten and run again", async () => {
+		vi.spyOn(console, "error").mockImplementation(() => {});
+		const runner = {
+			run: vi
+				.fn()
+				.mockRejectedValueOnce(new Error("Sistema Estoque returned 500"))
+				.mockResolvedValue(undefined),
+		};
+		const queue = start(runner);
+		await connected(queue);
+		const withUuid = {
+			...request,
+			requestUuid: "8c1f0000-0000-4000-8000-000000000000",
+		};
+
+		// Dois `add` com o mesmo id antes de consumir: um job só.
+		await queue.enqueue(withUuid);
+		await queue.enqueue(withUuid);
+		expect((await inspector.getJobCounts("wait")).wait).toBe(1);
+		expect(await queue.previousRun(withUuid.requestUuid)).toBe("pending");
+
+		queue.onApplicationBootstrap();
+		await waitFor(
+			async () => (await queue.previousRun(withUuid.requestUuid)) === "failed",
+		);
+
+		// Sem esquecer, um novo `add` é ignorado: é o que o use case evita.
+		await queue.forget(withUuid.requestUuid);
+		expect(await queue.previousRun(withUuid.requestUuid)).toBe("none");
+		await queue.enqueue(withUuid);
+
+		await waitFor(
+			async () =>
+				(await queue.previousRun(withUuid.requestUuid)) === "completed",
+		);
+		expect(runner.run).toHaveBeenCalledTimes(2);
 	});
 });

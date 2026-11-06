@@ -30,15 +30,27 @@ export abstract class PopularityFetcher {
 }
 
 /**
- * O que o `PriceGames` pede: jogos → os mesmos jogos com preço, omitindo quem
- * ficou sem preço.
+ * O resultado de uma busca de preços.
+ *
+ * - `games`: os jogos com preço. Quem o catálogo não tem fica de fora.
+ * - `failed`: os nomes que **não foi possível perguntar** (timeout, Cloudflare,
+ *   HTML inesperado). "Sem preço" e "não sei" são desfechos diferentes para quem
+ *   pediu, e sem esta lista os dois virariam a mesma ausência.
+ */
+export type PriceFetchResult = {
+	games: FoundGames[];
+	failed: string[];
+};
+
+/**
+ * O que o `PriceGames` pede: jogos → os mesmos jogos com preço.
  *
  * Não recebe mais `checkGamivoOffer`: o preço volta sempre, com `hasGamivoOffer`,
  * e o corte é do domínio (`partitionByGamivoOffer`). Quem implementa é o
  * `CachedPriceFetcher`, que consulta o cache antes do catálogo.
  */
 export abstract class PriceFetcher {
-	abstract fetch(games: FoundGames[]): Promise<FoundGames[]>;
+	abstract fetch(games: FoundGames[]): Promise<PriceFetchResult>;
 }
 
 /** O que o catálogo (AllKeyShop) sabe do preço de um jogo, sem filtro de preset. */

@@ -137,7 +137,7 @@ Ou seja: quando o pedido tem `webhook_url`, o price-cd cria a Trade em `POST /ap
 | A fila está em memória | Confirmado. `LimitedConcurrencyScheduler` é um array. Já é o item 9 do `docs/IMPROVEMENTS.md`. |
 | O price-cd não sabe qual Trade criou | Confirmado. `HttpGameTradeImporter` faz `response.body?.cancel()`; a porta `GameTradeImporter.import()` devolve `Promise<void>`. |
 | **A confirmar:** `Jogo EU` chega à Trade com `region: EU` | **Sim.** `withPrice` (`application/games/services/cached-price-fetcher.ts`) grava `getRegion(name).toUpperCase()` e tira a região do nome. Jogo global vai como `region: ""`, não `null` — o Estoque já usa `""` como "key global" (`docs/CHATBOT.md` de lá) e aceita (`games.*.region` é `nullable|string`). |
-| "Nenhum jogo passou nos filtros" vira `no_trade` | Hoje, com zero jogos precificados, o `ResearchGamesUseCase` nem chama o Estoque e devolve `null`. Precisa virar desfecho explícito. |
+| "Nenhum jogo passou nos filtros" vira `no_trade` | Com zero jogos precificados, o Estoque nem é chamado. Virou desfecho explícito: `not_created` com `nothing_priced`, no `CreateResearchTrade`. |
 | Raspagem do `.have` reaproveitável | Existem **duas**: `FetchListTopic.fetchList` (fluxo `lists`, browser próprio por execução, `steamTradesGate`) e `PuppeteerTopicScraper` (Descoberta, sessão **logada** do SteamTrades). As duas usam `HaveListing`, que descarta seções de GOG — "todos os jogos" é "todos os jogos de Steam". |
 
 Do lado do Estoque (`StoreTradeWithOfferRequest` e `TradeController::store`):
@@ -153,9 +153,9 @@ Do lado do Estoque (`StoreTradeWithOfferRequest` e `TradeController::store`):
    - assinar o corpo com HMAC-SHA256 (`X-Signature: sha256=…` + `X-Timestamp`), como GitHub e Stripe — o segredo nunca trafega;
    - lista de hosts permitidos (`WEBHOOK_ALLOWED_HOSTS`), validada no recebimento do pedido (400) e de novo no envio;
    - o nome da variável fica neutro (`WEBHOOK_SIGNING_SECRET`): o próprio pedido diz que o price-cd não sabe que o chamador é o chatbot.
-   **Pendente:** combinar com o chatbot.
+   **Resolvido:** HMAC + allowlist, combinado com o dono do chatbot (ADR 0010).
 2. **"Exatamente um resultado por `request_uuid`" não sai só da fila.** `jobId = request_uuid` impede pedido duplicado, mas se o processo cair depois de o Estoque criar a Trade e antes de o webhook ser enfileirado, o job roda de novo e cria **outra Trade**. A correção é a idempotência do Estoque (item 2 do backlog dele): o price-cd manda `request_uuid` como `pricing_request_id`. Paliativo do lado do price-cd: gravar o `tradeUuid` no próprio job (`job.updateData`) antes de enfileirar o webhook e pular a criação na nova execução — encurta a janela, não fecha. **Pendente:** o Estoque implementar o item 2 (bloqueia o critério de aceite, não o PR 2).
-3. **A rota do Estoque é escolhida por `currency`, não por `webhook_url`.** Quem exige moeda é o `/api/trades`; o aviso por webhook é independente. `currency` presente → `POST /api/trades` lendo a resposta; ausente → `/trades/from-price-researcher` como hoje.
+3. **A rota do Estoque é escolhida por `currency`, não por `webhook_url`.** Quem exige moeda é o `/api/trades`; o aviso por webhook é independente. `currency` presente → `POST /api/trades` lendo a resposta; ausente → `/trades/from-price-researcher` como hoje. Consequência: `webhook_url` **exige** `currency`, porque só o `/api/trades` devolve o uuid que o `trade_created` informa (ADR 0010).
 4. **A parada ordenada não "devolve o job à fila" sozinha.** O `docker-compose.yml` não define `stop_grace_period` (vale o default de 10s) e uma pesquisa leva minutos. O `worker.close()` do BullMQ espera o job atual **terminar**. O caminho real: no SIGTERM, fechar o worker sem esperar (`close(true)`), o lock do job expira e o BullMQ o detecta como *stalled* e o recoloca na fila ao subir. Ajustar `maxStalledCount` (default 1 — um segundo travamento falha o job) e declarar `stop_grace_period`. Ordem de desligamento: parar de consumir a fila **antes** de fechar os browsers.
 
 ## Roteiro dos PRs
@@ -163,13 +163,13 @@ Do lado do Estoque (`StoreTradeWithOfferRequest` e `TradeController::store`):
 | # | PR | Depende de | Status |
 |---|---|---|---|
 | 1 | Fila persistente para `research` (BullMQ no Redis do cache, banco 1), parada ordenada | nada | implementado na branch `feat/durable-research-queue`, aguardando commit |
-| 2 | `request_uuid` / `webhook_url` / `currency`; Trade em `POST /api/trades` lendo a resposta; webhook com os três resultados e tentativas | 1 | a fazer |
+| 2 | `request_uuid` / `webhook_url` / `currency`; Trade em `POST /api/trades` lendo a resposta; webhook com os três resultados e tentativas | 1 | implementado na mesma branch, por cima do PR 1 (alterações não staged), aguardando commit |
 | 3 | Endpoint novo: pesquisa a partir do link do SteamTrades | 2 | a fazer |
 
 ### PR 1 — Fila persistente
 
 - **Application:** porta nova `ResearchQueue` (`application/games/ports/`), com `enqueue(request: ResearchGamesRequest)`. A `BackgroundScheduler` recebe uma closure, que não serializa; `lists` e `suppliers` continuam nela por enquanto (o pedido só cobre `research`). `ResearchGamesRequest` e `SearchCriteria` já são só dado.
-- **Infrastructure:** `infrastructure/background/bullmq-research-queue.ts` (produtor) e o worker que chama o `ResearchGamesUseCase`, concorrência 1 (o gargalo é a sessão única do Chromium).
+- **Infrastructure:** `infrastructure/background/bullmq-research-queue.ts` (produtor) e o worker que chama o `RunResearchJobUseCase`, concorrência 1 (o gargalo é a sessão única do Chromium).
 - **Nest:** módulo de fila, dono da conexão e do worker, com `OnApplicationShutdown`. `EnqueueResearchGamesUseCase` passa a enfileirar dado, não função.
 - **Redis:** instância **separada** do cache. O do cache roda com `--save "" --appendonly no` e `allkeys-lru` (ADR 0008): perderia job no restart e por despejo. A fila precisa de AOF + `noeviction`. Serviços `redis-queue` (prod) e `redis-queue-dev`, na rede `price-cd-internal`.
 - **Env:** `QUEUE_REDIS_URL` (no `docker-compose.yml`, pelo mesmo motivo do `REDIS_URL`). Sem ela: manter o scheduler em memória (fail-open, como o cache) ou recusar o boot em produção — decidir no ADR.
@@ -198,10 +198,23 @@ Do lado do Estoque (`StoreTradeWithOfferRequest` e `TradeController::store`):
 - **Porta de Trade:** `TradeCreator.create() → TradeOutcome` (`{ status: "created", tradeUuid } | { status: "not_created" }`). Resolve junto o item 2 do `IMPROVEMENTS.md` (o verbo "importar"). Adapter HTTP para `/api/trades`; os erros viram tipos da Application (`StockUnavailableError` para 503, timeout e outros; `TradeRejectedError` para 422).
 - **Orquestração:** `RunResearchJobUseCase` (Application) roda a pesquisa, transforma o desfecho em `trade_created | no_trade | failed` e enfileira o webhook. Zero jogos precificados é `no_trade` sem chamar o Estoque. O webhook sai **depois** da resposta do Estoque.
 - **Webhook:** fila própria (`webhooks`), sem browser, concorrência maior. Backoff exponencial **com teto** (ex.: 30s dobrando até 1h, totalizando ~24h), job com `jobId = request_uuid`. Adapter `HttpWebhookNotifier`, que assina com HMAC e só aceita 2xx como entregue.
-- **Classificação de falha:** `scrape_failed` (só no PR 3), `pricing_failed` (erro do pipeline, 422 do Estoque), `stock_unavailable` (503, timeout, outro erro). Falha de **um jogo** no AllKeyShop (`failed` do `CatalogPriceSource`) não falha o pedido: o jogo só não entra. Browser morto ou Cloudflare definitivo falham o pedido.
+- **Classificação de falha:** `scrape_failed` (só no PR 3), `pricing_failed` (erro do pipeline, 422 do Estoque), `stock_unavailable` (503, timeout, outro erro). Falha de **um jogo** no AllKeyShop (`failed` do `CatalogPriceSource`) não falha o pedido: o jogo só não entra, e fica no log. Se nenhum jogo passou e ao menos um falhou, o pedido falha com `pricing_failed`, porque não dá para dizer que nada passou. Browser morto ou Cloudflare definitivo falham o pedido.
 - **Env:** `WEBHOOK_SIGNING_SECRET`, `WEBHOOK_ALLOWED_HOSTS`.
 - **Docs:** README (campos novos, regras de 400, contrato do webhook, cabeçalhos da assinatura); ADR 0010 (contrato e autenticação do webhook); `CONTEXT.md` (Pedido de pesquisa, Resultado da pesquisa, Moeda da Trade); `docs/wiki/`.
 - **Testes:** schema (combinações válidas e inválidas); use case por desfecho; adapter com cada status do Estoque; webhook (assinatura, retry, desistência); caso de contrato garantindo que o corpo sem os campos novos responde como hoje.
+
+**Como ficou** (decisões em `docs/adr/0010-webhook-do-resultado-da-pesquisa.md`):
+- Assinatura **HMAC-SHA256** (`X-Webhook-Timestamp`, `X-Webhook-Signature: sha256=…` sobre `"<timestamp>.<corpo bruto>"`) com `WEBHOOK_SIGNING_SECRET`; allowlist `WEBHOOK_ALLOWED_HOSTS`, conferida no pedido (400) e no envio; redirect nunca seguido. Contrato e função de verificação de referência no README ("Result webhook").
+- `webhook_url` exige `request_uuid` **e** `currency`; `currency` exige `steam_id` SteamID64; os campos novos sem token são 400 (não demo) e não combinam com `delivery: "respond"`.
+- Preset: `default` (pergunta 1).
+- A porta de Trade com oferta nasceu como `TradeWithOfferCreator.create()`; o rename do `GameTradeImporter` (item 2 do `IMPROVEMENTS.md`) **não** foi feito junto.
+- `RunResearchJobUseCase` (Application) é o runner da fila; zero jogos precificados é `no_trade` sem chamar o Estoque.
+- `failure.message` é fixa por tipo — o erro interno não sai do price-cd.
+- Fila `webhooks`: `jobId = request_uuid`, 31 tentativas (30s dobrando até 1h, ~24h). Verificado contra Redis real (`test/integration/queue/`, opcional).
+- **Mesmo `request_uuid` de novo:** em andamento → nada; concluído → reentrega o resultado guardado; falho → roda de novo. Sem isso o reenvio ficaria em silêncio por até 30 dias.
+- Falha causada pelo desligamento não vira `failed` (o worker passa um `AbortSignal` ao runner).
+- **Não feito:** o paliativo do `tradeUuid` no job (divergência 2). As janelas de Trade duplicada estão listadas no ADR 0010 e fecham com a idempotência do Estoque (pergunta 4).
+- **Para o deploy:** `WEBHOOK_ALLOWED_HOSTS` e `WEBHOOK_SIGNING_SECRET` no `.env`, e o host do chatbot alcançável pela rede do container.
 
 ### PR 3 — Pesquisa a partir do link do SteamTrades
 
@@ -217,8 +230,8 @@ Do lado do Estoque (`StoreTradeWithOfferRequest` e `TradeController::store`):
 
 | # | Pergunta | Para quem | Bloqueia |
 |---|---|---|---|
-| 1 | Qual preset nas pesquisas do chatbot? Lista digitada cai no `default` (o chatbot não manda preset); link do tópico faz sentido usar `lists` (mesmo pipeline do Reabastecimento)? | equipe | PR 2, PR 3 |
+| 1 | Qual preset nas pesquisas do chatbot? ~~Lista digitada~~ `default` (decidido no PR 2). Link do tópico: `lists` (mesmo pipeline do Reabastecimento)? | equipe | PR 3 |
 | 2 | Tópico inativo (`.notification.yellow`) vira `no_trade` ou `scrape_failed`? | chatbot | PR 3 |
-| 3 | Assinatura HMAC + allowlist no lugar do Bearer com segredo? | chatbot | PR 2 |
+| 3 | ~~Assinatura HMAC + allowlist no lugar do Bearer com segredo?~~ Sim (ADR 0010). O chatbot verifica a assinatura sobre o corpo bruto. | chatbot | resolvida |
 | 4 | Estoque implementa a idempotência (`pricing_request_id`, item 2 do backlog dele)? Nome do campo combinado antes. | Estoque | critério de aceite |
 | 5 | ~~Sem `QUEUE_REDIS_URL`: fila em memória ou boot falha em produção?~~ Boot falha em produção; memória fora dela (ADR 0009). | price-cd | resolvida |

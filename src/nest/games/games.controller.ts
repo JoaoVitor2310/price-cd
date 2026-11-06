@@ -10,7 +10,10 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import type { Response } from "express";
-import { EnqueueResearchGamesUseCase } from "@/application/games/use-cases/enqueue-research-games.use-case.js";
+import {
+	EnqueueResearchGamesUseCase,
+	InvalidResearchRequestError,
+} from "@/application/games/use-cases/enqueue-research-games.use-case.js";
 import { GameTradeImporter } from "@/application/games/ports/game-trade-importer.port.js";
 import { PopularityFetcher } from "@/application/games/ports/game-search.ports.js";
 import { ResearchGamesUseCase } from "@/application/games/use-cases/research-games.use-case.js";
@@ -122,6 +125,11 @@ export class GamesController {
 	 * - token + `delivery: "respond"`: síncrono, **200** com todos os jogos e sem
 	 *   criar Trade — o caso da sync de bundle.
 	 *
+	 * `currency`, `request_uuid` e `webhook_url` só existem no caminho que
+	 * enfileira. Sem token, eles são **400**, não demo: quem os manda espera uma
+	 * Trade e um aviso, e um `200` demo seria uma resposta que ninguém vai ler
+	 * (ADR 0010). Sem esses campos, token errado continua sendo demo.
+	 *
 	 * `@Res({ passthrough: true })` em vez de `@HttpCode`: o status depende do
 	 * corpo da requisição, não da rota, então não dá para declará-lo no decorator.
 	 * `passthrough` mantém o Nest responsável por serializar o retorno — sem ele
@@ -135,11 +143,21 @@ export class GamesController {
 		@Res({ passthrough: true }) response: Response,
 	) {
 		const request = toResearchRequest(body);
+		const authenticated = this.isAuthenticated(body.internal_secret);
+
+		if (
+			!authenticated &&
+			(body.currency !== undefined ||
+				body.request_uuid !== undefined ||
+				body.webhook_url !== undefined)
+		) {
+			throw new InvalidResearchRequestError(
+				"currency, request_uuid and webhook_url require a valid internal_secret",
+			);
+		}
 
 		// Sem token é sempre demo, diga o `delivery` o que disser.
-		const delivery = !this.isAuthenticated(body.internal_secret)
-			? "demo"
-			: (body.delivery ?? "trade");
+		const delivery = !authenticated ? "demo" : (body.delivery ?? "trade");
 
 		if (delivery !== "trade") {
 			const games = await this.researchGamesUseCase.execute({ ...request, delivery });

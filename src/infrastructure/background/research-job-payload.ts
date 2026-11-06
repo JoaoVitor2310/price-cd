@@ -1,5 +1,6 @@
 import * as z from "zod";
 import type { ResearchGamesRequest } from "@/application/games/ports/research-games-runner.port.js";
+import { OFFER_CURRENCIES } from "@/domain/suppliers/offer.js";
 
 /**
  * O formato persistido de um job da fila da pesquisa: o `ResearchGamesRequest`
@@ -15,7 +16,7 @@ import type { ResearchGamesRequest } from "@/application/games/ports/research-ga
  *
  * `looseObject` em todos os níveis, de propósito: o schema confere o que o use
  * case precisa, mas **não apaga** o resto. Com `z.object`, um campo novo do
- * pedido (o `webhook_url` do PR 2) que alguém esquecesse de declarar aqui
+ * pedido que alguém esquecesse de declarar aqui
  * sumiria em silêncio entre o `enqueue` e o worker. O teste de ida e volta em
  * `research-job-payload.test.ts` trava isso.
  */
@@ -34,6 +35,9 @@ const researchJobPayloadSchema = z.looseObject({
 	supplierSteamId: z.string().optional(),
 	listCode: z.string().optional(),
 	title: z.string().optional(),
+	currency: z.enum(OFFER_CURRENCIES).optional(),
+	requestUuid: z.string().min(1).optional(),
+	webhookUrl: z.string().min(1).optional(),
 });
 
 export const parseResearchJobPayload = (

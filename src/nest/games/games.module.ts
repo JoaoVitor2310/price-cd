@@ -6,29 +6,46 @@ import {
 	PriceFetcher,
 } from "@/application/games/ports/game-search.ports.js";
 import { GameTradeImporter } from "@/application/games/ports/game-trade-importer.port.js";
-import type {
-	ResearchGamesRequest,
-	ResearchGamesRunner,
-} from "@/application/games/ports/research-games-runner.port.js";
+import type { ResearchGamesRunner } from "@/application/games/ports/research-games-runner.port.js";
 import { PriceCache } from "@/application/games/ports/price-cache.port.js";
 import { ResearchQueue } from "@/application/games/ports/research-queue.port.js";
+import { ResearchResultNotifier } from "@/application/games/ports/research-result-notifier.port.js";
+import { TradeWithOfferCreator } from "@/application/games/ports/trade-with-offer-creator.port.js";
 import { CachedPriceFetcher } from "@/application/games/services/cached-price-fetcher.js";
 import { PriceGames } from "@/application/games/services/price-games.js";
 import { EnqueueResearchGamesUseCase } from "@/application/games/use-cases/enqueue-research-games.use-case.js";
+import { CreateResearchTrade } from "@/application/games/services/create-research-trade.js";
 import { ResearchGamesUseCase } from "@/application/games/use-cases/research-games.use-case.js";
+import { RunResearchJobUseCase } from "@/application/games/use-cases/run-research-job.use-case.js";
 import type { Env } from "@/config/env.schema.js";
 import { createBullmqResearchQueue } from "@/infrastructure/background/bullmq-research-queue.js";
+import { createBullmqWebhookQueue } from "@/infrastructure/background/bullmq-webhook-queue.js";
 import { InMemoryResearchQueue } from "@/infrastructure/background/in-memory-research-queue.js";
+import { InMemoryWebhookNotifier } from "@/infrastructure/background/in-memory-webhook-notifier.js";
 import { LimitedConcurrencyScheduler } from "@/infrastructure/background/limited-concurrency.scheduler.js";
 import { AllKeyShopPriceFetcher } from "@/infrastructure/games/allkeyshop-price-fetcher.js";
 import { HttpGameTradeImporter } from "@/infrastructure/games/http-game-trade-importer.js";
+import { HttpTradeWithOfferCreator } from "@/infrastructure/games/http-trade-with-offer-creator.js";
 import { LazyGameTradeImporter } from "@/infrastructure/games/lazy-game-trade-importer.js";
+import { LazyTradeWithOfferCreator } from "@/infrastructure/games/lazy-trade-with-offer-creator.js";
 import { NoopPriceCache } from "@/infrastructure/games/noop-price-cache.js";
 import { createRedisPriceCache } from "@/infrastructure/games/redis-price-cache.js";
 import { SteamChartsPopularityFetcher } from "@/infrastructure/games/steam-charts-popularity-fetcher.js";
+import { HttpWebhookSender } from "@/infrastructure/webhooks/http-webhook-sender.js";
 import { BrowserModule } from "@/nest/browser/browser.module.js";
 import { GamesController } from "@/nest/games/games.controller.js";
 import { RESEARCH_RUNNER } from "@/nest/games/games.tokens.js";
+
+/** As duas Trades falam com o mesmo Estoque; faltando algo, a falha é no primeiro uso. */
+const stockCredentials = (config: ConfigService<Env, true>) => {
+	const baseUrl = config.get("SISTEMA_ESTOQUE_URL", { infer: true });
+	const secret = config.get("EXTERNAL_SECRET", { infer: true });
+
+	if (!baseUrl) throw new Error("SISTEMA_ESTOQUE_URL is not defined in .env");
+	if (!secret) throw new Error("EXTERNAL_SECRET is not defined in .env");
+
+	return { baseUrl, secret };
+};
 
 /**
  * O wiring das rotas de `games` — o que `src/services/games/` fazia à mão.
@@ -106,15 +123,22 @@ import { RESEARCH_RUNNER } from "@/nest/games/games.tokens.js";
 			provide: GameTradeImporter,
 			useFactory: (config: ConfigService<Env, true>) =>
 				new LazyGameTradeImporter(() => {
-					const baseUrl = config.get("SISTEMA_ESTOQUE_URL", { infer: true });
-					const secret = config.get("EXTERNAL_SECRET", { infer: true });
-
-					if (!baseUrl)
-						throw new Error("SISTEMA_ESTOQUE_URL is not defined in .env");
-					if (!secret)
-						throw new Error("EXTERNAL_SECRET is not defined in .env");
-
+					const { baseUrl, secret } = stockCredentials(config);
 					return new HttpGameTradeImporter(baseUrl, secret);
+				}),
+			inject: [ConfigService],
+		},
+
+		/**
+		 * A Trade com oferta (`POST /api/trades` do Estoque), também preguiçosa e
+		 * pelas mesmas variáveis. Só o pedido com `currency` a usa.
+		 */
+		{
+			provide: TradeWithOfferCreator,
+			useFactory: (config: ConfigService<Env, true>) =>
+				new LazyTradeWithOfferCreator(() => {
+					const { baseUrl, secret } = stockCredentials(config);
+					return new HttpTradeWithOfferCreator(baseUrl, secret);
 				}),
 			inject: [ConfigService],
 		},
@@ -132,23 +156,55 @@ import { RESEARCH_RUNNER } from "@/nest/games/games.tokens.js";
 		},
 		{
 			provide: ResearchGamesUseCase,
-			useFactory: (priceGames: PriceGames, importer: GameTradeImporter) =>
-				new ResearchGamesUseCase(priceGames, importer),
-			inject: [PriceGames, GameTradeImporter],
+			useFactory: (priceGames: PriceGames) =>
+				new ResearchGamesUseCase(priceGames),
+			inject: [PriceGames],
+		},
+		{
+			provide: CreateResearchTrade,
+			useFactory: (
+				priceGames: PriceGames,
+				importer: GameTradeImporter,
+				withOffer: TradeWithOfferCreator,
+			) => new CreateResearchTrade(priceGames, importer, withOffer),
+			inject: [PriceGames, GameTradeImporter, TradeWithOfferCreator],
 		},
 
 		/**
-		 * O que a fila executa. É só composição — nenhuma regra de negócio mora
-		 * aqui, só a tradução "rodar a pesquisa completa e criar a Trade".
+		 * A entrega do Resultado da pesquisa (ADR 0010). Com `QUEUE_REDIS_URL`, a
+		 * fila durável `webhooks`, com novas tentativas por ~24h; sem ela, uma
+		 * tentativa em memória.
+		 *
+		 * O segredo pode faltar só quando a allowlist está vazia (o schema do
+		 * ambiente garante), e aí o envio recusa todo host antes de assinar —
+		 * o `?? ""` nunca assina nada.
 		 */
 		{
+			provide: ResearchResultNotifier,
+			useFactory: (
+				config: ConfigService<Env, true>,
+			): ResearchResultNotifier => {
+				const sender = new HttpWebhookSender(
+					config.get("WEBHOOK_SIGNING_SECRET", { infer: true }) ?? "",
+					config.get("WEBHOOK_ALLOWED_HOSTS", { infer: true }),
+				);
+				const url = config.get("QUEUE_REDIS_URL", { infer: true });
+				return url
+					? createBullmqWebhookQueue(url, sender)
+					: new InMemoryWebhookNotifier(sender);
+			},
+			inject: [ConfigService],
+		},
+
+		/** O que a fila executa: pesquisa, Trade e aviso a quem pediu. */
+		{
 			provide: RESEARCH_RUNNER,
-			useFactory: (useCase: ResearchGamesUseCase): ResearchGamesRunner => ({
-				run: async (request: ResearchGamesRequest) => {
-					await useCase.execute({ ...request, delivery: "trade" });
-				},
-			}),
-			inject: [ResearchGamesUseCase],
+			useFactory: (
+				createTrade: CreateResearchTrade,
+				notifier: ResearchResultNotifier,
+			): ResearchGamesRunner =>
+				new RunResearchJobUseCase(createTrade, notifier),
+			inject: [CreateResearchTrade, ResearchResultNotifier],
 		},
 
 		/**
@@ -191,9 +247,17 @@ import { RESEARCH_RUNNER } from "@/nest/games/games.tokens.js";
 		},
 		{
 			provide: EnqueueResearchGamesUseCase,
-			useFactory: (queue: ResearchQueue) =>
-				new EnqueueResearchGamesUseCase(queue),
-			inject: [ResearchQueue],
+			useFactory: (
+				queue: ResearchQueue,
+				notifier: ResearchResultNotifier,
+				config: ConfigService<Env, true>,
+			) =>
+				new EnqueueResearchGamesUseCase(
+					queue,
+					notifier,
+					config.get("WEBHOOK_ALLOWED_HOSTS", { infer: true }),
+				),
+			inject: [ResearchQueue, ResearchResultNotifier, ConfigService],
 		},
 	],
 	/**

@@ -164,10 +164,12 @@ describe("validateEnv", () => {
 		});
 
 		it("accepts redis:// and rediss:// URLs", () => {
-			expect(validateEnv({ REDIS_URL: "redis://redis:6379" }).REDIS_URL).toBe("redis://redis:6379");
-			expect(validateEnv({ REDIS_URL: "rediss://cache.test:6380" }).REDIS_URL).toBe(
-				"rediss://cache.test:6380",
+			expect(validateEnv({ REDIS_URL: "redis://redis:6379" }).REDIS_URL).toBe(
+				"redis://redis:6379",
 			);
+			expect(
+				validateEnv({ REDIS_URL: "rediss://cache.test:6380" }).REDIS_URL,
+			).toBe("rediss://cache.test:6380");
 		});
 
 		it("rejects a URL that is not Redis", () => {
@@ -189,17 +191,65 @@ describe("validateEnv", () => {
 		});
 
 		it("rejects a queue URL that is not Redis", () => {
-			expect(() => validateEnv({ QUEUE_REDIS_URL: "http://redis:6379/1" })).toThrow(
-				/QUEUE_REDIS_URL must be a redis:\/\/ or rediss:\/\/ URL/,
-			);
+			expect(() =>
+				validateEnv({ QUEUE_REDIS_URL: "http://redis:6379/1" }),
+			).toThrow(/QUEUE_REDIS_URL must be a redis:\/\/ or rediss:\/\/ URL/);
 		});
 
 		it("treats an empty QUEUE_REDIS_URL as absent outside production", () => {
-			expect(validateEnv({ QUEUE_REDIS_URL: "" }).QUEUE_REDIS_URL).toBeUndefined();
+			expect(
+				validateEnv({ QUEUE_REDIS_URL: "" }).QUEUE_REDIS_URL,
+			).toBeUndefined();
 		});
 
 		it("reads a custom TTL", () => {
-			expect(validateEnv({ PRICE_CACHE_TTL_SECONDS: "600" }).PRICE_CACHE_TTL_SECONDS).toBe(600);
+			expect(
+				validateEnv({ PRICE_CACHE_TTL_SECONDS: "600" }).PRICE_CACHE_TTL_SECONDS,
+			).toBe(600);
+		});
+	});
+
+	describe("research result webhook (ADR 0010)", () => {
+		const SECRET = "s".repeat(32);
+
+		it("allows no webhook host by default", () => {
+			const env = validateEnv({});
+
+			expect(env.WEBHOOK_ALLOWED_HOSTS).toEqual([]);
+			expect(env.WEBHOOK_SIGNING_SECRET).toBeUndefined();
+		});
+
+		it("reads the allowed hosts as a lowercase list", () => {
+			const env = validateEnv({
+				WEBHOOK_ALLOWED_HOSTS: "chatbot, Chatbot.CarcaDeals.com;chatbot",
+				WEBHOOK_SIGNING_SECRET: SECRET,
+			});
+
+			expect(env.WEBHOOK_ALLOWED_HOSTS).toEqual([
+				"chatbot",
+				"chatbot.carcadeals.com",
+			]);
+		});
+
+		it("requires the signing secret once a host is allowed, in any environment", () => {
+			expect(() => validateEnv({ WEBHOOK_ALLOWED_HOSTS: "chatbot" })).toThrow(
+				/WEBHOOK_SIGNING_SECRET is required when WEBHOOK_ALLOWED_HOSTS is set/,
+			);
+		});
+
+		it("rejects a signing secret shorter than 32 characters", () => {
+			expect(() =>
+				validateEnv({
+					WEBHOOK_ALLOWED_HOSTS: "chatbot",
+					WEBHOOK_SIGNING_SECRET: "short",
+				}),
+			).toThrow(/WEBHOOK_SIGNING_SECRET must have at least 32 characters/);
+		});
+
+		it("treats an empty signing secret as absent", () => {
+			expect(
+				validateEnv({ WEBHOOK_SIGNING_SECRET: "" }).WEBHOOK_SIGNING_SECRET,
+			).toBeUndefined();
 		});
 	});
 
@@ -216,17 +266,19 @@ describe("validateEnv", () => {
 			expect(validateEnv(productionEnv).NODE_ENV).toBe("production");
 		});
 
-		it.each(["STEAMTRADES_SESSION", "SISTEMA_ESTOQUE_URL", "EXTERNAL_SECRET", "QUEUE_REDIS_URL"])(
-			"refuses to boot in production without %s",
-			(missing) => {
-				const env: Record<string, unknown> = { ...productionEnv };
-				delete env[missing];
+		it.each([
+			"STEAMTRADES_SESSION",
+			"SISTEMA_ESTOQUE_URL",
+			"EXTERNAL_SECRET",
+			"QUEUE_REDIS_URL",
+		])("refuses to boot in production without %s", (missing) => {
+			const env: Record<string, unknown> = { ...productionEnv };
+			delete env[missing];
 
-				expect(() => validateEnv(env)).toThrow(
-					new RegExp(`${missing} is required when NODE_ENV=production`),
-				);
-			},
-		);
+			expect(() => validateEnv(env)).toThrow(
+				new RegExp(`${missing} is required when NODE_ENV=production`),
+			);
+		});
 
 		it("never requires INTERNAL_SECRET — its absence is the demo mode", () => {
 			// Contrato coberto em test/contract: sem o segredo,

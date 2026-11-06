@@ -52,7 +52,7 @@ export const popularityFetcherDouble = () => ({
 });
 
 export const priceFetcherDouble = () => ({
-	fetch: async (games: FoundGames[]) => games,
+	fetch: async (games: FoundGames[]) => ({ games, failed: [] }),
 });
 
 export const tradeImporterDouble = () => ({
@@ -92,6 +92,8 @@ export const researchQueueDouble = () => {
 			}
 			enqueued.push(request);
 		},
+		previousRun: async () => "none" as const,
+		forget: async () => {},
 		status: async () => "in-memory" as const,
 	};
 };

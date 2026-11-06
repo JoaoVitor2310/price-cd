@@ -6,7 +6,9 @@
  * `tf2` é TF2 Key, `eur` é euro, `usd` é dólar. O PayPal não é moeda: é um meio de pagamento
  * em euro por padrão, então ele cai em `eur`.
  */
-export type OfferCurrency = "tf2" | "eur" | "usd";
+export const OFFER_CURRENCIES = ["tf2", "eur", "usd"] as const;
+
+export type OfferCurrency = (typeof OFFER_CURRENCIES)[number];
 
 /** As Moedas de oferta que são dinheiro, ou seja, todas menos TF2 Keys. */
 export type MoneyCurrency = Exclude<OfferCurrency, "tf2">;
