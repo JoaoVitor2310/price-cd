@@ -8,6 +8,15 @@ import type { ResearchGamesRequest } from "@/application/games/ports/research-ga
 export type ResearchQueueStatus = "up" | "down" | "in-memory";
 
 /**
+ * O que a fila sabe de um pedido pelo `requestUuid`:
+ *
+ * - `none`: nunca visto, ou já esquecido (o registro expira por idade);
+ * - `pending`: na fila ou rodando;
+ * - `completed` / `failed`: terminou, e o registro ainda existe.
+ */
+export type PreviousResearchRun = "none" | "pending" | "completed" | "failed";
+
+/**
  * O armazenamento da fila não está aceitando pedidos agora. É a falha esperada
  * de `enqueue` — quem chama ainda está na requisição e pode tentar de novo.
  */
@@ -33,6 +42,13 @@ export class ResearchQueueUnavailableError extends Error {
  */
 export abstract class ResearchQueue {
 	abstract enqueue(request: ResearchGamesRequest): Promise<void>;
+	/** Em que pé está um pedido já recebido com este `requestUuid`. */
+	abstract previousRun(requestUuid: string): Promise<PreviousResearchRun>;
+	/**
+	 * Apaga o registro de um pedido **terminado**, para o mesmo `requestUuid`
+	 * poder rodar de novo. Pedido em andamento não é apagado.
+	 */
+	abstract forget(requestUuid: string): Promise<void>;
 	/** Para o health. */
 	abstract status(): Promise<ResearchQueueStatus>;
 }

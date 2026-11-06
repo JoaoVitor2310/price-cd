@@ -192,6 +192,44 @@ const baseEnvSchema = z.object({
 	 */
 	QUEUE_REDIS_URL: optionalRedisUrl("QUEUE_REDIS_URL"),
 
+	// ── Webhook do resultado da pesquisa (ADR 0010) ───────────────────────────
+	/**
+	 * Hosts que podem receber o webhook, separados por vírgula, ponto e vírgula ou
+	 * quebra de linha (`parseEnvList`). Comparação exata do host, sem porta nem
+	 * caminho: `chatbot`, `chatbot.carcadeals.com`.
+	 *
+	 * Vazio → nenhum webhook é aceito: `webhook_url` responde 400. É o default
+	 * seguro, porque a URL vem do corpo da requisição e o price-cd roda dentro da
+	 * rede interna (SSRF).
+	 */
+	WEBHOOK_ALLOWED_HOSTS: z
+		.string()
+		.optional()
+		.transform((value) =>
+			parseEnvList(value).map((host) => host.toLowerCase()),
+		),
+	/**
+	 * O segredo da assinatura HMAC do webhook. Não trafega: quem recebe guarda o
+	 * mesmo valor e confere a assinatura. Obrigatório quando há host permitido —
+	 * sem ele, um webhook aceito não teria como ser assinado.
+	 *
+	 * Mínimo de 32 caracteres: é a chave do HMAC-SHA256, e uma chave curta se
+	 * adivinha. `openssl rand -hex 32` gera uma.
+	 */
+	WEBHOOK_SIGNING_SECRET: z
+		.string()
+		.trim()
+		.transform((value) => value || undefined)
+		.pipe(
+			z
+				.string()
+				.min(32, {
+					message: "WEBHOOK_SIGNING_SECRET must have at least 32 characters",
+				})
+				.optional(),
+		)
+		.optional(),
+
 	// ── SteamTrades ───────────────────────────────────────────────────────────
 	STEAM_ID: optionalNonEmpty("STEAM_ID"),
 	/**
@@ -256,6 +294,20 @@ const REQUIRED_IN_PRODUCTION = [
 ] as const;
 
 export const envSchema = baseEnvSchema.superRefine((env, ctx) => {
+	// Em qualquer ambiente: aceitar um webhook que não dá para assinar seria
+	// mandar o resultado sem prova de origem.
+	if (
+		env.WEBHOOK_ALLOWED_HOSTS.length > 0 &&
+		env.WEBHOOK_SIGNING_SECRET === undefined
+	) {
+		ctx.addIssue({
+			code: "custom",
+			path: ["WEBHOOK_SIGNING_SECRET"],
+			message:
+				"WEBHOOK_SIGNING_SECRET is required when WEBHOOK_ALLOWED_HOSTS is set",
+		});
+	}
+
 	if (env.NODE_ENV !== "production") return;
 
 	for (const key of REQUIRED_IN_PRODUCTION) {

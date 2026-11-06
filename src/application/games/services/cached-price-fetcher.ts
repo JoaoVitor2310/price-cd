@@ -3,6 +3,7 @@ import type {
 	CatalogPrice,
 	CatalogPriceSource,
 	PriceFetcher,
+	PriceFetchResult,
 	PriceLookup,
 } from "@/application/games/ports/game-search.ports.js";
 import type {
@@ -71,8 +72,8 @@ export class CachedPriceFetcher implements PriceFetcher {
 		private readonly cache: PriceCache,
 	) {}
 
-	async fetch(games: FoundGames[]): Promise<FoundGames[]> {
-		if (games.length === 0) return [];
+	async fetch(games: FoundGames[]): Promise<PriceFetchResult> {
+		if (games.length === 0) return { games: [], failed: [] };
 
 		// Nomes diferentes podem cair na mesma chave ("Crysis™ 2" e "crysis 2"): o
 		// cache e o catálogo trabalham por chave, e cada chave é pesquisada uma vez.
@@ -126,9 +127,13 @@ export class CachedPriceFetcher implements PriceFetcher {
 			if (toStore.size > 0) await this.cache.set(toStore);
 		}
 
-		return games.flatMap((game) => {
+		const priced: FoundGames[] = [];
+		const failed: string[] = [];
+		for (const game of games) {
 			const lookup = lookups.get(priceCacheKey(game.name));
-			return lookup?.status === "priced" ? [withPrice(game, lookup.price)] : [];
-		});
+			if (lookup?.status === "priced") priced.push(withPrice(game, lookup.price));
+			else if (lookup?.status === "failed") failed.push(game.name);
+		}
+		return { games: priced, failed };
 	}
 }

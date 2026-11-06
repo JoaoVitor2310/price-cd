@@ -6,6 +6,8 @@ import { resolveSearchCriteria } from "@/domain/games/search-presets.js";
 import type {
 	BullmqJob,
 	BullmqJobProcessor,
+	BullmqQueueClient,
+	BullmqStoredJob,
 } from "@/infrastructure/background/bullmq-clients.js";
 import {
 	BullmqResearchQueue,
@@ -28,6 +30,7 @@ function setup(runner = { run: vi.fn().mockResolvedValue(undefined) }) {
 	const calls: string[] = [];
 	const queue = {
 		add: vi.fn().mockResolvedValue({ id: "1" }),
+		getJob: vi.fn<BullmqQueueClient["getJob"]>().mockResolvedValue(undefined),
 		close: vi.fn(async () => {
 			calls.push("queue.close");
 		}),
@@ -80,7 +83,67 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
+const storedJob = (state: string) =>
+	({
+		getState: vi.fn().mockResolvedValue(state),
+		remove: vi.fn().mockResolvedValue(undefined),
+		retry: vi.fn().mockResolvedValue(undefined),
+	}) satisfies BullmqStoredJob;
+
 describe("BullmqResearchQueue", () => {
+	describe("previous run of a request_uuid", () => {
+		it.each([
+			["waiting", "pending"],
+			["active", "pending"],
+			["delayed", "pending"],
+			["completed", "completed"],
+			["failed", "failed"],
+			["unknown", "none"],
+		])("reads a %s job as %s", async (state, expected) => {
+			const { adapter, queue } = setup();
+			queue.getJob.mockResolvedValue(storedJob(state));
+
+			await expect(adapter.previousRun("8c1f")).resolves.toBe(expected);
+			expect(queue.getJob).toHaveBeenCalledWith("8c1f");
+		});
+
+		it("reads a missing job as none", async () => {
+			const { adapter } = setup();
+
+			await expect(adapter.previousRun("8c1f")).resolves.toBe("none");
+		});
+
+		it("refuses at once when Redis is not connected", async () => {
+			const { adapter, deps } = setup();
+			deps.isConnected.mockReturnValue(false);
+			vi.spyOn(console, "warn").mockImplementation(() => {});
+
+			await expect(adapter.previousRun("8c1f")).rejects.toBeInstanceOf(
+				ResearchQueueUnavailableError,
+			);
+		});
+
+		it.each(["completed", "failed"])("forgets a %s job", async (state) => {
+			const { adapter, queue } = setup();
+			const job = storedJob(state);
+			queue.getJob.mockResolvedValue(job);
+
+			await adapter.forget("8c1f");
+
+			expect(job.remove).toHaveBeenCalled();
+		});
+
+		it("never forgets a job still in progress", async () => {
+			const { adapter, queue } = setup();
+			const job = storedJob("active");
+			queue.getJob.mockResolvedValue(job);
+
+			await adapter.forget("8c1f");
+
+			expect(job.remove).not.toHaveBeenCalled();
+		});
+	});
+
 	describe("enqueue", () => {
 		it("stores the request as job data, with the execution-log retention", async () => {
 			const { adapter, queue } = setup();
@@ -92,6 +155,21 @@ describe("BullmqResearchQueue", () => {
 				request,
 				RESEARCH_JOB_OPTIONS,
 			);
+		});
+
+		it("uses the request uuid as the job id, so the same request enqueued twice runs once", async () => {
+			const { adapter, queue } = setup();
+			const withUuid = {
+				...request,
+				requestUuid: "8c1f0000-0000-4000-8000-000000000000",
+			};
+
+			await adapter.enqueue(withUuid);
+
+			expect(queue.add).toHaveBeenCalledWith("research", withUuid, {
+				...RESEARCH_JOB_OPTIONS,
+				jobId: "8c1f0000-0000-4000-8000-000000000000",
+			});
 		});
 
 		it("keeps finished jobs by age, and never retries a research on its own", () => {
@@ -231,7 +309,9 @@ describe("BullmqResearchQueue", () => {
 
 			await process(job(), "token");
 
-			expect(runner.run).toHaveBeenCalledWith(request);
+			expect(runner.run).toHaveBeenCalledWith(request, expect.any(AbortSignal));
+			// Não abortado: rodando normalmente, uma falha é do pedido.
+			expect(runner.run.mock.calls[0][1].aborted).toBe(false);
 		});
 
 		it("lets a runner failure fail the job, so it is recorded", async () => {
@@ -271,6 +351,8 @@ describe("BullmqResearchQueue", () => {
 			const processing = process(activeJob, "lock-token");
 			await adapter.beforeApplicationShutdown();
 
+			// O runner fica sabendo: a falha que vem a seguir não é resultado final.
+			expect(runner.run.mock.calls[0][1].aborted).toBe(true);
 			expect(activeJob.moveToDelayed).toHaveBeenCalledWith(
 				expect.any(Number),
 				"lock-token",

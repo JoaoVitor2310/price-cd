@@ -19,9 +19,15 @@ const game = (name: string, GamivoPrice?: number, popularity = 500): FoundGames 
 	GamivoPrice,
 });
 
-const makeEngine = (found: FoundGames[], priced: FoundGames[]) => {
+const makeEngine = (
+	found: FoundGames[],
+	priced: FoundGames[],
+	failed: string[] = [],
+) => {
 	const popularityFetcher = { fetch: vi.fn().mockResolvedValue(found) };
-	const priceFetcher = { fetch: vi.fn().mockResolvedValue(priced) };
+	const priceFetcher = {
+		fetch: vi.fn().mockResolvedValue({ games: priced, failed }),
+	};
 	return {
 		engine: new PriceGames(
 			popularityFetcher as PopularityFetcher,
@@ -52,6 +58,24 @@ const tiers = (upToThreshold: number, aboveThreshold: number): PopularityTiers =
 });
 
 describe("PriceGames", () => {
+	it("passes on who could not be priced, and warns about them", async () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const { engine } = makeEngine(
+			[game("Hades"), game("Flaky")],
+			[game("Hades", 2)],
+			["Flaky"],
+		);
+
+		const { lookupFailed } = await engine.run({
+			gameNames: ["Hades", "Flaky"],
+			criteria: criteria(),
+		});
+
+		expect(lookupFailed).toEqual(["Flaky"]);
+		expect(warn).toHaveBeenCalledWith(expect.stringContaining("Flaky"));
+		warn.mockRestore();
+	});
+
 	it("exposes each stage so callers can shape their own output", async () => {
 		// Hoje todo consumidor lê só `priced`; os estágios intermediários existem
 		// para teste e diagnóstico, e este teste trava que continuam expostos.
@@ -108,6 +132,7 @@ describe("PriceGames", () => {
 			found: [],
 			worthyByPopularity: [],
 			priced: [],
+			lookupFailed: [],
 		});
 	});
 

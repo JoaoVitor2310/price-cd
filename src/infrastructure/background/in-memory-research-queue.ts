@@ -3,6 +3,7 @@ import type {
 	ResearchGamesRunner,
 } from "@/application/games/ports/research-games-runner.port.js";
 import type {
+	PreviousResearchRun,
 	ResearchQueue,
 	ResearchQueueStatus,
 } from "@/application/games/ports/research-queue.port.js";
@@ -14,7 +15,8 @@ import type { BackgroundScheduler } from "@/application/shared/ports/background-
  * exige `QUEUE_REDIS_URL`, então este adapter nunca chega lá.
  *
  * Um reinício perde o que estava na fila, e a falha de uma execução só vai para
- * o log.
+ * o log. Também não guarda registro: todo pedido é novo, mesmo com o mesmo
+ * `requestUuid`.
  */
 export class InMemoryResearchQueue implements ResearchQueue {
 	constructor(
@@ -31,6 +33,12 @@ export class InMemoryResearchQueue implements ResearchQueue {
 			}
 		});
 	}
+
+	async previousRun(_requestUuid: string): Promise<PreviousResearchRun> {
+		return "none";
+	}
+
+	async forget(_requestUuid: string): Promise<void> {}
 
 	async status(): Promise<ResearchQueueStatus> {
 		return "in-memory";

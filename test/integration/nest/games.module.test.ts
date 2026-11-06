@@ -10,8 +10,15 @@ import {
 } from "@/application/games/ports/game-search.ports.js";
 import { PriceCache } from "@/application/games/ports/price-cache.port.js";
 import { ResearchQueue } from "@/application/games/ports/research-queue.port.js";
+import { ResearchResultNotifier } from "@/application/games/ports/research-result-notifier.port.js";
+import { TradeWithOfferCreator } from "@/application/games/ports/trade-with-offer-creator.port.js";
+import { RunResearchJobUseCase } from "@/application/games/use-cases/run-research-job.use-case.js";
+import { InMemoryWebhookNotifier } from "@/infrastructure/background/in-memory-webhook-notifier.js";
+import { LazyTradeWithOfferCreator } from "@/infrastructure/games/lazy-trade-with-offer-creator.js";
+import { RESEARCH_RUNNER } from "@/nest/games/games.tokens.js";
 import { CachedPriceFetcher } from "@/application/games/services/cached-price-fetcher.js";
 import { GameTradeImporter } from "@/application/games/ports/game-trade-importer.port.js";
+import { CreateResearchTrade } from "@/application/games/services/create-research-trade.js";
 import { ResearchGamesUseCase } from "@/application/games/use-cases/research-games.use-case.js";
 import { InMemoryResearchQueue } from "@/infrastructure/background/in-memory-research-queue.js";
 import { AllKeyShopPriceFetcher } from "@/infrastructure/games/allkeyshop-price-fetcher.js";
@@ -47,7 +54,9 @@ describe("GamesModule", () => {
 		process.env.SISTEMA_ESTOQUE_URL = "http://sistema-estoque.test";
 		process.env.EXTERNAL_SECRET = "test-external-secret";
 
-		const moduleRef = await Test.createTestingModule({ imports: [AppConfigModule, GamesModule] })
+		const moduleRef = await Test.createTestingModule({
+			imports: [AppConfigModule, GamesModule],
+		})
 			.overrideProvider(PopularityFetcher)
 			.useValue(popularity)
 			.overrideProvider(PriceFetcher)
@@ -107,7 +116,9 @@ describe("GamesModule", () => {
 			const { AppConfigModule: FreshConfigModule } = await import(
 				"@/nest/config/config.module.js"
 			);
-			const ports = await import("@/application/games/ports/price-cache.port.js");
+			const ports = await import(
+				"@/application/games/ports/price-cache.port.js"
+			);
 			const redis = await import("@/infrastructure/games/redis-price-cache.js");
 
 			const moduleRef = await Test.createTestingModule({
@@ -136,7 +147,95 @@ describe("GamesModule", () => {
 		const queue = moduleRef.get(ResearchQueue);
 		expect(queue).toBeInstanceOf(InMemoryResearchQueue);
 		expect(await queue.status()).toBe("in-memory");
+		// O par sem Redis: webhook em memória, uma tentativa.
+		expect(moduleRef.get(ResearchResultNotifier)).toBeInstanceOf(
+			InMemoryWebhookNotifier,
+		);
 		await moduleRef.close();
+	});
+
+	it("runs each queued request through RunResearchJobUseCase, with the Trade with an offer built lazily", async () => {
+		// Sem `SISTEMA_ESTOQUE_URL` na suíte: construir o adapter no boot
+		// derrubaria o módulo, e o demo precisa subir sem o Estoque.
+		const moduleRef = await Test.createTestingModule({
+			imports: [AppConfigModule, GamesModule],
+		}).compile();
+
+		expect(moduleRef.get(RESEARCH_RUNNER)).toBeInstanceOf(
+			RunResearchJobUseCase,
+		);
+		expect(moduleRef.get(TradeWithOfferCreator)).toBeInstanceOf(
+			LazyTradeWithOfferCreator,
+		);
+		await moduleRef.close();
+	});
+
+	it("accepts a webhook only to a host listed in WEBHOOK_ALLOWED_HOSTS", async () => {
+		// O ambiente é validado no import do ConfigModule: precisa estar no lugar
+		// antes de importar.
+		vi.stubEnv("WEBHOOK_ALLOWED_HOSTS", "chatbot");
+		vi.stubEnv("WEBHOOK_SIGNING_SECRET", "s".repeat(32));
+		try {
+			vi.resetModules();
+			const { GamesModule: FreshGamesModule } = await import(
+				"@/nest/games/games.module.js"
+			);
+			const { AppConfigModule: FreshConfigModule } = await import(
+				"@/nest/config/config.module.js"
+			);
+			const ports = await import(
+				"@/application/games/ports/research-queue.port.js"
+			);
+			const enqueue = await import(
+				"@/application/games/use-cases/enqueue-research-games.use-case.js"
+			);
+			const queue = {
+				enqueue: vi.fn().mockResolvedValue(undefined),
+				previousRun: vi.fn().mockResolvedValue("none"),
+				forget: vi.fn(),
+				status: vi.fn(),
+			};
+
+			const moduleRef = await Test.createTestingModule({
+				imports: [FreshConfigModule, FreshGamesModule],
+			})
+				.overrideProvider(ports.ResearchQueue)
+				.useValue(queue)
+				.compile();
+			try {
+				const useCase = moduleRef.get(enqueue.EnqueueResearchGamesUseCase);
+				const request = (webhookUrl: string) => ({
+					request: {
+						gameNames: ["Hades"],
+						criteria: {
+							popularity: {
+								upToThreshold: 0,
+								aboveThreshold: 0,
+								priceThresholdEuro: 5,
+							},
+							lookupPopularity: false,
+							minPrice: 0.5,
+							checkGamivoOffer: false,
+						},
+						currency: "eur" as const,
+						supplierSteamId: "76561198012345678",
+						requestUuid: "8c1f0000-0000-4000-8000-000000000000",
+						webhookUrl,
+					},
+				});
+
+				await useCase.execute(request("http://chatbot:3000/webhooks/price-cd"));
+				expect(queue.enqueue).toHaveBeenCalledTimes(1);
+
+				await expect(
+					useCase.execute(request("http://estoque:8000/")),
+				).rejects.toBeInstanceOf(enqueue.InvalidResearchRequestError);
+			} finally {
+				await moduleRef.close();
+			}
+		} finally {
+			vi.unstubAllEnvs();
+		}
 	});
 
 	it("uses the durable queue when QUEUE_REDIS_URL is set, booting and closing without Redis", async () => {
@@ -153,8 +252,12 @@ describe("GamesModule", () => {
 			const { AppConfigModule: FreshConfigModule } = await import(
 				"@/nest/config/config.module.js"
 			);
-			const ports = await import("@/application/games/ports/research-queue.port.js");
-			const bullmq = await import("@/infrastructure/background/bullmq-research-queue.js");
+			const ports = await import(
+				"@/application/games/ports/research-queue.port.js"
+			);
+			const bullmq = await import(
+				"@/infrastructure/background/bullmq-research-queue.js"
+			);
 
 			const moduleRef = await Test.createTestingModule({
 				imports: [FreshConfigModule, FreshGamesModule],
@@ -163,13 +266,27 @@ describe("GamesModule", () => {
 				const queue = moduleRef.get(ports.ResearchQueue);
 
 				expect(queue).toBeInstanceOf(bullmq.BullmqResearchQueue);
+				// A entrega do webhook também fica durável, no mesmo Redis.
+				const notifier = await import(
+					"@/application/games/ports/research-result-notifier.port.js"
+				);
+				const webhooks = await import(
+					"@/infrastructure/background/bullmq-webhook-queue.js"
+				);
+				expect(moduleRef.get(notifier.ResearchResultNotifier)).toBeInstanceOf(
+					webhooks.BullmqWebhookQueue,
+				);
 				expect(await queue.status()).toBe("down");
 				// O pedido é recusado na hora, não pendurado até o Redis voltar.
 				await expect(
 					queue.enqueue({
 						gameNames: ["Hades"],
 						criteria: {
-							popularity: { upToThreshold: 0, aboveThreshold: 0, priceThresholdEuro: 5 },
+							popularity: {
+								upToThreshold: 0,
+								aboveThreshold: 0,
+								priceThresholdEuro: 5,
+							},
 							lookupPopularity: false,
 							minPrice: 0.5,
 							checkGamivoOffer: false,
@@ -185,20 +302,28 @@ describe("GamesModule", () => {
 		}
 	});
 
-	it("builds ResearchGamesUseCase with its dependencies injected", async () => {
-		// O use case não tem `@Injectable()` — `application/` não importa Nest.
+	it("builds the research use case and service with their dependencies injected", async () => {
+		// Nenhum dos dois tem `@Injectable()` — `application/` não importa Nest.
 		// Este teste prova que o `useFactory` + `inject` do módulo supre isso.
 		const moduleRef = await Test.createTestingModule({
 			imports: [AppConfigModule, GamesModule],
 		}).compile();
 
-		expect(moduleRef.get(ResearchGamesUseCase)).toBeInstanceOf(ResearchGamesUseCase);
+		expect(moduleRef.get(ResearchGamesUseCase)).toBeInstanceOf(
+			ResearchGamesUseCase,
+		);
+		expect(moduleRef.get(CreateResearchTrade)).toBeInstanceOf(
+			CreateResearchTrade,
+		);
 		await moduleRef.close();
 	});
 
 	it("replaces the port with a double through the container", async () => {
 		popularity.fetch.mockResolvedValueOnce([found("Hades")]);
-		price.fetch.mockResolvedValueOnce([found("Hades")]);
+		price.fetch.mockResolvedValueOnce({
+			games: [found("Hades")],
+			failed: [],
+		});
 
 		const response = await request(app.getHttpServer())
 			.post("/games/research")
@@ -218,10 +343,13 @@ describe("GamesModule", () => {
 		// O fornecedor vende o bundle inteiro: o jogo que o SteamCharts não devolve
 		// tem que voltar, e a consulta acontece (`lookup: true`) para informar o número.
 		popularity.fetch.mockResolvedValueOnce([found("Hades")]);
-		price.fetch.mockResolvedValueOnce([
+		price.fetch.mockResolvedValueOnce({
+			games: [
 			found("Hades"),
 			{ ...found("Obscure Indie"), id: 1, popularity: 0 },
-		]);
+		],
+			failed: [],
+		});
 
 		const response = await request(app.getHttpServer())
 			.post("/games/research")
@@ -252,7 +380,12 @@ describe("GamesModule", () => {
 
 		const response = await request(app.getHttpServer())
 			.post("/games/search-id-steam")
-			.send({ games: [{ id: 1, name: "Hades" }, { id: 2, name: "Unknown" }] });
+			.send({
+				games: [
+					{ id: 1, name: "Hades" },
+					{ id: 2, name: "Unknown" },
+				],
+			});
 
 		expect(response.status).toBe(200);
 		expect(response.body.data.games).toEqual([
@@ -279,7 +412,9 @@ describe("GamesModule", () => {
 	});
 
 	it("never leaks the underlying error message on a 500", async () => {
-		popularity.fetch.mockRejectedValueOnce(new Error("PHPSESSID=secret-cookie"));
+		popularity.fetch.mockRejectedValueOnce(
+			new Error("PHPSESSID=secret-cookie"),
+		);
 
 		const response = await request(app.getHttpServer())
 			.post("/games/search-id-steam")
@@ -293,7 +428,10 @@ describe("GamesModule", () => {
 
 		it("runs synchronously and returns 200 when no token is sent", async () => {
 			popularity.fetch.mockResolvedValueOnce([found("Hades")]);
-			price.fetch.mockResolvedValueOnce([found("Hades")]);
+			price.fetch.mockResolvedValueOnce({
+			games: [found("Hades")],
+			failed: [],
+		});
 
 			const response = await request(app.getHttpServer())
 				.post("/games/research")
@@ -309,14 +447,20 @@ describe("GamesModule", () => {
 			// `public/index.html` lê este nome: trocá-lo só de um lado deixaria a
 			// coluna de preço da UI em `NaN`. O nome antigo não pode voltar.
 			popularity.fetch.mockResolvedValueOnce([found("Hades")]);
-			price.fetch.mockResolvedValueOnce([found("Hades")]);
+			price.fetch.mockResolvedValueOnce({
+			games: [found("Hades")],
+			failed: [],
+		});
 
 			const response = await request(app.getHttpServer())
 				.post("/games/research")
 				.send(body);
 
 			expect(response.body.games).toHaveLength(1);
-			expect(response.body.games[0]).toMatchObject({ name: "Hades", market_price_euro: 4.2 });
+			expect(response.body.games[0]).toMatchObject({
+				name: "Hades",
+				market_price_euro: 4.2,
+			});
 			expect(response.body.games[0]).not.toHaveProperty("price_euro");
 		});
 
@@ -327,7 +471,10 @@ describe("GamesModule", () => {
 			// `bundle-sync` não consulta o SteamCharts: o fetcher real devolveria todo
 			// jogo (popularidade 0), nunca uma lista vazia.
 			popularity.fetch.mockResolvedValueOnce([found("Hades")]);
-			price.fetch.mockResolvedValueOnce([found("Hades")]);
+			price.fetch.mockResolvedValueOnce({
+			games: [found("Hades")],
+			failed: [],
+		});
 
 			const response = await request(app.getHttpServer())
 				.post("/games/research")

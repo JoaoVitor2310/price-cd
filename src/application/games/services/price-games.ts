@@ -2,6 +2,7 @@ import type { FoundGames } from "@/application/games/game.types.js";
 import { logDiscardedByGamivoOffer } from "@/application/games/services/log-discarded-by-gamivo-offer.js";
 import { logDiscardedByPopularityTier } from "@/application/games/services/log-discarded-by-popularity.js";
 import { logDiscardedByPrice } from "@/application/games/services/log-discarded-by-price.js";
+import { logFailedPriceLookups } from "@/application/games/services/log-failed-price-lookups.js";
 import { logKeptWithoutPopularity } from "@/application/games/services/log-kept-without-popularity.js";
 import type {
 	PopularityFetcher,
@@ -47,20 +48,24 @@ export type PriceGamesResult = {
 	 * no tier exato do seu preço — o resultado útil.
 	 */
 	priced: FoundGames[];
+	/**
+	 * Nomes que o catálogo não pôde responder: nem passaram, nem foram descartados.
+	 * Quem chama decide se isso muda o desfecho.
+	 */
+	lookupFailed: string[];
 };
 
 /**
  * O motor de precificação: nomes de jogos → jogos com preço que valem a pena.
  *
- * Compartilhado pela pesquisa (`ResearchGamesUseCase`), pelo Reabastecimento
+ * Compartilhado pela pesquisa (`priceResearchGames`), pelo Reabastecimento
  * (`lists`) e pela Descoberta de Fornecedores (`suppliers`). A política de cada um
  * chega pronta em `criteria`, resolvida a partir do seu preset — o motor não tem
  * default próprio de nada.
  *
- * Não é `*.service.ts` de propósito: essa convenção está proibida neste repo
- * (`docs/nest-conceitos.md` §9) porque colide com o vocabulário do Nest e com o
- * `src/services/` legado. É um colaborador de `application/`, compartilhado
- * entre use cases.
+ * Sem o sufixo `.service.ts` porque nasceu quando ele estava proibido; hoje está
+ * liberado e renomear seria churn (`docs/nest-conceitos.md` §9). É um colaborador
+ * de `application/`, compartilhado entre use cases.
  *
  * Sem `@Injectable()`: `application/` nunca importa `@nestjs/*`.
  */
@@ -89,7 +94,13 @@ export class PriceGames {
 		const requested = [...new Set(input.gameNames)];
 
 		if (requested.length === 0) {
-			return { requested, found: [], worthyByPopularity: [], priced: [] };
+			return {
+				requested,
+				found: [],
+				worthyByPopularity: [],
+				priced: [],
+				lookupFailed: [],
+			};
 		}
 
 		const minimum = lowestTier(tiers);
@@ -105,10 +116,18 @@ export class PriceGames {
 
 		// Não vale abrir o browser do AllKeyShop para lista vazia.
 		if (worthy.length === 0) {
-			return { requested, found, worthyByPopularity: worthy, priced: [] };
+			return {
+				requested,
+				found,
+				worthyByPopularity: worthy,
+				priced: [],
+				lookupFailed: [],
+			};
 		}
 
-		const withPrices = await this.priceFetcher.fetch(worthy);
+		const { games: withPrices, failed: lookupFailed } =
+			await this.priceFetcher.fetch(worthy);
+		logFailedPriceLookups(lookupFailed);
 		// O preço volta bruto (pode vir do cache de outro preset); o critério de
 		// Gamivo deste preset é aplicado aqui. Ver ADR 0008.
 		const { worthy: withGamivo, withoutGamivo } = partitionByGamivoOffer(
@@ -129,6 +148,6 @@ export class PriceGames {
 		);
 		logDiscardedByPopularityTier(tooUnpopular, tiers);
 
-		return { requested, found, worthyByPopularity: worthy, priced };
+		return { requested, found, worthyByPopularity: worthy, priced, lookupFailed };
 	}
 }

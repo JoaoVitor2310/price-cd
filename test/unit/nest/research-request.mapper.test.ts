@@ -22,10 +22,27 @@ describe("toResearchRequest", () => {
 		});
 	});
 
-	it("never carries the token into the application request", () => {
-		expect(toResearchRequest(body({ internal_secret: "s3cret" }))).not.toHaveProperty(
-			"internal_secret",
+	it("carries the result-notification fields, renamed", () => {
+		const request = toResearchRequest(
+			body({
+				currency: "usd",
+				request_uuid: "8c1f0000-0000-4000-8000-000000000000",
+				webhook_url: "http://chatbot:3000/webhooks/price-cd",
+			}),
 		);
+
+		expect(request).toMatchObject({
+			currency: "usd",
+			requestUuid: "8c1f0000-0000-4000-8000-000000000000",
+			webhookUrl: "http://chatbot:3000/webhooks/price-cd",
+		});
+		expect(request).not.toHaveProperty("webhook_url");
+	});
+
+	it("never carries the token into the application request", () => {
+		expect(
+			toResearchRequest(body({ internal_secret: "s3cret" })),
+		).not.toHaveProperty("internal_secret");
 	});
 
 	it("uses the default preset when nothing is sent", () => {

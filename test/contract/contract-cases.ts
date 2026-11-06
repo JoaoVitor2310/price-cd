@@ -120,7 +120,11 @@ export const CONTRACT_CASES: ContractCase[] = [
 			presets: {
 				default: {
 					label: "Default",
-					popularity: { upToThreshold: 30, aboveThreshold: 100, priceThresholdEuro: 5 },
+					popularity: {
+						upToThreshold: 30,
+						aboveThreshold: 100,
+						priceThresholdEuro: 5,
+					},
 					lookupPopularity: true,
 					minPrice: 0.5,
 					checkGamivoOffer: true,
@@ -237,7 +241,11 @@ export const CONTRACT_CASES: ContractCase[] = [
 		body: {
 			gameNames: ["Hades"],
 			preset: "default",
-			popularity: { upToThreshold: 30, aboveThreshold: 30, priceThresholdEuro: 5 },
+			popularity: {
+				upToThreshold: 30,
+				aboveThreshold: 30,
+				priceThresholdEuro: 5,
+			},
 			minPrice: 0,
 		},
 		expectStatus: 200,
@@ -279,7 +287,131 @@ export const CONTRACT_CASES: ContractCase[] = [
 		expectStatus: 400,
 		expectBody: {
 			success: false,
-			data: expect.stringContaining("preset must be one of: default, bundle-research"),
+			data: expect.stringContaining(
+				"preset must be one of: default, bundle-research",
+			),
+		},
+	},
+	// -- Trade com oferta e webhook do resultado (ADR 0010)
+	{
+		route: "/api/games/research",
+		method: "post",
+		name: "currency with a SteamID64 and a token returns 202 queued",
+		body: {
+			...VALID_RESEARCH_BODY,
+			internal_secret: CONTRACT_SECRET,
+			currency: "eur",
+			steam_id: "76561198012345678",
+			request_uuid: "8c1f0000-0000-4000-8000-000000000000",
+		},
+		env: { INTERNAL_SECRET: CONTRACT_SECRET },
+		expectStatus: 202,
+		expectBody: { success: true, status: "queued" },
+	},
+	{
+		route: "/api/games/research",
+		method: "post",
+		// Quem manda os campos novos espera Trade e aviso: um demo 200 seria uma
+		// resposta que ninguém vai ler.
+		name: "currency without a valid token returns 400, not demo",
+		body: {
+			...VALID_RESEARCH_BODY,
+			currency: "eur",
+			steam_id: "76561198012345678",
+		},
+		env: { INTERNAL_SECRET: CONTRACT_SECRET },
+		expectStatus: 400,
+		expectBody: {
+			success: false,
+			data: "Invalid file content: currency, request_uuid and webhook_url require a valid internal_secret",
+		},
+	},
+	{
+		route: "/api/games/research",
+		method: "post",
+		name: "currency without a SteamID64 returns 400",
+		body: {
+			...VALID_RESEARCH_BODY,
+			internal_secret: CONTRACT_SECRET,
+			currency: "usd",
+			steam_id: "someone",
+		},
+		env: { INTERNAL_SECRET: CONTRACT_SECRET },
+		expectStatus: 400,
+		expectBody: {
+			success: false,
+			data: "Invalid file content: currency requires steam_id as a SteamID64",
+		},
+	},
+	{
+		route: "/api/games/research",
+		method: "post",
+		name: "an unknown currency returns 400 naming the valid ones",
+		body: {
+			...VALID_RESEARCH_BODY,
+			currency: "brl",
+			steam_id: "76561198012345678",
+		},
+		expectStatus: 400,
+		expectBody: {
+			success: false,
+			data: expect.stringContaining("currency must be one of: tf2, eur, usd"),
+		},
+	},
+	{
+		route: "/api/games/research",
+		method: "post",
+		name: "webhook_url without request_uuid and currency returns 400 naming both",
+		body: {
+			...VALID_RESEARCH_BODY,
+			internal_secret: CONTRACT_SECRET,
+			webhook_url: "http://chatbot:3000/webhooks/price-cd",
+		},
+		env: { INTERNAL_SECRET: CONTRACT_SECRET },
+		expectStatus: 400,
+		expectBody: {
+			success: false,
+			data: "Invalid file content: webhook_url requires request_uuid, webhook_url requires currency",
+		},
+	},
+	{
+		route: "/api/games/research",
+		method: "post",
+		// A suíte roda sem `WEBHOOK_ALLOWED_HOSTS`: nenhum host é permitido.
+		name: "webhook_url to a host outside the allowlist returns 400",
+		body: {
+			...VALID_RESEARCH_BODY,
+			internal_secret: CONTRACT_SECRET,
+			currency: "eur",
+			steam_id: "76561198012345678",
+			request_uuid: "8c1f0000-0000-4000-8000-000000000000",
+			webhook_url: "http://redis:6379/",
+		},
+		env: { INTERNAL_SECRET: CONTRACT_SECRET },
+		expectStatus: 400,
+		expectBody: {
+			success: false,
+			data: "Invalid file content: webhook_url host is not allowed",
+		},
+	},
+	{
+		route: "/api/games/research",
+		method: "post",
+		name: "delivery respond with currency returns 400",
+		body: {
+			...VALID_RESEARCH_BODY,
+			internal_secret: CONTRACT_SECRET,
+			delivery: "respond",
+			currency: "eur",
+			steam_id: "76561198012345678",
+		},
+		env: { INTERNAL_SECRET: CONTRACT_SECRET },
+		expectStatus: 400,
+		expectBody: {
+			success: false,
+			data: expect.stringContaining(
+				'delivery "respond" does not accept currency',
+			),
 		},
 	},
 	{

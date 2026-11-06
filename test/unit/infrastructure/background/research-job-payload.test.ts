@@ -20,11 +20,11 @@ describe("parseResearchJobPayload", () => {
 	});
 
 	it("keeps fields the schema does not declare, at every level", () => {
-		// Um campo novo do pedido (o `webhook_url` do PR 2) que alguém esquecesse
-		// de declarar no schema não pode sumir entre o `enqueue` e o worker.
+		// Um campo novo do pedido que alguém esquecesse de declarar no schema não
+		// pode sumir entre o `enqueue` e o worker.
 		const withNewFields = {
 			...request,
-			webhookUrl: "https://chatbot.test/webhook",
+			someFutureField: "kept",
 			criteria: {
 				...request.criteria,
 				someNewCriterion: true,
@@ -34,6 +34,19 @@ describe("parseResearchJobPayload", () => {
 		const stored = JSON.parse(JSON.stringify(withNewFields));
 
 		expect(parseResearchJobPayload(stored)).toEqual(withNewFields);
+	});
+
+	it("keeps the result-notification fields", () => {
+		const withWebhook: ResearchGamesRequest = {
+			...request,
+			currency: "eur",
+			requestUuid: "8c1f0000-0000-4000-8000-000000000000",
+			webhookUrl: "http://chatbot:3000/webhooks/price-cd",
+		};
+
+		expect(
+			parseResearchJobPayload(JSON.parse(JSON.stringify(withWebhook))),
+		).toEqual(withWebhook);
 	});
 
 	it("accepts a request without the optional Trade fields", () => {
@@ -49,6 +62,7 @@ describe("parseResearchJobPayload", () => {
 			"a criterion of the wrong type",
 			{ ...request, criteria: { ...request.criteria, minPrice: "0.5" } },
 		],
+		["an unknown currency", { ...request, currency: "brl" }],
 	])("rejects a payload with %s", (_label, payload) => {
 		expect(() => parseResearchJobPayload(payload)).toThrow(
 			/Invalid research job payload/,

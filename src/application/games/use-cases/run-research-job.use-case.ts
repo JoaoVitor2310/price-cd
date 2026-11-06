@@ -1,0 +1,113 @@
+import type {
+	CancellationSignal,
+	ResearchGamesRequest,
+	ResearchGamesRunner,
+} from "@/application/games/ports/research-games-runner.port.js";
+import type {
+	ResearchFailureKind,
+	ResearchResult,
+	ResearchResultNotifier,
+} from "@/application/games/ports/research-result-notifier.port.js";
+import { StockUnavailableError } from "@/application/games/ports/trade-with-offer-creator.port.js";
+import type {
+	CreateResearchTrade,
+	ResearchTradeOutcome,
+} from "@/application/games/services/create-research-trade.js";
+
+/**
+ * Executa um pedido de pesquisa tirado da fila: pesquisa, cria a Trade e, se o
+ * pedido trouxe `webhookUrl`, avisa quem pediu com o Resultado da pesquisa.
+ *
+ * O aviso sai **depois** da resposta do Sistema Estoque: com `trade_created`, a
+ * Trade já existe.
+ *
+ * Uma falha é avisada como `failed` e **depois propaga**, para a fila registrá-la
+ * no job. Exceção: se a fila já tinha devolvido o pedido (`signal.aborted`, o
+ * serviço desligando), a falha é do desligamento e o pedido vai rodar de novo —
+ * avisar `failed` aqui mandaria a quem pediu um resultado que não é o final.
+ *
+ * A mensagem do `failed` é **fixa por tipo**, não a do erro: o resultado sai do
+ * price-cd para outro sistema, e o erro interno (Cloudflare, URL do Estoque,
+ * corpo do 422) não é para lá. O detalhe fica no log e no registro do job, pelo
+ * erro que propaga.
+ */
+export class RunResearchJobUseCase implements ResearchGamesRunner {
+	constructor(
+		private readonly createTrade: CreateResearchTrade,
+		private readonly notifier: ResearchResultNotifier,
+	) {}
+
+	async run(
+		request: ResearchGamesRequest,
+		signal?: CancellationSignal,
+	): Promise<void> {
+		let outcome: ResearchTradeOutcome;
+		try {
+			outcome = await this.createTrade.run(request, signal);
+		} catch (error) {
+			if (!signal?.aborted) {
+				// Não deixar uma falha do aviso tomar o lugar da causa: é o erro
+				// original que fica registrado no job.
+				await this.notify(request, failedResult(error)).catch((notifyError) =>
+					console.error(
+						"❌ [RESEARCH] Could not store the failed result for delivery:",
+						notifyError,
+					),
+				);
+			}
+			throw error;
+		}
+
+		await this.notify(request, toResult(outcome));
+	}
+
+	private async notify(
+		request: ResearchGamesRequest,
+		result: ResearchResult,
+	): Promise<void> {
+		const { webhookUrl, requestUuid } = request;
+		if (webhookUrl === undefined) return;
+		// O schema da requisição exige os dois juntos; um sem o outro é pedido
+		// montado à mão, e não há como dizer de qual pedido é o resultado.
+		if (requestUuid === undefined) {
+			throw new Error(
+				"A research request with webhookUrl requires requestUuid",
+			);
+		}
+
+		await this.notifier.notify({ webhookUrl, requestUuid }, result);
+	}
+}
+
+const toResult = (outcome: ResearchTradeOutcome): ResearchResult => {
+	if (outcome.status === "not_created") return { result: "no_trade" };
+	// Só a Trade com oferta devolve uuid, e o webhook exige moeda — sem uuid aqui
+	// é um pedido com webhook que escapou da validação.
+	if (outcome.tradeUuid === undefined) {
+		return {
+			result: "failed",
+			failure: {
+				kind: "pricing_failed",
+				message: FAILURE_MESSAGES.pricing_failed,
+			},
+		};
+	}
+	return { result: "trade_created", tradeUuid: outcome.tradeUuid };
+};
+
+/** O que quem pediu lê, por tipo — nunca o texto do erro interno. */
+export const FAILURE_MESSAGES: Record<ResearchFailureKind, string> = {
+	pricing_failed: "The price research could not be completed.",
+	stock_unavailable: "Sistema Estoque could not create the Trade right now.",
+};
+
+const failedResult = (error: unknown): ResearchResult => {
+	const kind: ResearchFailureKind =
+		error instanceof StockUnavailableError
+			? "stock_unavailable"
+			: "pricing_failed";
+	return {
+		result: "failed",
+		failure: { kind, message: FAILURE_MESSAGES[kind] },
+	};
+};

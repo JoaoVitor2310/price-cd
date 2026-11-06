@@ -25,10 +25,18 @@ export abstract class LegacyDataErrorFilter extends AllExceptionsFilter {
 		exception: ZodError,
 		host: ArgumentsHost,
 	): void {
-		const response = host.switchToHttp().getResponse<Response>();
 		// Só a mensagem, sem o caminho do campo — diferente do filter global,
 		// que prefixa cada problema com `path`.
 		const message = exception.issues.map((issue) => issue.message).join(", ");
+		this.respondBadRequest(message, host);
+	}
+
+	/**
+	 * O 400 no formato da rota. Também para recusas que não são do Zod (pedido
+	 * válido na forma que a Application não aceita), para saírem iguais.
+	 */
+	protected respondBadRequest(message: string, host: ArgumentsHost): void {
+		const response = host.switchToHttp().getResponse<Response>();
 		const body = `${this.messagePrefix}: ${message}`;
 
 		new Logger(this.constructor.name).warn(body);

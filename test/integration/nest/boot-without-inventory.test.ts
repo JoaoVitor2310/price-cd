@@ -37,7 +37,7 @@ describe("booting without the inventory system configured", () => {
 			.overrideProvider(PopularityFetcher)
 			.useValue({ fetch: async () => [] })
 			.overrideProvider(PriceFetcher)
-			.useValue({ fetch: async () => [] })
+			.useValue({ fetch: async () => ({ games: [], failed: [] }) })
 			.compile();
 
 		app = moduleRef.createNestApplication<NestExpressApplication>();

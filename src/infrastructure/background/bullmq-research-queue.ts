@@ -4,15 +4,17 @@ import type {
 	ResearchGamesRunner,
 } from "@/application/games/ports/research-games-runner.port.js";
 import {
+	type PreviousResearchRun,
 	type ResearchQueue,
 	type ResearchQueueStatus,
 	ResearchQueueUnavailableError,
 } from "@/application/games/ports/research-queue.port.js";
-import type {
-	BullmqJob,
-	BullmqJobProcessor,
-	BullmqQueueClient,
-	BullmqWorkerClient,
+import {
+	type BullmqJob,
+	type BullmqJobProcessor,
+	type BullmqQueueClient,
+	type BullmqWorkerClient,
+	readRunState,
 } from "@/infrastructure/background/bullmq-clients.js";
 import { createBullmqConnections } from "@/infrastructure/background/bullmq-connections.js";
 import { parseResearchJobPayload } from "@/infrastructure/background/research-job-payload.js";
@@ -85,7 +87,13 @@ export type BullmqResearchQueueDeps = {
 export class BullmqResearchQueue implements ResearchQueue {
 	private readonly worker: BullmqWorkerClient;
 	private active:
-		| { job: BullmqJob; token?: string; returned: boolean }
+		| {
+				job: BullmqJob;
+				token?: string;
+				returned: boolean;
+				/** Abortado no desligamento: o runner não avisa `failed` a quem pediu. */
+				cancellation: AbortController;
+		  }
 		| undefined;
 	private shuttingDown = false;
 	/**
@@ -108,19 +116,54 @@ export class BullmqResearchQueue implements ResearchQueue {
 	 *
 	 * O timeout tem um custo conhecido: se o `add` passar do teto e o Redis o
 	 * gravar depois, o cliente recebe erro por um pedido que vai rodar. Só
-	 * acontece com o Redis conectado e travado; a idempotência pelo
-	 * `request_uuid` (PR 2 da integração com o chatbot) torna o reenvio seguro.
+	 * acontece com o Redis conectado e travado; com `requestUuid`, o reenvio é
+	 * seguro — ele é o `jobId`, e a BullMQ ignora um segundo `add` com o mesmo id
+	 * enquanto o primeiro job existir.
 	 */
 	async enqueue(request: ResearchGamesRequest): Promise<void> {
+		this.assertConnected();
+		const options: JobsOptions = request.requestUuid
+			? { ...RESEARCH_JOB_OPTIONS, jobId: request.requestUuid }
+			: RESEARCH_JOB_OPTIONS;
+		await withTimeout(
+			this.deps.queue.add(RESEARCH_JOB_NAME, request, options),
+			ENQUEUE_TIMEOUT_MS,
+		);
+	}
+
+	/**
+	 * Mesma recusa do `enqueue` com o Redis fora: ler o job também esperaria a
+	 * conexão, e quem chama ainda está na requisição.
+	 */
+	async previousRun(requestUuid: string): Promise<PreviousResearchRun> {
+		this.assertConnected();
+		const { state } = await readRunState(
+			this.deps.queue,
+			requestUuid,
+			ENQUEUE_TIMEOUT_MS,
+		);
+		return state;
+	}
+
+	/** Só apaga job terminado: um em andamento continua e vai avisar. */
+	async forget(requestUuid: string): Promise<void> {
+		this.assertConnected();
+		const { job, state } = await readRunState(
+			this.deps.queue,
+			requestUuid,
+			ENQUEUE_TIMEOUT_MS,
+		);
+		if (job && (state === "completed" || state === "failed")) {
+			await withTimeout(job.remove(), ENQUEUE_TIMEOUT_MS);
+		}
+	}
+
+	private assertConnected(): void {
 		if (!this.deps.isConnected()) {
 			const error = new ResearchQueueUnavailableError("Redis is not connected");
 			this.reportDown("enqueue", error);
 			throw error;
 		}
-		await withTimeout(
-			this.deps.queue.add(RESEARCH_JOB_NAME, request, RESEARCH_JOB_OPTIONS),
-			ENQUEUE_TIMEOUT_MS,
-		);
 	}
 
 	async status(): Promise<ResearchQueueStatus> {
@@ -156,15 +199,20 @@ export class BullmqResearchQueue implements ResearchQueue {
 	 * devolução falhar (Redis fora), o lock do job expira e o próximo worker o
 	 * recupera como travado — mais lento, mesmo resultado.
 	 *
-	 * `close(true)` não espera o processador terminar: ele segue até o browser
-	 * fechar e falha, e o `process` traduz essa falha em `DelayedError` para a
-	 * BullMQ não marcar o job como falho.
+	 * `close(true)` não espera o processador terminar. Fechar o browser não
+	 * derruba a pesquisa por si só (cada jogo restante vira falha de catálogo); é
+	 * o `AbortSignal` que para o runner antes de chamar o Estoque, e o `process`
+	 * traduz essa falha em `DelayedError` para a BullMQ não marcar o job como
+	 * falho. Se o Estoque já estava sendo chamado quando o sinal veio, a Trade
+	 * nasce e o job roda de novo: janela que só a idempotência do Estoque fecha.
 	 */
 	async beforeApplicationShutdown(): Promise<void> {
 		this.shuttingDown = true;
 
 		const active = this.active;
 		if (active) {
+			// Antes da devolução: o que falhar daqui em diante é do desligamento.
+			active.cancellation.abort();
 			try {
 				await active.job.moveToDelayed(Date.now(), active.token);
 				active.returned = true;
@@ -214,12 +262,17 @@ export class BullmqResearchQueue implements ResearchQueue {
 		}
 
 		const request = parseResearchJobPayload(job.data);
-		const active = { job, token, returned: false };
+		const active = {
+			job,
+			token,
+			returned: false,
+			cancellation: new AbortController(),
+		};
 		this.active = active;
 
 		let outcome: { ok: true } | { ok: false; error: unknown };
 		try {
-			await this.runner.run(request);
+			await this.runner.run(request, active.cancellation.signal);
 			outcome = { ok: true };
 		} catch (error) {
 			outcome = { ok: false, error };

@@ -64,7 +64,7 @@ const fakeSource = (results: Record<string, PriceLookup>) => ({
 	}),
 });
 
-const build = (
+const buildFetcher = (
 	source: ReturnType<typeof fakeSource>,
 	cache: ReturnType<typeof fakeCache>,
 ) =>
@@ -72,6 +72,17 @@ const build = (
 		source as unknown as CatalogPriceSource,
 		cache as unknown as PriceCache,
 	);
+
+/** A maioria dos casos só olha os jogos com preço. */
+const build = (
+	source: ReturnType<typeof fakeSource>,
+	cache: ReturnType<typeof fakeCache>,
+) => {
+	const fetcher = buildFetcher(source, cache);
+	return {
+		fetch: async (games: FoundGames[]) => (await fetcher.fetch(games)).games,
+	};
+};
 
 describe("priceCacheKey", () => {
 	it("separates regions", () => {
@@ -167,6 +178,23 @@ describe("CachedPriceFetcher", () => {
 			expect.stringContaining("hit: Obscure → not found"),
 		);
 		log.mockRestore();
+	});
+
+	it("reports who could not be asked, and not who the catalog does not have", async () => {
+		const source = fakeSource({
+			Hades: priced(),
+			Flaky: { status: "failed" },
+			Obscure: { status: "not-found" },
+		});
+
+		const result = await buildFetcher(source, fakeCache()).fetch([
+			game("Hades"),
+			game("Flaky"),
+			game("Obscure"),
+		]);
+
+		expect(result.games.map((g) => g.name)).toEqual(["Hades"]);
+		expect(result.failed).toEqual(["Flaky"]);
 	});
 
 	it("never stores a transient failure, so the next search tries again", async () => {

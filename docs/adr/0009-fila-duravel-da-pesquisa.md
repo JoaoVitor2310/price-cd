@@ -93,4 +93,4 @@ O ADR 0008 já permitiu ao price-cd guardar dado derivado e descartável. Um job
 - Sem `QUEUE_REDIS_URL` em produção, o app não sobe. O `docker-compose.yml` já a define.
 - `stop_grace_period: 60s` nos dois serviços do app.
 - O container de dev sobe o app com `node` direto, não `npm run dev`: o npm não repassa o SIGTERM do `docker stop` (medido: o app morria em 0,2s, sem rodar os hooks).
-- A falha de uma execução continua sem avisar quem pediu; agora ao menos fica registrada no job. O aviso é o webhook (PR 2 de `docs/INTEGRACAO_CHATBOT.md`).
+- A falha de uma execução fica registrada no job. Quem pede com `webhook_url` também é avisado dela: ver ADR 0010, que acrescenta a este a fila `webhooks`, o `request_uuid` como `jobId` (deduplicação do pedido) e o sinal de cancelamento que o worker passa ao runner no desligamento.
