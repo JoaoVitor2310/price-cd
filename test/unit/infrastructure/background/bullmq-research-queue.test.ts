@@ -26,7 +26,12 @@ const request: ResearchGamesRequest = {
  * Monta o adapter com dublês da BullMQ e devolve o processador que ele
  * entregou ao worker — é por ele que os testes simulam um job chegando.
  */
-function setup(runner = { run: vi.fn().mockResolvedValue(undefined) }) {
+function setup(
+	runner = {
+		run: vi.fn().mockResolvedValue(undefined),
+		reportFailure: vi.fn().mockResolvedValue(undefined),
+	},
+) {
 	const calls: string[] = [];
 	const queue = {
 		add: vi.fn().mockResolvedValue({ id: "1" }),
@@ -333,7 +338,112 @@ describe("BullmqResearchQueue", () => {
 		});
 	});
 
+	describe("a job that failed", () => {
+		const target = {
+			webhookUrl: "http://chatbot:3000/webhooks/price-cd",
+			requestUuid: "8c1f0000-0000-4000-8000-000000000000",
+		};
+
+		it("reports the failure to the target stored in the job", async () => {
+			const { adapter, runner } = setup();
+			const error = new Error("Sistema Estoque answered 503");
+
+			await adapter.onJobFailed({ data: { ...request, ...target } }, error);
+
+			expect(runner.reportFailure).toHaveBeenCalledWith(target, error);
+		});
+
+		it("reports it even when the payload cannot be read as a request", async () => {
+			const { adapter, runner } = setup();
+			const error = new Error("Invalid research job payload");
+
+			await adapter.onJobFailed({ data: target }, error);
+
+			expect(runner.reportFailure).toHaveBeenCalledWith(target, error);
+		});
+
+		it("falls back to the job id when the stored request uuid cannot be read", async () => {
+			const { adapter, runner } = setup();
+			const error = new Error("boom");
+
+			// O `enqueue` usa o `requestUuid` como `jobId`.
+			await adapter.onJobFailed(
+				{
+					id: target.requestUuid,
+					data: { webhookUrl: target.webhookUrl, requestUuid: 7 },
+				},
+				error,
+			);
+
+			expect(runner.reportFailure).toHaveBeenCalledWith(target, error);
+		});
+
+		it("does nothing when the event comes without the job", async () => {
+			const { adapter, runner } = setup();
+
+			await adapter.onJobFailed(undefined, new Error("gone"));
+
+			expect(runner.reportFailure).not.toHaveBeenCalled();
+		});
+
+		it("never throws: it runs as an event listener", async () => {
+			const { adapter, runner } = setup();
+			runner.reportFailure.mockRejectedValue(new Error("no webhook queue"));
+			const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+
+			await expect(
+				adapter.onJobFailed({ data: target }, new Error("boom")),
+			).resolves.toBeUndefined();
+			expect(logged).toHaveBeenCalled();
+		});
+	});
+
 	describe("shutdown", () => {
+		it("waits for a failure report still being stored", async () => {
+			let finishReport: (() => void) | undefined;
+			const runner = {
+				run: vi.fn().mockResolvedValue(undefined),
+				reportFailure: vi.fn(
+					() =>
+						new Promise<void>((resolve) => {
+							finishReport = resolve;
+						}),
+				),
+			};
+			const { adapter } = setup(runner);
+			let finished = false;
+
+			void adapter.onJobFailed({ data: {} }, new Error("boom"));
+			const shutdown = adapter
+				.beforeApplicationShutdown()
+				.then(() => (finished = true));
+			await new Promise((resolve) => setImmediate(resolve));
+
+			expect(finished).toBe(false);
+			finishReport?.();
+			await shutdown;
+			expect(finished).toBe(true);
+		});
+
+		it("stops waiting for a stuck failure report, so the browsers still close in time", async () => {
+			vi.useFakeTimers();
+			const runner = {
+				run: vi.fn().mockResolvedValue(undefined),
+				reportFailure: vi.fn(() => new Promise<void>(() => {})),
+			};
+			const { adapter } = setup(runner);
+			const warned = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+			void adapter.onJobFailed({ data: {} }, new Error("boom"));
+			const shutdown = adapter.beforeApplicationShutdown();
+			await vi.advanceTimersByTimeAsync(10_000);
+
+			await expect(shutdown).resolves.toBeUndefined();
+			expect(warned).toHaveBeenCalledWith(
+				expect.stringContaining("still pending at shutdown"),
+			);
+		});
+
 		it("returns the job in progress to the queue, then closes the worker without waiting", async () => {
 			let finishRun: ((error?: Error) => void) | undefined;
 			const runner = {

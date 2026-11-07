@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from "node:timers/promises";
 import { type JobsOptions, Queue, UnrecoverableError, Worker } from "bullmq";
 import * as z from "zod";
 import type {
@@ -67,6 +68,15 @@ export const WEBHOOK_JOB_OPTIONS: JobsOptions = {
 const NOTIFY_TIMEOUT_MS = 5000;
 
 /**
+ * Esperas entre as tentativas de guardar o aviso: ~15s ao todo, acima do teto de
+ * 5s da reconexão do produtor (`bullmq-connections.ts`). Uma reinicialização do
+ * Redis ou uma queda curta de rede não perde o aviso.
+ */
+export const NOTIFY_RETRY_DELAYS_MS: readonly number[] = [
+	1000, 2000, 4000, 8000,
+];
+
+/**
  * Quanto o desligamento espera a entrega em andamento: o envio leva no máximo
  * 10s, com folga para registrar o desfecho. Sem o teto, o Redis fora travaria o
  * `close()` e, com ele, o fechamento do Chromium.
@@ -89,6 +99,8 @@ export type BullmqWebhookQueueDeps = {
 	createWorker: (processor: BullmqJobProcessor) => BullmqWorkerClient;
 	isConnected: () => boolean;
 	disconnect: () => Promise<void>;
+	/** Para os testes; o default é `NOTIFY_RETRY_DELAYS_MS`. */
+	notifyRetryDelaysMs?: readonly number[];
 };
 
 export class BullmqWebhookQueue implements ResearchResultNotifier {
@@ -102,25 +114,44 @@ export class BullmqWebhookQueue implements ResearchResultNotifier {
 	}
 
 	/**
-	 * Lança se o Redis não está pronto: quem chama é o job da pesquisa, que
-	 * falha e fica registrado — melhor que um aviso perdido em silêncio.
+	 * Tenta de novo enquanto o Redis não responde, por `NOTIFY_RETRY_DELAYS_MS`:
+	 * um aviso perdido aqui é quem recebeu `202` sem resposta. Repetir o `add` é
+	 * seguro, porque o `jobId` é o `requestUuid` e um segundo `add` é ignorado.
+	 *
+	 * Esgotadas as tentativas, lança. Com o resultado da pesquisa, o job falha e a
+	 * fila da pesquisa tenta o `failed`; com o `failed`, o evento da fila só
+	 * registra no log, e sobra o alarme de quem pediu.
 	 */
 	async notify(
 		target: ResearchResultTarget,
 		result: ResearchResult,
 	): Promise<void> {
-		this.assertConnected();
 		const payload: WebhookJobPayload = {
 			url: target.webhookUrl,
 			body: toWebhookBody(target.requestUuid, result),
 		};
-		await withTimeout(
-			this.deps.queue.add(WEBHOOK_JOB_NAME, payload, {
-				...WEBHOOK_JOB_OPTIONS,
-				jobId: target.requestUuid,
-			}),
-			NOTIFY_TIMEOUT_MS,
-		);
+		const delays = this.deps.notifyRetryDelaysMs ?? NOTIFY_RETRY_DELAYS_MS;
+
+		for (let attempt = 0; ; attempt++) {
+			try {
+				this.assertConnected();
+				await withTimeout(
+					this.deps.queue.add(WEBHOOK_JOB_NAME, payload, {
+						...WEBHOOK_JOB_OPTIONS,
+						jobId: target.requestUuid,
+					}),
+					NOTIFY_TIMEOUT_MS,
+				);
+				return;
+			} catch (error) {
+				const delay = delays[attempt];
+				if (delay === undefined) throw error;
+				console.warn(
+					`⚠️ [WEBHOOK] Could not store the result of request ${target.requestUuid} (${errorMessage(error)}) — trying again in ${delay}ms.`,
+				);
+				await sleep(delay);
+			}
+		}
 	}
 
 	/**

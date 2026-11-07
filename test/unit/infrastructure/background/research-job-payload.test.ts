@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { ResearchGamesRequest } from "@/application/games/ports/research-games-runner.port.js";
 import { resolveSearchCriteria } from "@/domain/games/search-presets.js";
-import { parseResearchJobPayload } from "@/infrastructure/background/research-job-payload.js";
+import {
+	parseResearchJobPayload,
+	readResearchFailureTarget,
+} from "@/infrastructure/background/research-job-payload.js";
 
 const request: ResearchGamesRequest = {
 	gameNames: ["Half-Life", "Portal 2"],
@@ -87,5 +90,50 @@ describe("parseResearchJobPayload", () => {
 		expect(() => parseResearchJobPayload(payload)).toThrow(
 			/Invalid research job payload/,
 		);
+	});
+});
+
+describe("readResearchFailureTarget", () => {
+	const target = {
+		webhookUrl: "http://chatbot:3000/webhooks/price-cd",
+		requestUuid: "8c1f0000-0000-4000-8000-000000000000",
+	};
+
+	it("reads the target of a payload the job parser refuses", () => {
+		const unreadable = { ...target, gameNames: "not a list" };
+
+		expect(() => parseResearchJobPayload(unreadable)).toThrow();
+		expect(readResearchFailureTarget(unreadable)).toEqual(target);
+	});
+
+	it("keeps the webhook when only the request uuid cannot be read", () => {
+		const data = { webhookUrl: target.webhookUrl, requestUuid: 7 };
+
+		expect(readResearchFailureTarget(data)).toEqual({
+			webhookUrl: target.webhookUrl,
+			requestUuid: undefined,
+		});
+		// O `jobId` é o `requestUuid` que o `enqueue` usou.
+		expect(readResearchFailureTarget(data, target.requestUuid)).toEqual(target);
+	});
+
+	it("prefers the stored request uuid to the job id", () => {
+		expect(readResearchFailureTarget(target, "another-id")).toEqual(target);
+	});
+
+	it("returns only the target, not the rest of the request", () => {
+		expect(readResearchFailureTarget({ ...request, ...target })).toEqual(
+			target,
+		);
+	});
+
+	it.each([
+		["no webhook", { gameNames: ["Hades"] }],
+		["a target of the wrong type", { webhookUrl: 7 }],
+		["something that is not an object", "garbage"],
+	])("finds nobody to report to with %s", (_label, data) => {
+		const found = readResearchFailureTarget(data);
+
+		expect(found.webhookUrl).toBeUndefined();
 	});
 });

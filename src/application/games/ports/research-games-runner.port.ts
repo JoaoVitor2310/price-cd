@@ -48,18 +48,29 @@ export type ResearchJobRequest = ResearchGamesRequest | TopicResearchRequest;
  */
 export type CancellationSignal = { readonly aborted: boolean };
 
+/** A quem avisar uma falha. Pode vir vazio: nem todo pedido quer aviso. */
+export type ResearchFailureTarget = Pick<
+	ResearchGamesRequest,
+	"webhookUrl" | "requestUuid"
+>;
+
 /**
  * Porta para executar o fluxo completo de pesquisa (popularidade + preço + Criar
  * Trade + aviso a quem pediu). É o que a `ResearchQueue` executa ao consumir um
  * pedido — isola a fila da montagem concreta das dependências.
  *
  * `signal` é a fila avisando que o pedido foi **devolvido** a ela (desligamento
- * do serviço) e vai rodar de novo. Uma falha depois disso é do desligamento, não
- * do pedido: não pode virar um resultado `failed` para quem pediu.
+ * do serviço) e vai rodar de novo: `run` para antes de criar a Trade.
+ *
+ * `reportFailure` é separado de `run` porque só a fila sabe quando um pedido
+ * falhou de vez. Ela o chama depois de registrar a falha, inclusive nas que nunca
+ * passam por `run`: processo morto repetidas vezes, payload ilegível. Falha do
+ * desligamento não chega aqui: o pedido volta para a fila, não falha.
  */
 export interface ResearchGamesRunner {
 	run(
 		request: ResearchJobRequest,
 		signal?: CancellationSignal,
 	): Promise<void>;
+	reportFailure(target: ResearchFailureTarget, error: unknown): Promise<void>;
 }

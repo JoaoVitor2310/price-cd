@@ -1,5 +1,8 @@
 import * as z from "zod";
-import type { ResearchJobRequest } from "@/application/games/ports/research-games-runner.port.js";
+import type {
+	ResearchFailureTarget,
+	ResearchJobRequest,
+} from "@/application/games/ports/research-games-runner.port.js";
 import { OFFER_CURRENCIES } from "@/domain/suppliers/offer.js";
 
 /**
@@ -44,12 +47,39 @@ const researchJobPayloadSchema = z.union([
 	z.looseObject({ topicUrl: z.string().min(1), ...commonJobFields }),
 ]);
 
-export const parseResearchJobPayload = (
-	data: unknown,
-): ResearchJobRequest => {
+export const parseResearchJobPayload = (data: unknown): ResearchJobRequest => {
 	const parsed = researchJobPayloadSchema.safeParse(data);
 	if (!parsed.success) {
 		throw new Error(`Invalid research job payload: ${parsed.error.message}`);
 	}
 	return parsed.data;
+};
+
+/**
+ * A quem avisar uma falha, lido sem exigir o resto do pedido: um payload que o
+ * `parseResearchJobPayload` recusa ainda pode dizer para onde vai o aviso, e sem
+ * isso quem recebeu `202` ficaria sem resposta.
+ *
+ * Campo a campo, com os mesmos validadores do pedido: um `requestUuid` ilegível
+ * não pode custar o `webhookUrl`. Faltando ele, vale o id do job — o `enqueue`
+ * usa o `requestUuid` como `jobId`, e só há webhook com `requestUuid`.
+ */
+export const readResearchFailureTarget = (
+	data: unknown,
+	jobId?: string,
+): ResearchFailureTarget => {
+	const record =
+		typeof data === "object" && data !== null
+			? (data as Record<string, unknown>)
+			: {};
+	const webhookUrl = readField(commonJobFields.webhookUrl, record.webhookUrl);
+	if (webhookUrl === undefined) return {};
+	const requestUuid =
+		readField(commonJobFields.requestUuid, record.requestUuid) ?? jobId;
+	return { webhookUrl, requestUuid };
+};
+
+const readField = <T>(schema: z.ZodType<T>, value: unknown): T | undefined => {
+	const parsed = schema.safeParse(value);
+	return parsed.success ? parsed.data : undefined;
 };

@@ -1,7 +1,10 @@
-import { Queue } from "bullmq";
+import { Queue, UnrecoverableError } from "bullmq";
 import { Redis } from "ioredis";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ResearchGamesRequest } from "@/application/games/ports/research-games-runner.port.js";
+import type {
+	ResearchGamesRequest,
+	ResearchGamesRunner,
+} from "@/application/games/ports/research-games-runner.port.js";
 import { resolveSearchCriteria } from "@/domain/games/search-presets.js";
 import {
 	type BullmqResearchQueue,
@@ -54,8 +57,12 @@ describe.skipIf(!url)("BullmqResearchQueue against a real Redis", () => {
 
 	const start = (runner: {
 		run: (request: ResearchGamesRequest) => Promise<void>;
+		reportFailure?: ResearchGamesRunner["reportFailure"];
 	}) => {
-		const queue = createBullmqResearchQueue(url as string, runner);
+		const queue = createBullmqResearchQueue(url as string, {
+			reportFailure: async () => {},
+			...runner,
+		});
 		started.push(queue);
 		return queue;
 	};
@@ -112,6 +119,103 @@ describe.skipIf(!url)("BullmqResearchQueue against a real Redis", () => {
 		const [failed] = await inspector.getFailed();
 		expect(failed.failedReason).toBe("Sistema Estoque returned 500");
 		expect(runner.run).toHaveBeenCalledTimes(1);
+	});
+
+	describe("reporting a failure", () => {
+		const target = {
+			webhookUrl: "http://chatbot:3000/webhooks/price-cd",
+			requestUuid: "8c1f0000-0000-4000-8000-000000000000",
+		};
+
+		const stateOf = async (id: string) =>
+			(await inspector.getJob(id))?.getState();
+
+		it("reports only after the job is failed, so a resend finds it failed", async () => {
+			const error = new Error("Sistema Estoque returned 500");
+			let stateWhenReported: string | undefined;
+			const reportFailure = vi.fn(async () => {
+				stateWhenReported = await stateOf(target.requestUuid);
+			});
+			vi.spyOn(console, "error").mockImplementation(() => {});
+			const queue = start({
+				run: vi.fn().mockRejectedValue(error),
+				reportFailure,
+			});
+			await connected(queue);
+			queue.onApplicationBootstrap();
+
+			await queue.enqueue({ ...request, ...target });
+
+			await waitFor(async () => reportFailure.mock.calls.length === 1);
+			expect(reportFailure).toHaveBeenCalledWith(target, error);
+			await waitFor(async () => stateWhenReported !== undefined);
+			expect(stateWhenReported).toBe("failed");
+		});
+
+		it("reports a payload that never reaches the runner", async () => {
+			const run = vi.fn();
+			const reportFailure = vi.fn(async () => {});
+			vi.spyOn(console, "error").mockImplementation(() => {});
+			const queue = start({ run, reportFailure });
+			await connected(queue);
+			queue.onApplicationBootstrap();
+
+			await inspector.add("research", target);
+
+			await waitFor(async () => reportFailure.mock.calls.length === 1);
+			expect(reportFailure).toHaveBeenCalledWith(target, expect.any(Error));
+			expect(run).not.toHaveBeenCalled();
+		});
+
+		it("reports a job over the stall limit, which the worker fails without running", async () => {
+			const run = vi.fn();
+			const reportFailure = vi.fn(async () => {});
+			vi.spyOn(console, "error").mockImplementation(() => {});
+			const queue = start({ run, reportFailure });
+			await connected(queue);
+
+			// É o que o script de travados da BullMQ grava ao passar do limite: a
+			// falha adiada, com o job de volta na espera.
+			await queue.enqueue({ ...request, ...target });
+			await admin.hset(
+				`bull:${RESEARCH_QUEUE_NAME}:${target.requestUuid}`,
+				"defa",
+				"job stalled more than allowable limit",
+			);
+			queue.onApplicationBootstrap();
+
+			await waitFor(async () => reportFailure.mock.calls.length === 1);
+			expect(reportFailure).toHaveBeenCalledWith(
+				target,
+				expect.any(UnrecoverableError),
+			);
+			expect(run).not.toHaveBeenCalled();
+			expect(await stateOf(target.requestUuid)).toBe("failed");
+		});
+
+		it("does not report a job returned by the shutdown", async () => {
+			const reportFailure = vi.fn(async () => {});
+			let release: (error: Error) => void = () => {};
+			const run = vi.fn(
+				() =>
+					new Promise<void>((_, reject) => {
+						release = reject;
+					}),
+			);
+			const queue = start({ run, reportFailure });
+			await connected(queue);
+			queue.onApplicationBootstrap();
+
+			await queue.enqueue({ ...request, ...target });
+			await waitFor(async () => run.mock.calls.length === 1);
+
+			const stopping = queue.beforeApplicationShutdown();
+			release(new Error("Target closed"));
+			await stopping;
+
+			expect(reportFailure).not.toHaveBeenCalled();
+			expect(await stateOf(target.requestUuid)).toBe("delayed");
+		});
 	});
 
 	it("returns the job in progress at shutdown, and the next instance runs it again", async () => {
