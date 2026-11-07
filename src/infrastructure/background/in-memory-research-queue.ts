@@ -1,6 +1,6 @@
 import type {
-	ResearchGamesRequest,
 	ResearchGamesRunner,
+	ResearchJobRequest,
 } from "@/application/games/ports/research-games-runner.port.js";
 import type {
 	PreviousResearchRun,
@@ -24,7 +24,7 @@ export class InMemoryResearchQueue implements ResearchQueue {
 		private readonly runner: ResearchGamesRunner,
 	) {}
 
-	async enqueue(request: ResearchGamesRequest): Promise<void> {
+	async enqueue(request: ResearchJobRequest): Promise<void> {
 		this.scheduler.schedule(async () => {
 			try {
 				await this.runner.run(request);

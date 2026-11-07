@@ -1,6 +1,6 @@
 # O resultado da pesquisa volta por webhook assinado com HMAC, numa fila própria
 
-O chatbot pede a pesquisa, recebe `202` e precisa saber como terminou para mostrar a oferta ao Fornecedor (`docs/INTEGRACAO_CHATBOT.md`). Até aqui o price-cd não avisava ninguém, e nem sabia qual Trade tinha criado: o callback `/trades/from-price-researcher` do Estoque não devolve identificador.
+O chatbot pede a pesquisa, recebe `202` e precisa saber como terminou para mostrar a oferta ao Fornecedor. Até aqui o price-cd não avisava ninguém, e nem sabia qual Trade tinha criado: o callback `/trades/from-price-researcher` do Estoque não devolve identificador.
 
 **Decisão:** o pedido ganha três campos (`currency`, `request_uuid`, `webhook_url`). Com `currency`, a Trade é criada **com oferta** no `POST /api/trades` do Estoque, que devolve o uuid. Com `webhook_url`, o Resultado da pesquisa (`trade_created | no_trade | failed`) vai para essa URL **depois** da resposta do Estoque, assinado com HMAC-SHA256, por uma fila BullMQ própria que tenta de novo por ~24h. Um resultado por `request_uuid`.
 
@@ -37,7 +37,7 @@ Quem precisa de moeda é o `/api/trades`; o aviso é independente. Mas só o `/a
 
 ## O `failed` não vaza o erro interno
 
-`failure.message` é uma frase fixa por `kind`. O texto do erro (Cloudflare, URL do Estoque, corpo do 422) fica no log e no `failedReason` do job: o resultado sai do price-cd para outro sistema, que pode mostrá-lo ao Fornecedor. `pricing_failed` é falha em que repetir às cegas não é seguro nem útil (pesquisa, 422, `201` sem uuid legível); `stock_unavailable` é o Estoque sem responder como deveria (503, timeout, outro erro).
+`failure.message` é uma frase fixa por `kind`. O texto do erro (Cloudflare, URL do Estoque, corpo do 422) fica no log e no `failedReason` do job: o resultado sai do price-cd para outro sistema, que pode mostrá-lo ao Fornecedor. `scrape_failed` é o tópico que não pôde ser lido; `pricing_failed` é falha em que repetir às cegas não é seguro nem útil (pesquisa, 422, `201` sem uuid legível); `stock_unavailable` é o Estoque sem responder como deveria (503, timeout, outro erro).
 
 ## Desligamento não é resultado
 
@@ -46,6 +46,21 @@ Fechar o browser **não** derruba a pesquisa: o `gotoWithRetry` engole o erro e 
 ## Falha do catálogo não é "nada passou"
 
 `no_trade` é uma resposta definitiva: o pedido fica `completed` e os reenvios só a reentregam. Por isso a porta `PriceFetcher` devolve também quem o catálogo não pôde responder. Se nenhum jogo passou e ao menos um não foi respondido, o pedido falha (`pricing_failed`) e pode rodar de novo; o que já foi pesquisado está no cache. Com falha parcial e algum jogo aprovado, a Trade nasce com o que deu certo: perder uma lista de 50 jogos por um timeout custaria mais que a Trade menor, e quem ficou de fora vai para o log.
+
+## Pesquisa a partir do link: mesma fila, mesmo resultado
+
+`POST /api/games/research/from-topic` recebe o link do tópico em vez da lista. O job é o mesmo, com uma etapa antes: o `RunResearchJobUseCase` lê o `.have` e segue como um pedido com `gameNames`. A raspagem fica **dentro do job**, não na requisição, porque ela abre um navegador e pode esperar um desafio da Cloudflare; a rota só valida e responde `202`, e a falha chega como `failed` com `kind: scrape_failed`.
+
+- **Formato do job:** a fila guarda `ResearchGamesRequest | TopicResearchRequest`, separados pela presença de `topicUrl`. Sem campo de tipo, porque os jobs já guardados no Redis não o têm.
+- **`inactive` ≠ `unreadable`:** o `ListTopic` ganhou `unreadable` (HTTP de erro, página sem `.have`). Antes o HTTP de erro virava `inactive`, e `scrape_failed` nunca apareceria. O Reabastecimento pula os dois, como antes.
+- **Tópico inativo é pesquisado:** foi o próprio Fornecedor que mandou o link, então a Lista vale mesmo fechada. O `fetchList` lê o `.have` também do tópico fechado, mantendo o status `inactive`, e o Reabastecimento continua pulando esses. Tópico fechado mantém a Lista na página, com o aviso amarelo (`div.notification.yellow`) no fim. Por isso uma página sem `.have` é sempre `unreadable`, com ou sem aviso: um `no_trade` é definitivo e os reenvios só o repetiriam, e o aviso sozinho não prova que a página é um tópico.
+- **Preset `lists`:** o mesmo pipeline do Reabastecimento. A rota não aceita preset nem filtros.
+- **Sem demo:** token errado é `401`, por um guard, antes da validação do corpo: quem não tem o token não recebe as regras dos campos. O erro segue o formato do filter global. A rota não tem legado para preservar.
+- **O link é validado no Domain** (`parseSteamTradesTopicUrl`): o navegador do price-cd vai abri-lo, e ele vem do corpo da requisição. Compara a origem depois do parser, porque conferir o prefixo aceitaria `https://www.steamtrades.com@evil.io/...`. Conferido na requisição e de novo no `ReadTopicGames`, como o webhook: o pedido pode ter vindo pela fila de outra versão.
+- **O navegador é por leitura**, fechado antes de a pesquisa de preço começar. A `TrackedListTopicFetcherFactory` é a dona dos que estão abertos e os fecha no desligamento; um fetcher descartado recusa abrir outro.
+- **Uma página é o pedido inteiro:** `loadPage` repete timeout e 429 (`gotoResponseWithRetry`), porque aqui uma falha passageira viraria `scrape_failed`.
+
+**Alternativas:** raspar na requisição (o `202` passaria a depender do SteamTrades e da Cloudflare); um job próprio de raspagem que enfileira a pesquisa (dois jobs por pedido, e o `request_uuid` só pode ser `jobId` de um deles).
 
 ## Entrega: fila própria, ~24h
 
@@ -58,7 +73,7 @@ A fila `webhooks` fica no mesmo Redis da pesquisa (banco 1). Separada porque o r
 - O sinal de desligamento chega com o Estoque já sendo chamado: a Trade nasce e o job roda de novo; o segundo aviso é ignorado pelo `jobId`, e o chatbot fica com a primeira Trade.
 - O Estoque responde `201` sem `uuid` legível: `pricing_failed`, para não convidar à repetição; reenviado mesmo assim, roda de novo e pode criar outra.
 
-O Estoque receber `request_uuid` como `pricing_request_id` (item 2 do backlog dele) fecha as quatro. Até lá o price-cd não manda o campo.
+O Estoque receber `request_uuid` como `pricing_request_id` (item 2 do backlog dele) fecha as quatro. Até lá o price-cd não manda o campo, e o critério de aceite do chatbot, um resultado lógico por `request_uuid`, não está garantido nessas janelas. É o item 23 do `docs/IMPROVEMENTS.md`. Paliativo descartado: gravar o `tradeUuid` no job antes de guardar o aviso encurta a janela, mas não fecha.
 
 ## Consequences
 

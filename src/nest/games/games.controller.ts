@@ -7,6 +7,7 @@ import {
 	Post,
 	Res,
 	UseFilters,
+	UseGuards,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import type { Response } from "express";
@@ -26,10 +27,20 @@ import {
 import { GamesLegacyErrorFilter } from "@/nest/games/games-legacy-error.filter.js";
 import { ZodValidationPipe } from "@/nest/common/zod-validation.pipe.js";
 import { LazyGameTradeImporter } from "@/infrastructure/games/lazy-game-trade-importer.js";
-import { ResearchLegacyErrorFilter } from "@/nest/games/research-legacy-error.filter.js";
-import { toResearchRequest } from "@/nest/games/research-request.mapper.js";
 import {
+	InternalSecretGuard,
+	isInternalSecret,
+} from "@/nest/games/internal-secret.guard.js";
+import { ResearchLegacyErrorFilter } from "@/nest/games/research-legacy-error.filter.js";
+import {
+	toResearchRequest,
+	toTopicResearchRequest,
+} from "@/nest/games/research-request.mapper.js";
+import { TopicResearchErrorFilter } from "@/nest/games/topic-research-error.filter.js";
+import {
+	type ResearchFromTopicBody,
 	type ResearchGamesBody,
+	researchFromTopicBodySchema,
 	researchGamesBodySchema,
 	type SteamIdLookup,
 	steamIdLookupResponseSchema,
@@ -66,8 +77,18 @@ export class GamesController {
 	 * "wrong internal_secret returns 200 demo, not 403".
 	 */
 	private isAuthenticated(token: string | undefined): boolean {
-		const secret = this.config.get("INTERNAL_SECRET", { infer: true })?.trim();
-		return !!secret && token === secret;
+		return isInternalSecret(this.config, token);
+	}
+
+	/**
+	 * Falha ainda no ciclo da requisição se a integração com o Sistema Estoque não
+	 * estiver configurada — depois de enfileirado não há mais ninguém para receber
+	 * o erro.
+	 */
+	private assertStockConfigured(): void {
+		if (this.tradeImporter instanceof LazyGameTradeImporter) {
+			this.tradeImporter.assertConfigured();
+		}
 	}
 
 	/**
@@ -171,15 +192,33 @@ export class GamesController {
 				: { success: true, games };
 		}
 
-		// Falha ainda no ciclo da requisição se a integração com o Sistema
-		// Estoque não estiver configurada — depois de enfileirado não há mais
-		// ninguém para receber o erro.
-		if (this.tradeImporter instanceof LazyGameTradeImporter) {
-			this.tradeImporter.assertConfigured();
-		}
+		this.assertStockConfigured();
 
 		await this.enqueueResearchGamesUseCase.execute({ request });
 		response.status(HttpStatus.ACCEPTED);
+		return { success: true, status: "queued" };
+	}
+
+	/**
+	 * A pesquisa a partir do link de um tópico do SteamTrades. Só enfileira: a
+	 * raspagem acontece no job, e o resultado vai pelo webhook, como em `research`.
+	 *
+	 * Token errado é **401**, não demo: esta rota não tem modo demonstração, e o
+	 * contrato do demo é só de `research`.
+	 */
+	@Post("research/from-topic")
+	@HttpCode(HttpStatus.ACCEPTED)
+	@UseGuards(InternalSecretGuard)
+	@UseFilters(TopicResearchErrorFilter)
+	async researchFromTopic(
+		@Body(new ZodValidationPipe(researchFromTopicBodySchema))
+		body: ResearchFromTopicBody,
+	) {
+		this.assertStockConfigured();
+
+		await this.enqueueResearchGamesUseCase.execute({
+			request: toTopicResearchRequest(body),
+		});
 		return { success: true, status: "queued" };
 	}
 }

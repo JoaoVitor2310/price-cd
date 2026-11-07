@@ -1,7 +1,7 @@
 import type {
 	CancellationSignal,
-	ResearchGamesRequest,
 	ResearchGamesRunner,
+	ResearchJobRequest,
 } from "@/application/games/ports/research-games-runner.port.js";
 import type {
 	ResearchFailureKind,
@@ -9,14 +9,20 @@ import type {
 	ResearchResultNotifier,
 } from "@/application/games/ports/research-result-notifier.port.js";
 import { StockUnavailableError } from "@/application/games/ports/trade-with-offer-creator.port.js";
-import type {
-	CreateResearchTrade,
-	ResearchTradeOutcome,
+import {
+	type CreateResearchTrade,
+	ResearchCancelledError,
+	type ResearchTradeOutcome,
 } from "@/application/games/services/create-research-trade.js";
+import {
+	type ReadTopicGames,
+	TopicScrapeFailedError,
+} from "@/application/games/services/read-topic-games.js";
 
 /**
- * Executa um pedido de pesquisa tirado da fila: pesquisa, cria a Trade e, se o
- * pedido trouxe `webhookUrl`, avisa quem pediu com o Resultado da pesquisa.
+ * Executa um pedido de pesquisa tirado da fila: lê o tópico (se o pedido veio de
+ * um link), pesquisa, cria a Trade e, se o pedido trouxe `webhookUrl`, avisa quem
+ * pediu com o Resultado da pesquisa.
  *
  * O aviso sai **depois** da resposta do Sistema Estoque: com `trade_created`, a
  * Trade já existe.
@@ -35,15 +41,16 @@ export class RunResearchJobUseCase implements ResearchGamesRunner {
 	constructor(
 		private readonly createTrade: CreateResearchTrade,
 		private readonly notifier: ResearchResultNotifier,
+		private readonly readTopicGames: ReadTopicGames,
 	) {}
 
 	async run(
-		request: ResearchGamesRequest,
+		request: ResearchJobRequest,
 		signal?: CancellationSignal,
 	): Promise<void> {
 		let outcome: ResearchTradeOutcome;
 		try {
-			outcome = await this.createTrade.run(request, signal);
+			outcome = await this.research(request, signal);
 		} catch (error) {
 			if (!signal?.aborted) {
 				// Não deixar uma falha do aviso tomar o lugar da causa: é o erro
@@ -61,8 +68,26 @@ export class RunResearchJobUseCase implements ResearchGamesRunner {
 		await this.notify(request, toResult(outcome));
 	}
 
+	private async research(
+		request: ResearchJobRequest,
+		signal?: CancellationSignal,
+	): Promise<ResearchTradeOutcome> {
+		if (!("topicUrl" in request)) return this.createTrade.run(request, signal);
+
+		const { topicUrl, ...rest } = request;
+		const gameNames = await this.readTopicGames.run(topicUrl);
+		// Antes de pesquisar: com o serviço desligando, abrir a sessão do AllKeyShop
+		// agora subiria um Chromium depois do cleanup.
+		if (signal?.aborted) throw new ResearchCancelledError();
+
+		if (gameNames.length === 0) {
+			return { status: "not_created", reason: "nothing_priced" };
+		}
+		return this.createTrade.run({ ...rest, gameNames }, signal);
+	}
+
 	private async notify(
-		request: ResearchGamesRequest,
+		request: ResearchJobRequest,
 		result: ResearchResult,
 	): Promise<void> {
 		const { webhookUrl, requestUuid } = request;
@@ -97,15 +122,19 @@ const toResult = (outcome: ResearchTradeOutcome): ResearchResult => {
 
 /** O que quem pediu lê, por tipo — nunca o texto do erro interno. */
 export const FAILURE_MESSAGES: Record<ResearchFailureKind, string> = {
+	scrape_failed: "The SteamTrades topic could not be read.",
 	pricing_failed: "The price research could not be completed.",
 	stock_unavailable: "Sistema Estoque could not create the Trade right now.",
 };
 
+const failureKind = (error: unknown): ResearchFailureKind => {
+	if (error instanceof TopicScrapeFailedError) return "scrape_failed";
+	if (error instanceof StockUnavailableError) return "stock_unavailable";
+	return "pricing_failed";
+};
+
 const failedResult = (error: unknown): ResearchResult => {
-	const kind: ResearchFailureKind =
-		error instanceof StockUnavailableError
-			? "stock_unavailable"
-			: "pricing_failed";
+	const kind = failureKind(error);
 	return {
 		result: "failed",
 		failure: { kind, message: FAILURE_MESSAGES[kind] },

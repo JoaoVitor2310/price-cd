@@ -218,6 +218,7 @@ QUEUE_REDIS_TEST_URL=redis://127.0.0.1:6390/15 npx vitest run test/integration/q
 | Method | Path | Description |
 |---|---|---|
 | `POST` | `/api/games/research` | Research prices for a list of game names — sync preview (demo), async with Trade creation, or sync with results (authenticated) |
+| `POST` | `/api/games/research/from-topic` | Async, authenticated: research every game of a SteamTrades topic, create the Trade with an offer and report by webhook |
 | `GET` | `/api/games/presets` | List the named search presets: a human `label` plus their criteria |
 | `POST` | `/api/games/search-id-steam` | Resolve Steam IDs for a list of games |
 | `POST` | `/api/lists/run` | Async: crawl a Steam user's trade lists and run full analysis |
@@ -321,8 +322,8 @@ X-Webhook-Signature: sha256=<64 hex chars>
 | `result` | When |
 |---|---|
 | `trade_created` | The inventory system created the Trade (`201`); `trade_uuid` is its uuid |
-| `no_trade` | No game passed the filters (the inventory system is not even called), or it had nothing to offer (`200 { created: false }`). Never sent when a game could not be looked up and nothing passed: that is `failed` |
-| `failed` | `failure.kind` is `pricing_failed` (the research itself failed, no game passed while at least one could not be looked up, the inventory system rejected the request with `422`, or it answered `201` without a readable uuid — do not retry blindly: in that last case the Trade exists) or `stock_unavailable` (the inventory system could not answer: `503`, timeout, any other error — retrying later may work) |
+| `no_trade` | No game passed the filters (the inventory system is not even called), it had nothing to offer (`200 { created: false }`), or, on `/from-topic`, the topic shows no priceable game. Never sent when a game could not be looked up and nothing passed: that is `failed` |
+| `failed` | `failure.kind` is `scrape_failed` (only on `/from-topic`: the topic could not be read — retrying later may work), `pricing_failed` (the research itself failed, no game passed while at least one could not be looked up, the inventory system rejected the request with `422`, or it answered `201` without a readable uuid — do not retry blindly: in that last case the Trade exists), or `stock_unavailable` (the inventory system could not answer: `503`, timeout, any other error — retrying later may work) |
 
 When only some games cannot be looked up, the Trade is created with the ones that could, and the rest are logged.
 
@@ -362,6 +363,33 @@ Without `QUEUE_REDIS_URL` (outside production only) the webhook is attempted onc
 }
 ```
 Runs synchronously over the whole list and creates no Trade. Exists for callers that store the prices themselves, like the hourly bundle sync. No `demo` field.
+
+</details>
+
+<details>
+<summary><strong>POST /api/games/research/from-topic — request body</strong></summary>
+
+Research from a supplier's SteamTrades topic instead of a typed list. The whole `.have` section is researched, with no limit on the number of games, using the `lists` preset. The topic code becomes the Trade's `list_code`. Who owns the topic is not checked, and a closed topic is researched too: the supplier sent the link. Non-Steam sections (`GOG:` and the like) are skipped, as in every flow that reads `.have`.
+
+```json
+{
+  "topic_url": "https://www.steamtrades.com/trade/wGVYD/h-games-w-tf2",
+  "steam_id": "76561198012345678",
+  "currency": "tf2",
+  "request_uuid": "8c1f6a2e-3b4d-4c5e-9f00-1a2b3c4d5e6f",
+  "webhook_url": "https://chatbot.example.com/webhooks/price-cd",
+  "internal_secret": "token"
+}
+```
+
+All fields are required. `currency`, `request_uuid` and `webhook_url` work as in `POST /api/games/research`, including what happens when the same `request_uuid` is sent again; the result arrives by the same webhook (see "Result webhook" above).
+
+| Status | Body | When |
+|---|---|---|
+| `202` | `{ "success": true, "status": "queued" }` | Stored in the durable queue. The topic is read when the job runs, so a scrape failure arrives as `failed` with `kind: scrape_failed` |
+| `400` | `{ "success": false, "error": "Validation failed", "details": "..." }` | Invalid body, `topic_url` that is not `https://www.steamtrades.com/trade/{code}/...`, `steam_id` that is not a SteamID64, or `webhook_url` host not in `WEBHOOK_ALLOWED_HOSTS` |
+| `401` | `{ "success": false, "error": "Invalid internal_secret" }` | Missing or wrong token, checked before the body. This route has no demo mode |
+| `500` | `{ "success": false, "error": "Internal server error.", "details": "..." }` | The request could not be stored (queue down) |
 
 </details>
 

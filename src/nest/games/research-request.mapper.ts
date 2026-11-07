@@ -1,6 +1,12 @@
-import type { ResearchGamesRequest } from "@/application/games/ports/research-games-runner.port.js";
+import type {
+	ResearchGamesRequest,
+	TopicResearchRequest,
+} from "@/application/games/ports/research-games-runner.port.js";
 import { resolveSearchCriteria } from "@/domain/games/search-presets.js";
-import type { ResearchGamesBody } from "@/schemas/game.schema.js";
+import type {
+	ResearchFromTopicBody,
+	ResearchGamesBody,
+} from "@/schemas/game.schema.js";
 
 /**
  * Corpo de `POST /api/games/research` → requisição de pesquisa da aplicação.
@@ -27,4 +33,21 @@ export const toResearchRequest = (
 		minPrice: body.minPrice,
 		checkGamivoOffer: body.checkGamivoOffer,
 	}),
+});
+
+/**
+ * Corpo de `POST /api/games/research/from-topic` → pedido da aplicação. O código
+ * do tópico vira o `listCode` da Trade, e os critérios são os do preset `lists`,
+ * o mesmo pipeline do Reabastecimento.
+ */
+export const toTopicResearchRequest = (
+	body: ResearchFromTopicBody,
+): TopicResearchRequest => ({
+	topicUrl: body.topic_url.url,
+	listCode: body.topic_url.code,
+	supplierSteamId: body.steam_id,
+	currency: body.currency,
+	requestUuid: body.request_uuid,
+	webhookUrl: body.webhook_url,
+	criteria: resolveSearchCriteria("lists", {}),
 });

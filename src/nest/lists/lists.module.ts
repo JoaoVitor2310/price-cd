@@ -13,8 +13,8 @@ import { RunListsUseCase } from "@/application/lists/use-cases/run-lists.use-cas
 import type { BackgroundScheduler } from "@/application/shared/ports/background-scheduler.port.js";
 import type { Env } from "@/config/env.schema.js";
 import { LimitedConcurrencyScheduler } from "@/infrastructure/background/limited-concurrency.scheduler.js";
-import { fetchListTopic } from "@/infrastructure/lists/fetch-list-topic.js";
 import { GamesModule } from "@/nest/games/games.module.js";
+import { ListTopicModule } from "@/nest/lists/list-topic.module.js";
 import { ListsController } from "@/nest/lists/lists.controller.js";
 import {
 	LISTS_RUNNER,
@@ -34,19 +34,9 @@ import type { SupplierListRequest } from "@/schemas/list.schema.js";
  * (`docs/nest-conceitos.md` §4).
  */
 @Module({
-	imports: [GamesModule],
+	imports: [GamesModule, ListTopicModule],
 	controllers: [ListsController],
 	providers: [
-		/**
-		 * Fábrica, não instância: cada execução é dona de uma sessão de browser e
-		 * a descarta no `finally`. Um singleton faria execuções concorrentes
-		 * compartilharem a mesma sessão.
-		 */
-		{
-			provide: ListTopicFetcherFactory,
-			useValue: { create: () => fetchListTopic() } satisfies ListTopicFetcherFactory,
-		},
-
 		/** A ponte entre subdomínios: `lists` pede preço, `games` sabe precificar. */
 		{
 			provide: GameSearcher,

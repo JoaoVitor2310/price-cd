@@ -5,6 +5,7 @@ import { HaveListing } from "@/domain/lists/have-listing.js";
 import { ListTopic } from "@/domain/lists/list-topic.js";
 import { delay } from "@/helpers/utils.js";
 import { cleanupBrowser, initializeBrowser } from "@/lib/puppeteer-browser.js";
+import { gotoResponseWithRetry } from "@/lib/puppeteer-goto-with-retry.js";
 import {
 	CloudflareChallengeError,
 	CloudflareChallengeSolver,
@@ -44,25 +45,34 @@ async function pauseAfterSteamTradesPage(): Promise<void> {
 export class FetchListTopic implements ListTopicFetcher {
 	private browser?: Awaited<ReturnType<typeof initializeBrowser>>["browser"];
 	private page?: PageWithCursor;
+	private disposed = false;
 
 	private async ensureBrowser(): Promise<{
 		browser: Awaited<ReturnType<typeof initializeBrowser>>["browser"];
 		page: PageWithCursor;
 	}> {
+		if (this.disposed) throw new Error("FetchListTopic was disposed");
 		if (this.browser && this.page)
 			return { browser: this.browser, page: this.page };
 
 		const { browser, page } = await initializeBrowser();
+		// Descartado enquanto o browser abria: ninguém mais o fecharia.
+		if (this.disposed) {
+			await cleanupBrowser(browser);
+			throw new Error("FetchListTopic was disposed");
+		}
 		this.browser = browser;
 		this.page = page;
 		return { browser, page };
 	}
 
 	/**
-	 * Fecha o browser reutilizado (se houver).
+	 * Fecha o browser reutilizado (se houver) e impede que outro abra: uma leitura
+	 * parada no `steamTradesGate` só chega ao browser depois.
 	 * O `RunListsUseCase` chama isso no `finally` via type guard.
 	 */
 	async dispose(): Promise<void> {
+		this.disposed = true;
 		if (!this.browser) return;
 		await cleanupBrowser(this.browser);
 		this.browser = undefined;
@@ -84,8 +94,7 @@ export class FetchListTopic implements ListTopicFetcher {
 		page: PageWithCursor,
 		url: string,
 	): Promise<string | null> {
-		const response = await page.goto(url, {
-			waitUntil: "domcontentloaded",
+		const response = await gotoResponseWithRetry(page, url, {
 			timeout: navigationTimeoutMs(),
 		});
 
@@ -170,15 +179,23 @@ export class FetchListTopic implements ListTopicFetcher {
 
 			if (html === null) {
 				await pauseAfterSteamTradesPage();
-				return new ListTopic(topicRef, "inactive", []);
+				return new ListTopic(topicRef, "unreadable", []);
 			}
 
 			const $ = cheerio.load(html);
 
-			const inactive = $("div.notification.yellow").length > 0;
-			if (inactive) {
+			const status = $("div.notification.yellow").length > 0 ? "inactive" : "active";
+
+			// Página sem `.have` é seletor desatualizado ou outra página, não Lista
+			// vazia. Vale para tópico fechado também: ele mantém a Lista, e o aviso
+			// amarelo sozinho não prova que a página é um tópico.
+			if ($("div.have").length === 0) {
+				console.warn(
+					`⚠️ [LISTS] Page without div.have at ${topicRef} — ` +
+						`title ${JSON.stringify($("title").text())}, ${html.length} chars`,
+				);
 				await pauseAfterSteamTradesPage();
-				return new ListTopic(topicRef, "inactive", []);
+				return new ListTopic(topicRef, "unreadable", []);
 			}
 
 			const listing = HaveListing.parse($("div.have").text());
@@ -191,7 +208,7 @@ export class FetchListTopic implements ListTopicFetcher {
 			}
 
 			await pauseAfterSteamTradesPage();
-			return new ListTopic(topicRef, "active", listing.priceableGames);
+			return new ListTopic(topicRef, status, listing.priceableGames);
 		});
 	}
 }

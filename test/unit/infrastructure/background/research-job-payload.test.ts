@@ -36,6 +36,26 @@ describe("parseResearchJobPayload", () => {
 		expect(parseResearchJobPayload(stored)).toEqual(withNewFields);
 	});
 
+	it("accepts a research from a topic, which has no gameNames", () => {
+		const { gameNames: _gameNames, ...rest } = request;
+		const fromTopic = {
+			...rest,
+			topicUrl: "https://www.steamtrades.com/trade/wGVYD/slug",
+		};
+
+		expect(
+			parseResearchJobPayload(JSON.parse(JSON.stringify(fromTopic))),
+		).toEqual(fromTopic);
+	});
+
+	it("refuses a job with neither gameNames nor topicUrl", () => {
+		const { gameNames: _gameNames, ...rest } = request;
+
+		expect(() => parseResearchJobPayload(rest)).toThrow(
+			/Invalid research job payload/,
+		);
+	});
+
 	it("keeps the result-notification fields", () => {
 		const withWebhook: ResearchGamesRequest = {
 			...request,

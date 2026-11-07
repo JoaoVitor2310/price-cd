@@ -41,7 +41,7 @@ Ação do price-cd de enviar jogos precificados ao Sistema Estoque (via `GameTra
 _Avoid_: Importar (verbo reservado para a ação do Sistema Estoque, ver abaixo)
 
 **Resultado da pesquisa**:
-O desfecho de um pedido de pesquisa, avisado a quem pediu pelo webhook: `trade_created` (com o uuid da Trade), `no_trade` (nenhum jogo passou nos filtros, ou o Sistema Estoque não viu nada a ofertar; se algum jogo não pôde ser pesquisado e nada passou, é `failed`) ou `failed` (com o tipo: `pricing_failed` ou `stock_unavailable`). Um por pedido, identificado pelo uuid que quem pediu gerou. Nunca carrega Preço de mercado, popularidade nem margem.
+O desfecho de um pedido de pesquisa, avisado a quem pediu pelo webhook: `trade_created` (com o uuid da Trade), `no_trade` (nenhum jogo passou nos filtros, ou o Sistema Estoque não viu nada a ofertar; se algum jogo não pôde ser pesquisado e nada passou, é `failed`) ou `failed` (com o tipo: `scrape_failed`, `pricing_failed` ou `stock_unavailable`). Um por pedido, identificado pelo uuid que quem pediu gerou. Nunca carrega Preço de mercado, popularidade nem margem.
 _Avoid_: Resposta (a resposta HTTP é só o `202` de que o pedido foi aceito)
 
 **Importar**:

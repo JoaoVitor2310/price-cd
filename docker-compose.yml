@@ -48,6 +48,10 @@ services:
       DOCKER: "true"
       NODE_ENV: development
 
+      # Fixo aqui, e não no .env, que a produção também lê: com os dois de pé, seriam
+      # dois agendadores comentando no SteamTrades com a mesma conta (risco de ban).
+      BUMP_SCHEDULER_ENABLED: "false"
+
 
       # Fixo, não interpolado do .env: o lado container do mapeamento de portas
       # acima é 5555 literal, então deixar o .env escolher outra porta só
@@ -71,7 +75,7 @@ services:
         condition: service_started
 
     # Mesmo motivo do serviço de produção — ver o comentário lá embaixo.
-    stop_grace_period: 60s
+    stop_grace_period: 90s
 
     volumes:
       - ./src:/app/src
@@ -159,11 +163,11 @@ services:
 
     # Quanto o Docker espera entre o SIGTERM e o SIGKILL. O default (10s) não
     # cobre o desligamento ordenado: devolver o job à fila é rápido, mas fechar
-    # os três donos de Chromium pode levar `BROWSER_CLOSE_TIMEOUT_MS` (15s) +
-    # `BROWSER_KILL_GRACE_MS` (3s) cada. Morto antes disso, o job em andamento
+    # os quatro donos de Chromium pode levar `BROWSER_CLOSE_TIMEOUT_MS` (15s) +
+    # `BROWSER_KILL_GRACE_MS` (3s) cada, um depois do outro. Morto antes disso, o job em andamento
     # ainda não se perde — volta como travado no próximo boot (ADR 0009) —, mas
     # o Chromium vira órfão, o modo de falha de 2026-08-24.
-    stop_grace_period: 60s
+    stop_grace_period: 90s
 
     # Memória compartilhada (/dev/shm) maior que o padrão (~64MB). Chromium usa muito shm para GPU/texturas;
     # sem isso o browser pode crashar ou ficar instável no Docker.

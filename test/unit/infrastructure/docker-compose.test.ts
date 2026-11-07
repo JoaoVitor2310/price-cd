@@ -82,6 +82,16 @@ describe("docker-compose", () => {
 		},
 	);
 
+	it("keeps the bump off in dev, so production is the only one commenting", () => {
+		// Duas instâncias agendando comentam com a mesma conta: risco de ban.
+		expect(blocks.get("price-researcher-dev")).toMatch(
+			/BUMP_SCHEDULER_ENABLED: "false"/,
+		);
+		expect(blocks.get("price-researcher")).not.toMatch(
+			/BUMP_SCHEDULER_ENABLED/,
+		);
+	});
+
 	describe("production image", () => {
 		it("comes from GHCR under a lowercase name, with an overridable tag for rollback", () => {
 			expect(blocks.get("price-researcher")).toMatch(
@@ -137,10 +147,10 @@ describe("docker-compose", () => {
 		it.each(["price-researcher", "price-researcher-dev"])(
 			"%s gives the ordered shutdown more than the 10s default",
 			(app) => {
-				// Fechar os três donos de Chromium pode passar de 10s; morto antes,
-				// o Chromium fica órfão.
+				// Os quatro donos de Chromium fecham em sequência, até 18s cada: 72s no
+				// pior caso. Morto antes, o Chromium fica órfão.
 				const match = blocks.get(app)?.match(/^\s*stop_grace_period:\s*(\d+)s\s*$/m);
-				expect(Number(match?.[1])).toBeGreaterThanOrEqual(60);
+				expect(Number(match?.[1])).toBeGreaterThanOrEqual(90);
 			},
 		);
 	});

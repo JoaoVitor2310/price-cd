@@ -1,13 +1,18 @@
 /**
  * Por que um pedido de pesquisa não terminou.
  *
+ * - `scrape_failed`: não deu para ler o tópico do SteamTrades. Só na pesquisa a
+ *   partir do link; repetir mais tarde pode resolver.
  * - `pricing_failed`: a pesquisa em si falhou (navegador, Cloudflare, pipeline),
  *   o Sistema Estoque recusou o pedido como inválido, ou confirmou a Trade numa
  *   resposta ilegível. Repetir sem olhar o que houve não é seguro.
  * - `stock_unavailable`: o Sistema Estoque não respondeu como deveria (fora do
  *   ar, timeout, sem cotação da TF2 Key). Repetir mais tarde pode resolver.
  */
-export type ResearchFailureKind = "pricing_failed" | "stock_unavailable";
+export type ResearchFailureKind =
+	| "scrape_failed"
+	| "pricing_failed"
+	| "stock_unavailable";
 
 /**
  * O Resultado da pesquisa: o que quem pediu fica sabendo ao final. Nunca carrega

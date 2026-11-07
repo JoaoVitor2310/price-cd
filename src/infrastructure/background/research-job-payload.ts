@@ -1,9 +1,9 @@
 import * as z from "zod";
-import type { ResearchGamesRequest } from "@/application/games/ports/research-games-runner.port.js";
+import type { ResearchJobRequest } from "@/application/games/ports/research-games-runner.port.js";
 import { OFFER_CURRENCIES } from "@/domain/suppliers/offer.js";
 
 /**
- * O formato persistido de um job da fila da pesquisa: o `ResearchGamesRequest`
+ * O formato persistido de um job da fila da pesquisa: o `ResearchJobRequest`
  * como ele volta do Redis. Ver `docs/adr/0009-fila-duravel-da-pesquisa.md`.
  *
  * Vive em `infrastructure/`, e não em `src/schemas/`: aquela pasta é o contrato
@@ -20,8 +20,7 @@ import { OFFER_CURRENCIES } from "@/domain/suppliers/offer.js";
  * sumiria em silêncio entre o `enqueue` e o worker. O teste de ida e volta em
  * `research-job-payload.test.ts` trava isso.
  */
-const researchJobPayloadSchema = z.looseObject({
-	gameNames: z.array(z.string()).min(1),
+const commonJobFields = {
 	criteria: z.looseObject({
 		popularity: z.looseObject({
 			upToThreshold: z.number(),
@@ -38,11 +37,16 @@ const researchJobPayloadSchema = z.looseObject({
 	currency: z.enum(OFFER_CURRENCIES).optional(),
 	requestUuid: z.string().min(1).optional(),
 	webhookUrl: z.string().min(1).optional(),
-});
+};
+
+const researchJobPayloadSchema = z.union([
+	z.looseObject({ gameNames: z.array(z.string()).min(1), ...commonJobFields }),
+	z.looseObject({ topicUrl: z.string().min(1), ...commonJobFields }),
+]);
 
 export const parseResearchJobPayload = (
 	data: unknown,
-): ResearchGamesRequest => {
+): ResearchJobRequest => {
 	const parsed = researchJobPayloadSchema.safeParse(data);
 	if (!parsed.success) {
 		throw new Error(`Invalid research job payload: ${parsed.error.message}`);

@@ -113,6 +113,27 @@ describe("RunListsUseCase", () => {
 		expect(tradeImporter.import).not.toHaveBeenCalled();
 	});
 
+	it("skips a list that could not be read, like an inactive one", async () => {
+		const search = vi.fn().mockResolvedValue([]);
+
+		await new RunListsUseCase(
+			{
+				create: () =>
+					makeFetcher([new ListTopic("http://list", "unreadable", [])]),
+			},
+			{ search },
+			{ import: vi.fn() },
+			3,
+		).execute({
+			supplierListRequest: { steam_id: "123", checkGamivoOffer: true },
+			checkGamivoOffer: true,
+		});
+
+		expect(search).toHaveBeenCalledWith(
+			expect.objectContaining({ gameNames: [] }),
+		);
+	});
+
 	it("skips inactive lists, excluding their games from the search", async () => {
 		const inactiveFetcher = makeFetcher([new ListTopic("http://list", "inactive", ["Half-Life"])]);
 		const gameSearcher: GameSearcher = {

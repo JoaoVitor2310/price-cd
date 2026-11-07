@@ -1,5 +1,6 @@
 import * as z from "zod";
 import { SEARCH_PRESET_NAMES } from "@/domain/games/search-presets.js";
+import { parseSteamTradesTopicUrl } from "@/domain/lists/topic-url.js";
 import { OFFER_CURRENCIES } from "@/domain/suppliers/offer.js";
 
 export const gameIdSteamSchema = z.strictObject({
@@ -57,6 +58,17 @@ const popularityTiersSchema = z.strictObject({
  */
 const STEAM_ID64 = /^7656119\d{10}$/;
 
+const currencySchema = z.enum(OFFER_CURRENCIES, {
+	message: `currency must be one of: ${OFFER_CURRENCIES.join(", ")}`,
+});
+
+const requestUuidSchema = z.uuid({ message: "request_uuid must be a UUID" });
+
+const webhookUrlSchema = z.url({
+	protocol: /^https?$/,
+	message: "webhook_url must be an http(s) URL",
+});
+
 /**
  * Corpo de `POST /api/games/research`.
  *
@@ -100,18 +112,9 @@ export const researchGamesBodySchema = z
 		title: z.string().optional(),
 		// A Moeda de oferta. Presente, a Trade nasce com oferta (`POST /api/trades`
 		// do Estoque) e exige `steam_id` SteamID64.
-		currency: z
-			.enum(OFFER_CURRENCIES, {
-				message: `currency must be one of: ${OFFER_CURRENCIES.join(", ")}`,
-			})
-			.optional(),
-		request_uuid: z.uuid({ message: "request_uuid must be a UUID" }).optional(),
-		webhook_url: z
-			.url({
-				protocol: /^https?$/,
-				message: "webhook_url must be an http(s) URL",
-			})
-			.optional(),
+		currency: currencySchema.optional(),
+		request_uuid: requestUuidSchema.optional(),
+		webhook_url: webhookUrlSchema.optional(),
 	})
 	.superRefine((body, ctx) => {
 		const issue = (path: string, message: string) =>
@@ -148,3 +151,32 @@ export const researchGamesBodySchema = z
 	});
 
 export type ResearchGamesBody = z.infer<typeof researchGamesBodySchema>;
+
+/**
+ * Corpo de `POST /api/games/research/from-topic`. Sem preset nem filtros: quem
+ * manda o link quer a pesquisa padrão de uma Lista (`lists`).
+ *
+ * `topic_url` sai daqui já lido, com o código do tópico. `internal_secret` é
+ * conferido antes, pelo `InternalSecretGuard`; aqui só é um campo aceito.
+ */
+export const researchFromTopicBodySchema = z.strictObject({
+	topic_url: z.string().transform((value, ctx) => {
+		const topic = parseSteamTradesTopicUrl(value);
+		if (topic !== null) return topic;
+		ctx.addIssue({
+			code: "custom",
+			message:
+				"topic_url must be a topic link: https://www.steamtrades.com/trade/{code}/...",
+		});
+		return z.NEVER;
+	}),
+	steam_id: z
+		.string()
+		.regex(STEAM_ID64, { message: "steam_id must be a SteamID64" }),
+	currency: currencySchema,
+	request_uuid: requestUuidSchema,
+	webhook_url: webhookUrlSchema,
+	internal_secret: z.string().optional(),
+});
+
+export type ResearchFromTopicBody = z.infer<typeof researchFromTopicBodySchema>;

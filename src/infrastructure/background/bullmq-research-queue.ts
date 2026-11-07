@@ -1,7 +1,7 @@
 import { DelayedError, type JobsOptions, Queue, Worker } from "bullmq";
 import type {
-	ResearchGamesRequest,
 	ResearchGamesRunner,
+	ResearchJobRequest,
 } from "@/application/games/ports/research-games-runner.port.js";
 import {
 	type PreviousResearchRun,
@@ -120,7 +120,7 @@ export class BullmqResearchQueue implements ResearchQueue {
 	 * seguro — ele é o `jobId`, e a BullMQ ignora um segundo `add` com o mesmo id
 	 * enquanto o primeiro job existir.
 	 */
-	async enqueue(request: ResearchGamesRequest): Promise<void> {
+	async enqueue(request: ResearchJobRequest): Promise<void> {
 		this.assertConnected();
 		const options: JobsOptions = request.requestUuid
 			? { ...RESEARCH_JOB_OPTIONS, jobId: request.requestUuid }
@@ -284,7 +284,7 @@ export class BullmqResearchQueue implements ResearchQueue {
 			if (!active.returned) return;
 			// Terminou depois de ter sido devolvido à fila: vai rodar de novo. Só
 			// a idempotência do Estoque impede uma Trade repetida aqui
-			// (`docs/INTEGRACAO_CHATBOT.md`, divergência 2). `DelayedError` diz à
+			// (ADR 0010, janelas conhecidas). `DelayedError` diz à
 			// BullMQ que o job já foi movido e não deve ser tocado.
 			console.warn(
 				`⚠️ [QUEUE] Research job ${job.id} finished during shutdown, after being returned to the queue — it will run again.`,

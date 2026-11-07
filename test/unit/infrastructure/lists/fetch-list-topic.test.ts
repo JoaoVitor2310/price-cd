@@ -204,6 +204,66 @@ describe("FetchListTopic.fetchList", () => {
 		expect(topic.gameNames).toContain("Hades");
 	});
 
+	it("reports a real HTTP error as unreadable, not as an inactive topic", async () => {
+		useFakePage(makePage({ status: 404, contents: [`<html>${FILLER}</html>`] }));
+
+		const topic = await new FetchListTopic().fetchList("https://x/trade/abc");
+
+		expect(topic.status).toBe("unreadable");
+	});
+
+	it("reports a page without div.have as unreadable, not as an empty list", async () => {
+		useFakePage(makePage({ status: 200, contents: [`<html>${FILLER}</html>`] }));
+
+		const topic = await new FetchListTopic().fetchList("https://x/trade/abc");
+
+		expect(topic.status).toBe("unreadable");
+	});
+
+	it("reads the games of a closed topic, keeping it inactive", async () => {
+		useFakePage(
+			makePage({
+				status: 200,
+				contents: [
+					`<html><div class="notification yellow"></div><div class="have">Hades</div>${FILLER}</html>`,
+				],
+			}),
+		);
+
+		const topic = await new FetchListTopic().fetchList("https://x/trade/abc");
+
+		expect(topic.status).toBe("inactive");
+		expect(topic.gameNames).toEqual(["Hades"]);
+	});
+
+	it("reports a yellow notice without div.have as unreadable: it may not be a topic", async () => {
+		useFakePage(
+			makePage({
+				status: 200,
+				contents: [
+					`<html><div class="notification yellow"></div>${FILLER}</html>`,
+				],
+			}),
+		);
+
+		const topic = await new FetchListTopic().fetchList("https://x/trade/abc");
+
+		expect(topic.status).toBe("unreadable");
+	});
+
+	it("retries a 429 before giving up on the page", async () => {
+		const page = makePage({ status: 200, contents: [topicHtml] });
+		page.goto
+			.mockResolvedValueOnce({ status: () => 429, headers: () => ({}) })
+			.mockResolvedValueOnce({ status: () => 200, headers: () => ({}) });
+		useFakePage(page);
+
+		const topic = await new FetchListTopic().fetchList("https://x/trade/abc");
+
+		expect(page.goto).toHaveBeenCalledTimes(2);
+		expect(topic.status).toBe("active");
+	});
+
 	it("does not mark a topic inactive when Cloudflare blocks — it throws", async () => {
 		useFakePage(makePage({ status: 403, contents: [BLOCK_HTML] }));
 
@@ -216,6 +276,37 @@ describe("FetchListTopic.fetchList", () => {
 });
 
 describe("FetchListTopic.dispose", () => {
+	it("does not open a browser for a read that reaches it after the dispose", async () => {
+		useFakePage(makePage({ status: 200, contents: [topicHtml] }));
+		const fetcher = new FetchListTopic();
+
+		await fetcher.dispose();
+
+		await expect(fetcher.fetchList("https://x/trade/abc")).rejects.toThrow(
+			/disposed/,
+		);
+		expect(initializeBrowser).not.toHaveBeenCalled();
+	});
+
+	it("closes a browser that finished opening after the dispose", async () => {
+		const browser = { id: "late" };
+		let finishLaunch: (value: unknown) => void = () => {};
+		initializeBrowser.mockReturnValue(
+			new Promise((resolve) => {
+				finishLaunch = resolve;
+			}),
+		);
+		const fetcher = new FetchListTopic();
+
+		const read = fetcher.fetchList("https://x/trade/abc");
+		await vi.waitFor(() => expect(initializeBrowser).toHaveBeenCalled());
+		await fetcher.dispose();
+		finishLaunch({ browser, page: {} });
+
+		await expect(read).rejects.toThrow(/disposed/);
+		expect(cleanupBrowser).toHaveBeenCalledWith(browser);
+	});
+
 	it("closes the reused browser exactly once", async () => {
 		useFakePage(makePage({ status: 200, contents: [listsHtml] }));
 		const fetcher = new FetchListTopic();

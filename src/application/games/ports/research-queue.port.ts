@@ -1,4 +1,4 @@
-import type { ResearchGamesRequest } from "@/application/games/ports/research-games-runner.port.js";
+import type { ResearchJobRequest } from "@/application/games/ports/research-games-runner.port.js";
 
 /**
  * `up`/`down`: fila durável, com o armazenamento respondendo ou não.
@@ -41,7 +41,7 @@ export class ResearchQueueUnavailableError extends Error {
  * `abstract class` pelo mesmo motivo das outras portas: é o token de injeção.
  */
 export abstract class ResearchQueue {
-	abstract enqueue(request: ResearchGamesRequest): Promise<void>;
+	abstract enqueue(request: ResearchJobRequest): Promise<void>;
 	/** Em que pé está um pedido já recebido com este `requestUuid`. */
 	abstract previousRun(requestUuid: string): Promise<PreviousResearchRun>;
 	/**
