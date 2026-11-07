@@ -39,9 +39,21 @@ Quem precisa de moeda é o `/api/trades`; o aviso é independente. Mas só o `/a
 
 `failure.message` é uma frase fixa por `kind`. O texto do erro (Cloudflare, URL do Estoque, corpo do 422) fica no log e no `failedReason` do job: o resultado sai do price-cd para outro sistema, que pode mostrá-lo ao Fornecedor. `scrape_failed` é o tópico que não pôde ser lido; `pricing_failed` é falha em que repetir às cegas não é seguro nem útil (pesquisa, 422, `201` sem uuid legível); `stock_unavailable` é o Estoque sem responder como deveria (503, timeout, outro erro).
 
+## O `failed` sai da fila, não do runner
+
+Só a fila sabe que um pedido falhou de vez, e nem toda falha passa pelo runner: um job acima do limite de travamentos (OOM repetido) ou com payload ilegível nunca chega lá, e o chatbot ficaria sem resposta depois do `202`. Por isso o `run` só propaga, e o adapter chama `reportFailure` no evento `failed` do worker. A classificação continua na Application; a fila só diz quando.
+
+- **Cobertura:** o evento dispara nos três casos. Passado o limite, o script de travados não marca o job como falho: grava a falha adiada (`defa`) e o devolve à espera, e o worker, ao pegá-lo, o falha sem chamar o processador, pelo mesmo `handleFailed` (conferido no fonte da BullMQ 5.81 e num teste contra Redis real). Por isso não foi preciso `QueueEvents`, que custaria mais uma conexão.
+- **Ordem:** o evento sai depois do `moveToFailed`, então um reenvio motivado pelo aviso encontra `failed` e roda de novo. Antes o aviso saía com o job `active`, e um reenvio rápido via `pending` e era engolido.
+- **Uma origem só:** nada a deduplicar entre runner e fila. O `run` nunca monta um `failed`: até a Trade criada sem uuid num pedido com webhook (pedido montado à mão) vira erro que propaga.
+- **Payload ilegível:** o alvo é lido à parte e campo a campo (`readResearchFailureTarget`), sem exigir o resto do pedido. Sem `requestUuid` legível, vale o id do job, que o `enqueue` fez igual a ele.
+- **Custo:** o aviso agora é guardado depois de o job falhar. Para não perdê-lo numa reinicialização do Redis, o `notify` tenta de novo por ~15s (`NOTIFY_RETRY_DELAYS_MS`), acima do teto de 5s da reconexão do produtor; repetir é seguro pelo `jobId`. O desligamento espera o aviso em andamento por até 10s, depois de fechar o worker e antes de o produtor do webhook fechar. Ainda se perde com processo morto nesse intervalo ou Redis fora por mais que isso: fica no log, e sobra o alarme do chatbot. Antes era o inverso: o aviso existia e o job podia não ter falhado.
+- **Corrida inversa:** um reenvio que chegue depois de o job falhar e antes de o aviso ser guardado apaga um aviso que ainda não existe e roda de novo; o `failed` atrasado ocupa então o `jobId`, e o resultado da segunda execução é ignorado. Exige reenviar em milissegundos sem ter recebido aviso nenhum, então não ganhou código; quem pediu reenvia de novo depois do `failed` e recebe o resultado da execução nova.
+- **Reenvio dentro do handler do webhook:** a entrega ainda está em andamento, o `forget` do aviso lança, e quem reenviou recebe erro em vez de um `202` vazio. Precisa repetir depois de responder.
+
 ## Desligamento não é resultado
 
-Fechar o browser **não** derruba a pesquisa: o `gotoWithRetry` engole o erro e cada jogo restante vira falha de catálogo. Sem cuidado, o job já devolvido à fila (ADR 0009) terminaria "com sucesso" e criaria uma Trade com a lista pela metade, e rodaria de novo no boot. O worker passa ao runner um `AbortSignal` e o aborta **antes** de devolver o job; o `CreateResearchTrade` confere o sinal logo depois de pesquisar e lança `ResearchCancelledError` sem chamar o Estoque, e o `RunResearchJobUseCase` não avisa falha com o sinal abortado. A Application vê só `{ aborted: boolean }`, não o tipo da plataforma.
+Fechar o browser **não** derruba a pesquisa: o `gotoWithRetry` engole o erro e cada jogo restante vira falha de catálogo. Sem cuidado, o job já devolvido à fila (ADR 0009) terminaria "com sucesso" e criaria uma Trade com a lista pela metade, e rodaria de novo no boot. O worker passa ao runner um `AbortSignal` e o aborta **antes** de devolver o job; o `CreateResearchTrade` confere o sinal logo depois de pesquisar e lança `ResearchCancelledError` sem chamar o Estoque. Essa falha vira `DelayedError` no adapter, que a BullMQ não trata como falha: o job não passa pelo aviso de `failed`. A Application vê só `{ aborted: boolean }`, não o tipo da plataforma.
 
 ## Falha do catálogo não é "nada passou"
 
@@ -69,11 +81,11 @@ A fila `webhooks` fica no mesmo Redis da pesquisa (banco 1). Separada porque o r
 ## Janelas conhecidas, todas fechadas pela idempotência do Estoque
 
 - O Estoque cria a Trade e a resposta não chega (timeout): `stock_unavailable`; reenviado, o pedido roda de novo e pode criar outra.
-- A Trade é criada e o resultado não pode ser guardado (Redis fora): o job falha; reenviado, idem.
+- A Trade é criada e o resultado não pode ser guardado (Redis fora por mais que as tentativas do `notify`): se o Redis voltar a tempo de o job ser marcado falho, quem pediu recebe `pricing_failed` com a Trade já existindo; reenviado, roda de novo. Se ficar fora por mais que o lock do job (30s), a BullMQ nem consegue marcá-lo falho: o lock expira, o job volta como travado e roda de novo **sozinho**, sem reenvio, criando outra Trade.
 - O sinal de desligamento chega com o Estoque já sendo chamado: a Trade nasce e o job roda de novo; o segundo aviso é ignorado pelo `jobId`, e o chatbot fica com a primeira Trade.
 - O Estoque responde `201` sem `uuid` legível: `pricing_failed`, para não convidar à repetição; reenviado mesmo assim, roda de novo e pode criar outra.
 
-O Estoque receber `request_uuid` como `pricing_request_id` (item 2 do backlog dele) fecha as quatro. Até lá o price-cd não manda o campo, e o critério de aceite do chatbot, um resultado lógico por `request_uuid`, não está garantido nessas janelas. É o item 23 do `docs/IMPROVEMENTS.md`. Paliativo descartado: gravar o `tradeUuid` no job antes de guardar o aviso encurta a janela, mas não fecha.
+O Estoque receber `request_uuid` como `pricing_request_id` (item 2 do backlog dele) fecha as quatro. Até lá o price-cd não manda o campo, e o critério de aceite do chatbot, um resultado lógico por `request_uuid`, não está garantido nessas janelas. É o item 21 do `docs/IMPROVEMENTS.md`. Paliativo descartado: gravar o `tradeUuid` no job antes de guardar o aviso encurta a janela, mas não fecha.
 
 ## Consequences
 

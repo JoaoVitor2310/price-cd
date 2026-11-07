@@ -14,9 +14,8 @@ import type { BackgroundScheduler } from "@/application/shared/ports/background-
  * Existe para dev e testes rodarem sem Redis — em produção o schema do ambiente
  * exige `QUEUE_REDIS_URL`, então este adapter nunca chega lá.
  *
- * Um reinício perde o que estava na fila, e a falha de uma execução só vai para
- * o log. Também não guarda registro: todo pedido é novo, mesmo com o mesmo
- * `requestUuid`.
+ * Um reinício perde o que estava na fila. Também não guarda registro: todo pedido
+ * é novo, mesmo com o mesmo `requestUuid`.
  */
 export class InMemoryResearchQueue implements ResearchQueue {
 	constructor(
@@ -30,6 +29,14 @@ export class InMemoryResearchQueue implements ResearchQueue {
 				await this.runner.run(request);
 			} catch (error) {
 				console.error("❌ [ERROR] Research games run failed:", error);
+				await this.runner
+					.reportFailure(request, error)
+					.catch((reportError) =>
+						console.error(
+							"❌ [ERROR] Could not report the failed research:",
+							reportError,
+						),
+					);
 			}
 		});
 	}

@@ -27,8 +27,8 @@ export class InvalidResearchRequestError extends Error {
  *
  * Uma falha ao **guardar** o pedido propaga: o cliente ainda está esperando e
  * recebe o erro. Uma falha ao **executar** acontece depois, no worker da fila:
- * fica registrada no job e, se o pedido trouxe `webhookUrl`, vira o resultado
- * `failed` avisado a quem pediu (`RunResearchJobUseCase`).
+ * fica registrada no job e, se o pedido trouxe `webhookUrl`, a fila avisa o
+ * resultado `failed` a quem pediu (`RunResearchJobUseCase.reportFailure`).
  *
  * `allowedWebhookHosts` vem da configuração: um webhook para host fora da lista
  * é recusado aqui, enquanto quem pediu ainda pode corrigir.

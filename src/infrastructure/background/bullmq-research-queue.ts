@@ -17,7 +17,10 @@ import {
 	readRunState,
 } from "@/infrastructure/background/bullmq-clients.js";
 import { createBullmqConnections } from "@/infrastructure/background/bullmq-connections.js";
-import { parseResearchJobPayload } from "@/infrastructure/background/research-job-payload.js";
+import {
+	parseResearchJobPayload,
+	readResearchFailureTarget,
+} from "@/infrastructure/background/research-job-payload.js";
 import { withTimeout } from "@/lib/with-timeout.js";
 
 /**
@@ -57,7 +60,9 @@ export const RESEARCH_JOB_OPTIONS: JobsOptions = {
 /**
  * Um processo que morre no meio de um job (OOM, SIGKILL) deixa o job "travado";
  * o próximo worker o recoloca na fila. Depois de 2 travamentos, o job falha em
- * vez de entrar em loop derrubando o processo de novo.
+ * vez de entrar em loop derrubando o processo de novo: a BullMQ grava a falha no
+ * job e o worker a aplica ao pegá-lo, sem chamar o processador. Passa pelo evento
+ * `failed` como as outras (`onJobFailed`).
  */
 export const RESEARCH_MAX_STALLED_COUNT = 2;
 
@@ -69,6 +74,13 @@ const STATUS_TIMEOUT_MS = 1000;
  * caminho comum: o Redis fora é recusado antes, pelo `isConnected`.
  */
 const ENQUEUE_TIMEOUT_MS = 5000;
+
+/**
+ * Quanto o desligamento espera os avisos de `failed` ainda sendo guardados. O
+ * normal é levar milissegundos; com o Redis fora, esperar mais não salva o aviso
+ * e só come o `stop_grace_period`, que os browsers também precisam.
+ */
+const REPORT_DRAIN_TIMEOUT_MS = 10_000;
 
 export type BullmqResearchQueueDeps = {
 	queue: BullmqQueueClient;
@@ -91,11 +103,16 @@ export class BullmqResearchQueue implements ResearchQueue {
 				job: BullmqJob;
 				token?: string;
 				returned: boolean;
-				/** Abortado no desligamento: o runner não avisa `failed` a quem pediu. */
+				/**
+				 * Abortado no desligamento: o runner para antes de chamar o Estoque, e a
+				 * falha vira `DelayedError` — sem evento `failed`, sem aviso.
+				 */
 				cancellation: AbortController;
 		  }
 		| undefined;
 	private shuttingDown = false;
+	/** Avisos de `failed` ainda sendo guardados — o desligamento os espera. */
+	private readonly pendingReports = new Set<Promise<void>>();
 	/**
 	 * `unknown` até a primeira conexão: um ping ou `enqueue` antes dela não é
 	 * queda — só um erro de **conexão** avisa nesse estado. Sem isso, o primeiro
@@ -233,6 +250,25 @@ export class BullmqResearchQueue implements ResearchQueue {
 				`⚠️ [QUEUE] Failed to close the research worker: ${errorMessage(error)}`,
 			);
 		}
+
+		// Depois do worker fechado, nenhum `failed` novo chega. O produtor da fila
+		// de webhooks só fecha no `onApplicationShutdown`, então o aviso ainda tem
+		// por onde sair aqui.
+		await this.drainReports();
+	}
+
+	private async drainReports(): Promise<void> {
+		if (this.pendingReports.size === 0) return;
+		try {
+			await withTimeout(
+				Promise.all(this.pendingReports),
+				REPORT_DRAIN_TIMEOUT_MS,
+			);
+		} catch {
+			console.warn(
+				`⚠️ [QUEUE] ${this.pendingReports.size} failed-research report(s) still pending at shutdown — they may be lost.`,
+			);
+		}
 	}
 
 	async onApplicationShutdown(): Promise<void> {
@@ -297,6 +333,48 @@ export class BullmqResearchQueue implements ResearchQueue {
 		// devolvido, fica ativo e volta como travado. Os dois rodam de novo.
 		if (this.shuttingDown) throw new DelayedError();
 		throw outcome.error;
+	}
+
+	/**
+	 * Chamado pelo evento `failed` do worker, que a BullMQ emite **depois** de mover
+	 * o job para falho, em toda falha: erro do runner, payload ilegível, limite de
+	 * travamentos. É aqui, e não no runner, para cobrir as que não passam por ele e
+	 * para um reenvio motivado pelo aviso já ver o job como `failed`.
+	 *
+	 * `attempts` é 1, então todo `failed` é definitivo; `DelayedError` (o
+	 * desligamento) não emite o evento.
+	 *
+	 * Nunca lança: é ouvinte de evento. O notifier já tenta de novo por alguns
+	 * segundos; não conseguir mesmo assim fica no log, e quem pediu cai no alarme
+	 * dele — o reenvio roda o pedido de novo. A promessa fica registrada até
+	 * terminar, para o desligamento esperá-la (`drainReports`).
+	 */
+	onJobFailed(
+		job: Pick<BullmqJob, "data" | "id"> | undefined,
+		error: unknown,
+	): Promise<void> {
+		if (!job) return Promise.resolve();
+		const report = this.reportFailure(job, error);
+		this.pendingReports.add(report);
+		void report.finally(() => this.pendingReports.delete(report));
+		return report;
+	}
+
+	private async reportFailure(
+		job: Pick<BullmqJob, "data" | "id">,
+		error: unknown,
+	): Promise<void> {
+		try {
+			await this.runner.reportFailure(
+				readResearchFailureTarget(job.data, job.id),
+				error,
+			);
+		} catch (reportError) {
+			console.error(
+				`❌ [QUEUE] Could not report the failed research job ${job.id}:`,
+				reportError,
+			);
+		}
 	}
 
 	/** Públicos para os eventos de conexão (`createBullmqResearchQueue`). */
@@ -365,9 +443,10 @@ export const createBullmqResearchQueue = (
 				worker.on("completed", (job) =>
 					console.log(`✅ [QUEUE] Research job ${job.id} completed.`),
 				);
-				worker.on("failed", (job, error) =>
-					console.error(`❌ [QUEUE] Research job ${job?.id} failed:`, error),
-				);
+				worker.on("failed", (job, error) => {
+					console.error(`❌ [QUEUE] Research job ${job?.id} failed:`, error);
+					void researchQueue.onJobFailed(job, error);
+				});
 				return worker;
 			},
 			disconnect: connections.disconnect,

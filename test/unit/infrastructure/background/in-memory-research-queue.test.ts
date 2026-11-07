@@ -25,7 +25,10 @@ function makeScheduler() {
 describe("InMemoryResearchQueue", () => {
 	it("schedules the run instead of running it inline", async () => {
 		const scheduler = makeScheduler();
-		const runner = { run: vi.fn().mockResolvedValue(undefined) };
+		const runner = {
+			run: vi.fn().mockResolvedValue(undefined),
+			reportFailure: vi.fn(),
+		};
 
 		await new InMemoryResearchQueue(scheduler, runner).enqueue(request);
 
@@ -40,6 +43,7 @@ describe("InMemoryResearchQueue", () => {
 		const scheduler = makeScheduler();
 		const runner = {
 			run: vi.fn().mockRejectedValue(new Error("scraping failed")),
+			reportFailure: vi.fn().mockResolvedValue(undefined),
 		};
 		const consoleError = vi
 			.spyOn(console, "error")
@@ -52,8 +56,41 @@ describe("InMemoryResearchQueue", () => {
 		consoleError.mockRestore();
 	});
 
+	it("reports a failed run to whoever asked", async () => {
+		const scheduler = makeScheduler();
+		const error = new Error("scraping failed");
+		const runner = {
+			run: vi.fn().mockRejectedValue(error),
+			reportFailure: vi.fn().mockResolvedValue(undefined),
+		};
+		vi.spyOn(console, "error").mockImplementation(() => {});
+
+		await new InMemoryResearchQueue(scheduler, runner).enqueue(request);
+		await scheduler.runScheduledTask();
+
+		expect(runner.reportFailure).toHaveBeenCalledWith(request, error);
+		vi.restoreAllMocks();
+	});
+
+	it("does not break the scheduler loop when the failure cannot be reported", async () => {
+		const scheduler = makeScheduler();
+		const runner = {
+			run: vi.fn().mockRejectedValue(new Error("scraping failed")),
+			reportFailure: vi.fn().mockRejectedValue(new Error("no webhook queue")),
+		};
+		vi.spyOn(console, "error").mockImplementation(() => {});
+
+		await new InMemoryResearchQueue(scheduler, runner).enqueue(request);
+
+		await expect(scheduler.runScheduledTask()).resolves.toBeUndefined();
+		vi.restoreAllMocks();
+	});
+
 	it("reports itself as in-memory, never as up", async () => {
-		const queue = new InMemoryResearchQueue(makeScheduler(), { run: vi.fn() });
+		const queue = new InMemoryResearchQueue(makeScheduler(), {
+			run: vi.fn(),
+			reportFailure: vi.fn(),
+		});
 
 		expect(await queue.status()).toBe("in-memory");
 	});

@@ -7,8 +7,10 @@ import {
 	type BullmqStoredJob,
 	toRunState,
 } from "@/infrastructure/background/bullmq-clients.js";
+import { PRODUCER_RECONNECT_CEILING_MS } from "@/infrastructure/background/bullmq-connections.js";
 import {
 	BullmqWebhookQueue,
+	NOTIFY_RETRY_DELAYS_MS,
 	WEBHOOK_JOB_OPTIONS,
 	WEBHOOK_MAX_ATTEMPTS,
 	webhookRetryDelayMs,
@@ -22,7 +24,7 @@ const target = {
 	requestUuid: REQUEST_UUID,
 };
 
-function setup() {
+function setup(notifyRetryDelaysMs: readonly number[] = []) {
 	const queue = {
 		add: vi.fn().mockResolvedValue({ id: REQUEST_UUID }),
 		getJob: vi.fn<BullmqQueueClient["getJob"]>().mockResolvedValue(undefined),
@@ -42,6 +44,7 @@ function setup() {
 			processor = p;
 			return worker;
 		}),
+		notifyRetryDelaysMs,
 	};
 	const adapter = new BullmqWebhookQueue(deps, sender);
 	if (!processor) throw new Error("the adapter did not create its worker");
@@ -111,14 +114,35 @@ describe("BullmqWebhookQueue", () => {
 			);
 		});
 
-		it("refuses at once when Redis is not connected", async () => {
-			const { adapter, deps, queue } = setup();
+		it("gives up when Redis is still not connected after the last attempt", async () => {
+			const { adapter, deps, queue } = setup([0, 0]);
 			deps.isConnected.mockReturnValue(false);
+			vi.spyOn(console, "warn").mockImplementation(() => {});
 
 			await expect(
 				adapter.notify(target, { result: "no_trade" }),
 			).rejects.toThrow("Webhook queue unavailable");
+			expect(deps.isConnected).toHaveBeenCalledTimes(3);
 			expect(queue.add).not.toHaveBeenCalled();
+		});
+
+		it("tries again while the connection comes back, instead of losing the result", async () => {
+			const { adapter, deps, queue } = setup([0, 0]);
+			deps.isConnected.mockReturnValueOnce(false).mockReturnValue(true);
+			queue.add.mockRejectedValueOnce(new Error("Connection is closed."));
+			vi.spyOn(console, "warn").mockImplementation(() => {});
+
+			await adapter.notify(target, { result: "no_trade" });
+
+			// 1ª: desconectado; 2ª: o `add` falha; 3ª: guarda.
+			expect(queue.add).toHaveBeenCalledTimes(2);
+		});
+
+		it("keeps trying for longer than the producer takes to reconnect", () => {
+			const total = NOTIFY_RETRY_DELAYS_MS.reduce((sum, ms) => sum + ms, 0);
+
+			expect(total).toBeGreaterThan(PRODUCER_RECONNECT_CEILING_MS);
+			expect(total).toBeLessThanOrEqual(15_000);
 		});
 	});
 

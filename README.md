@@ -323,7 +323,7 @@ X-Webhook-Signature: sha256=<64 hex chars>
 |---|---|
 | `trade_created` | The inventory system created the Trade (`201`); `trade_uuid` is its uuid |
 | `no_trade` | No game passed the filters (the inventory system is not even called), it had nothing to offer (`200 { created: false }`), or, on `/from-topic`, the topic shows no priceable game. Never sent when a game could not be looked up and nothing passed: that is `failed` |
-| `failed` | `failure.kind` is `scrape_failed` (only on `/from-topic`: the topic could not be read — retrying later may work), `pricing_failed` (the research itself failed, no game passed while at least one could not be looked up, the inventory system rejected the request with `422`, or it answered `201` without a readable uuid — do not retry blindly: in that last case the Trade exists), or `stock_unavailable` (the inventory system could not answer: `503`, timeout, any other error — retrying later may work) |
+| `failed` | `failure.kind` is `scrape_failed` (only on `/from-topic`: the topic could not be read — retrying later may work), `pricing_failed` (the research itself failed, including a job that kept crashing the process or could not be read, no game passed while at least one could not be looked up, the inventory system rejected the request with `422`, or it answered `201` without a readable uuid — do not retry blindly: in that last case the Trade exists), or `stock_unavailable` (the inventory system could not answer: `503`, timeout, any other error — retrying later may work) |
 
 When only some games cannot be looked up, the Trade is created with the ones that could, and the rest are logged.
 

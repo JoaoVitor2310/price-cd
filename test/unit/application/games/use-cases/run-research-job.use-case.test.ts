@@ -107,10 +107,12 @@ describe("RunResearchJobUseCase — research from a topic", () => {
 		await useCase.run(topicRequest());
 
 		expect(createTrade.run).not.toHaveBeenCalled();
-		expect(notifier.notify).toHaveBeenCalledWith(target, { result: "no_trade" });
+		expect(notifier.notify).toHaveBeenCalledWith(target, {
+			result: "no_trade",
+		});
 	});
 
-	it("reports scrape_failed and propagates the error for the job record", async () => {
+	it("propagates a scrape failure without researching", async () => {
 		const error = new TopicScrapeFailedError(TOPIC_URL);
 		const { useCase, createTrade, notifier } = setup(created, async () => {
 			throw error;
@@ -119,6 +121,14 @@ describe("RunResearchJobUseCase — research from a topic", () => {
 		await expect(useCase.run(topicRequest())).rejects.toBe(error);
 
 		expect(createTrade.run).not.toHaveBeenCalled();
+		expect(notifier.notify).not.toHaveBeenCalled();
+	});
+
+	it("reports scrape_failed for a topic that could not be read", async () => {
+		const { useCase, notifier } = setup(created);
+
+		await useCase.reportFailure(target, new TopicScrapeFailedError(TOPIC_URL));
+
 		expect(notifier.notify).toHaveBeenCalledWith(target, {
 			result: "failed",
 			failure: {
@@ -126,18 +136,6 @@ describe("RunResearchJobUseCase — research from a topic", () => {
 				message: FAILURE_MESSAGES.scrape_failed,
 			},
 		});
-	});
-
-	it("does not report a scrape failure caused by the shutdown", async () => {
-		const { useCase, notifier } = setup(created, async () => {
-			throw new TopicScrapeFailedError(TOPIC_URL);
-		});
-
-		await expect(
-			useCase.run(topicRequest(), { aborted: true }),
-		).rejects.toBeInstanceOf(TopicScrapeFailedError);
-
-		expect(notifier.notify).not.toHaveBeenCalled();
 	});
 
 	it("stops before researching when the shutdown came during the scrape", async () => {
@@ -192,13 +190,24 @@ describe("RunResearchJobUseCase", () => {
 		},
 	);
 
-	it("reports stock_unavailable for a Sistema Estoque that could not answer, and still fails the job", async () => {
+	it("only propagates a failure: whoever reports it is the queue, after recording it", async () => {
 		const error = new StockUnavailableError(
 			"Sistema Estoque answered HTTP 503",
 		);
 		const { useCase, notifier } = setup(() => Promise.reject(error));
 
 		await expect(useCase.run(request())).rejects.toBe(error);
+
+		expect(notifier.notify).not.toHaveBeenCalled();
+	});
+
+	it("reports stock_unavailable for a Sistema Estoque that could not answer", async () => {
+		const error = new StockUnavailableError(
+			"Sistema Estoque answered HTTP 503",
+		);
+		const { useCase, notifier } = setup(() => Promise.reject(error));
+
+		await useCase.reportFailure(target, error);
 
 		expect(notifier.notify).toHaveBeenCalledWith(target, {
 			result: "failed",
@@ -215,10 +224,14 @@ describe("RunResearchJobUseCase", () => {
 			new TradeRejectedError("Sistema Estoque rejected the Trade (422)"),
 		],
 		["a pricing failure", new Error("Cloudflare challenge did not clear")],
+		[
+			"a job that stalled too many times",
+			new Error("job stalled more than allowable limit"),
+		],
 	])("reports pricing_failed for %s", async (_label, error) => {
 		const { useCase, notifier } = setup(() => Promise.reject(error));
 
-		await expect(useCase.run(request())).rejects.toBe(error);
+		await useCase.reportFailure(target, error);
 
 		expect(notifier.notify).toHaveBeenCalledWith(target, {
 			result: "failed",
@@ -233,19 +246,22 @@ describe("RunResearchJobUseCase", () => {
 	it.each([
 		["every lookup failed", new PriceResearchIncompleteError(3)],
 		["the Trade uuid is unreadable", new TradeOutcomeUnknownError("bad 201")],
-	])("reports pricing_failed when %s, not an invitation to retry", async (_, error) => {
-		const { useCase, notifier } = setup(() => Promise.reject(error));
+	])(
+		"reports pricing_failed when %s, not an invitation to retry",
+		async (_, error) => {
+			const { useCase, notifier } = setup(() => Promise.reject(error));
 
-		await expect(useCase.run(request())).rejects.toBe(error);
+			await useCase.reportFailure(target, error);
 
-		expect(notifier.notify).toHaveBeenCalledWith(target, {
-			result: "failed",
-			failure: {
-				kind: "pricing_failed",
-				message: FAILURE_MESSAGES.pricing_failed,
-			},
-		});
-	});
+			expect(notifier.notify).toHaveBeenCalledWith(target, {
+				result: "failed",
+				failure: {
+					kind: "pricing_failed",
+					message: FAILURE_MESSAGES.pricing_failed,
+				},
+			});
+		},
+	);
 
 	it("hands the signal to the use case, which stops before the Sistema Estoque", async () => {
 		const error = new ResearchCancelledError();
@@ -260,15 +276,6 @@ describe("RunResearchJobUseCase", () => {
 		expect(notifier.notify).not.toHaveBeenCalled();
 	});
 
-	it("does not report a failure caused by the shutdown: the request runs again", async () => {
-		const error = new Error("Target closed");
-		const { useCase, notifier } = setup(() => Promise.reject(error));
-
-		await expect(useCase.run(request(), { aborted: true })).rejects.toBe(error);
-
-		expect(notifier.notify).not.toHaveBeenCalled();
-	});
-
 	it("notifies nobody when the request has no webhook", async () => {
 		const { useCase, notifier } = setup(async () => ({ status: "created" }));
 
@@ -277,29 +284,37 @@ describe("RunResearchJobUseCase", () => {
 		expect(notifier.notify).not.toHaveBeenCalled();
 	});
 
-	it("still fails the job when there is no webhook to report the failure to", async () => {
-		const { useCase, notifier } = setup(() =>
-			Promise.reject(new Error("boom")),
-		);
+	it("reports a failure to nobody when the request has no webhook", async () => {
+		const { useCase, notifier } = setup(async () => ({ status: "created" }));
 
-		await expect(
-			useCase.run(request({ webhookUrl: undefined })),
-		).rejects.toThrow("boom");
+		await useCase.reportFailure({}, new Error("boom"));
+
 		expect(notifier.notify).not.toHaveBeenCalled();
 	});
 
-	it("reports a failure instead of a trade_created without a uuid", async () => {
+	it("refuses to report a failure without saying which request it was", async () => {
+		const { useCase } = setup(async () => ({ status: "created" }));
+
+		await expect(
+			useCase.reportFailure({ webhookUrl: WEBHOOK_URL }, new Error("boom")),
+		).rejects.toThrow(/requires requestUuid/);
+	});
+
+	it("fails the job instead of sending a trade_created without a uuid", async () => {
 		const { useCase, notifier } = setup(async () => ({ status: "created" }));
 
-		await useCase.run(request());
+		// O `failed` sai da fila, pelo `reportFailure`: o `run` só propaga.
+		await expect(useCase.run(request())).rejects.toThrow(/requires currency/);
+		expect(notifier.notify).not.toHaveBeenCalled();
+	});
 
-		expect(notifier.notify).toHaveBeenCalledWith(target, {
-			result: "failed",
-			failure: {
-				kind: "pricing_failed",
-				message: FAILURE_MESSAGES.pricing_failed,
-			},
-		});
+	it("accepts a Trade without uuid when nobody is waiting for the result", async () => {
+		const { useCase, notifier } = setup(async () => ({ status: "created" }));
+
+		await expect(
+			useCase.run(request({ webhookUrl: undefined, currency: undefined })),
+		).resolves.toBeUndefined();
+		expect(notifier.notify).not.toHaveBeenCalled();
 	});
 
 	it("fails the job when the result cannot be stored for delivery", async () => {
@@ -314,28 +329,13 @@ describe("RunResearchJobUseCase", () => {
 		);
 	});
 
-	it("keeps the original error when the failed result cannot be stored either", async () => {
-		const error = new StockUnavailableError(
-			"Sistema Estoque answered HTTP 503",
-		);
-		const { useCase, notifier } = setup(() => Promise.reject(error));
-		notifier.notify.mockRejectedValue(new Error("Webhook queue unavailable"));
-		const logged = vi.spyOn(console, "error").mockImplementation(() => {});
-
-		// É o erro original que o job registra, não o do aviso.
-		await expect(useCase.run(request())).rejects.toBe(error);
-		expect(logged).toHaveBeenCalled();
-		logged.mockRestore();
-	});
-
 	it("never sends the internal error text to whoever asked", async () => {
-		const { useCase, notifier } = setup(() =>
-			Promise.reject(
-				new Error("Cloudflare blocked https://www.allkeyshop.com (ray 8f2)"),
-			),
-		);
+		const { useCase, notifier } = setup(async () => ({ status: "created" }));
 
-		await expect(useCase.run(request())).rejects.toThrow();
+		await useCase.reportFailure(
+			target,
+			new Error("Cloudflare blocked https://www.allkeyshop.com (ray 8f2)"),
+		);
 
 		const [, result] = notifier.notify.mock.calls[0];
 		expect(JSON.stringify(result)).not.toContain("allkeyshop");
