@@ -13,7 +13,7 @@ Ele encontra jogos baratos e populares em anúncios de troca no SteamTrades, dec
 | [Descoberta de Fornecedores](descoberta-de-fornecedores.md) | Varre o SteamTrades procurando quem está disposto a trocar jogos por TF2 Keys, PayPal, euro ou dólar, novo ou já conhecido | Sob comando manual | Sim — o Sistema Estoque cria a Trade como parte da própria decisão de aprovar |
 | [Reabastecimento de Fornecedores](reabastecimento-de-fornecedores.md) | Revisita fornecedores já conhecidos pra ver se têm jogos novos | Sob comando — quem aciona decide quando | Sim, automaticamente |
 | [Interface Web do Price Researcher](interface-web.md) | Um usuário envia uma lista de jogos pela página do próprio price-researcher | Sob demanda, pela interface web | Só se o token interno for informado |
-| [Pesquisa pedida pelo chatbot](pesquisa-pelo-chatbot.md) | Um Fornecedor manda uma lista pelo chat da Steam; o price-cd pesquisa e avisa o chatbot do resultado | Sob demanda, pelo chatbot | Sim — com a oferta já decidida pelo Sistema Estoque |
+| [Pesquisa pedida pelo chatbot](pesquisa-pelo-chatbot.md) | Um Fornecedor manda uma lista ou o link do tópico pelo chat da Steam; o price-cd pesquisa e avisa o chatbot do resultado | Sob demanda, pelo chatbot | Sim — com a oferta já decidida pelo Sistema Estoque |
 | [Bump de Tópicos](bump-de-topicos.md) | Mantém os anúncios do próprio CarcaDeals visíveis no topo do SteamTrades | A cada 5 minutos (automático) | Não se aplica |
 
 ## Preço guardado por 1 hora

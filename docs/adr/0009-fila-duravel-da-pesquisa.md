@@ -1,6 +1,6 @@
 # A fila da pesquisa autenticada é durável, em BullMQ sobre o Redis do cache
 
-`POST /api/games/research` autenticado responde `202 queued` e pesquisa em background. A fila era um array em memória (`LimitedConcurrencyScheduler`): um deploy ou um restart com pedidos na fila os descartava em silêncio, depois de quem pediu já ter recebido a confirmação. Para o chatbot, que espera o resultado por webhook (`docs/INTEGRACAO_CHATBOT.md`), um pedido perdido é um Supplier esperando até o alarme de 6 horas disparar.
+`POST /api/games/research` autenticado responde `202 queued` e pesquisa em background. A fila era um array em memória (`LimitedConcurrencyScheduler`): um deploy ou um restart com pedidos na fila os descartava em silêncio, depois de quem pediu já ter recebido a confirmação. Para o chatbot, que espera o resultado por webhook (ADR 0010), um pedido perdido é um Supplier esperando até o alarme de 6 horas disparar.
 
 **Decisão:** a pesquisa autenticada passa a ser um job **BullMQ** no **mesmo Redis do cache**, noutro banco lógico, com o servidor reconfigurado para o que a fila exige: AOF ligado e `noeviction`. O pedido é guardado antes do `202`; um pedido interrompido por um desligamento volta para a fila e roda inteiro quando o serviço sobe.
 
@@ -30,7 +30,7 @@ Com a URL configurada e o Redis fora do ar, o pedido é **recusado com 500** na 
 
 ## Parada ordenada: o job em andamento volta para a fila
 
-Uma pesquisa leva minutos, e o Docker espera `stop_grace_period` (agora 60s) entre o SIGTERM e o SIGKILL. O `worker.close()` da BullMQ **espera o job terminar**; não serve. O que o adapter faz:
+Uma pesquisa leva minutos, e o Docker espera `stop_grace_period` (agora 90s) entre o SIGTERM e o SIGKILL. O `worker.close()` da BullMQ **espera o job terminar**; não serve. O que o adapter faz:
 
 1. No `beforeApplicationShutdown`, que o Nest roda em todos os providers antes de qualquer `onApplicationShutdown` (onde o `BrowserShutdown` fecha o Chromium), o job ativo é devolvido com `moveToDelayed(agora)`. Ele volta para a fila **sem consumir tentativa**.
 2. O worker fecha com `close(true)`, sem esperar o processador.
@@ -91,6 +91,6 @@ O ADR 0008 já permitiu ao price-cd guardar dado derivado e descartável. Um job
 - Limpar o cache continua sendo `FLUSHDB` no banco 0 (o default do `redis-cli`; o README escreve `-n 0` explícito). O que apaga a fila é `FLUSHALL`, ou `FLUSHDB` com `-n 1`.
 - O `/api/health` ganha o campo `queue: "up" | "down" | "in-memory"`.
 - Sem `QUEUE_REDIS_URL` em produção, o app não sobe. O `docker-compose.yml` já a define.
-- `stop_grace_period: 60s` nos dois serviços do app.
+- `stop_grace_period: 90s` nos dois serviços do app.
 - O container de dev sobe o app com `node` direto, não `npm run dev`: o npm não repassa o SIGTERM do `docker stop` (medido: o app morria em 0,2s, sem rodar os hooks).
 - A falha de uma execução fica registrada no job. Quem pede com `webhook_url` também é avisado dela: ver ADR 0010, que acrescenta a este a fila `webhooks`, o `request_uuid` como `jobId` (deduplicação do pedido) e o sinal de cancelamento que o worker passa ao runner no desligamento.

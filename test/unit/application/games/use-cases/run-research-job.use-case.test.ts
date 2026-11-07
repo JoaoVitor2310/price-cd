@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ResearchGamesRequest } from "@/application/games/ports/research-games-runner.port.js";
+import type {
+	ResearchGamesRequest,
+	TopicResearchRequest,
+} from "@/application/games/ports/research-games-runner.port.js";
 import type { ResearchResultNotifier } from "@/application/games/ports/research-result-notifier.port.js";
 import {
 	StockUnavailableError,
@@ -12,6 +15,10 @@ import {
 	ResearchCancelledError,
 	type ResearchTradeOutcome,
 } from "@/application/games/services/create-research-trade.js";
+import {
+	type ReadTopicGames,
+	TopicScrapeFailedError,
+} from "@/application/games/services/read-topic-games.js";
 import {
 	FAILURE_MESSAGES,
 	RunResearchJobUseCase,
@@ -34,19 +41,120 @@ const request = (
 	...overrides,
 });
 
-function setup(run: () => Promise<ResearchTradeOutcome>) {
+const TOPIC_URL = "https://www.steamtrades.com/trade/wGVYD/slug";
+
+const topicRequest = (): TopicResearchRequest => {
+	const { gameNames: _gameNames, ...rest } = request();
+	return { ...rest, topicUrl: TOPIC_URL, listCode: "wGVYD" };
+};
+
+function setup(
+	run: () => Promise<ResearchTradeOutcome>,
+	readTopic: () => Promise<string[]> = async () => [],
+) {
 	const createTrade = { run: vi.fn(run) };
+	const readTopicGames = { run: vi.fn(readTopic) };
 	const notifier = {
 		notify: vi.fn().mockResolvedValue(undefined),
 	} satisfies ResearchResultNotifier;
 	const useCase = new RunResearchJobUseCase(
 		createTrade as unknown as CreateResearchTrade,
 		notifier,
+		readTopicGames as unknown as ReadTopicGames,
 	);
-	return { useCase, createTrade, notifier };
+	return { useCase, createTrade, notifier, readTopicGames };
 }
 
 const target = { webhookUrl: WEBHOOK_URL, requestUuid: REQUEST_UUID };
+
+describe("RunResearchJobUseCase — research from a topic", () => {
+	const created = async (): Promise<ResearchTradeOutcome> => ({
+		status: "created",
+		tradeUuid: TRADE_UUID,
+	});
+
+	it("researches the topic's games, with the topic code as the list code", async () => {
+		const { useCase, createTrade, notifier, readTopicGames } = setup(
+			created,
+			async () => ["Hades", "Celeste"],
+		);
+
+		await useCase.run(topicRequest());
+
+		expect(readTopicGames.run).toHaveBeenCalledWith(TOPIC_URL);
+		const { topicUrl: _topicUrl, ...rest } = topicRequest();
+		expect(createTrade.run).toHaveBeenCalledWith(
+			{ ...rest, gameNames: ["Hades", "Celeste"] },
+			undefined,
+		);
+		expect(notifier.notify).toHaveBeenCalledWith(target, {
+			result: "trade_created",
+			tradeUuid: TRADE_UUID,
+		});
+	});
+
+	it("does not read any topic for a request with gameNames", async () => {
+		const { useCase, readTopicGames } = setup(created);
+
+		await useCase.run(request());
+
+		expect(readTopicGames.run).not.toHaveBeenCalled();
+	});
+
+	it("reports no_trade without researching when the topic has no games", async () => {
+		const { useCase, createTrade, notifier } = setup(created, async () => []);
+
+		await useCase.run(topicRequest());
+
+		expect(createTrade.run).not.toHaveBeenCalled();
+		expect(notifier.notify).toHaveBeenCalledWith(target, { result: "no_trade" });
+	});
+
+	it("reports scrape_failed and propagates the error for the job record", async () => {
+		const error = new TopicScrapeFailedError(TOPIC_URL);
+		const { useCase, createTrade, notifier } = setup(created, async () => {
+			throw error;
+		});
+
+		await expect(useCase.run(topicRequest())).rejects.toBe(error);
+
+		expect(createTrade.run).not.toHaveBeenCalled();
+		expect(notifier.notify).toHaveBeenCalledWith(target, {
+			result: "failed",
+			failure: {
+				kind: "scrape_failed",
+				message: FAILURE_MESSAGES.scrape_failed,
+			},
+		});
+	});
+
+	it("does not report a scrape failure caused by the shutdown", async () => {
+		const { useCase, notifier } = setup(created, async () => {
+			throw new TopicScrapeFailedError(TOPIC_URL);
+		});
+
+		await expect(
+			useCase.run(topicRequest(), { aborted: true }),
+		).rejects.toBeInstanceOf(TopicScrapeFailedError);
+
+		expect(notifier.notify).not.toHaveBeenCalled();
+	});
+
+	it("stops before researching when the shutdown came during the scrape", async () => {
+		const signal = { aborted: false };
+		const { useCase, createTrade, notifier } = setup(created, async () => {
+			signal.aborted = true;
+			return ["Hades"];
+		});
+
+		await expect(useCase.run(topicRequest(), signal)).rejects.toBeInstanceOf(
+			ResearchCancelledError,
+		);
+
+		expect(createTrade.run).not.toHaveBeenCalled();
+		expect(notifier.notify).not.toHaveBeenCalled();
+	});
+});
 
 describe("RunResearchJobUseCase", () => {
 	it("reports trade_created with the Trade uuid, after the Sistema Estoque answered", async () => {

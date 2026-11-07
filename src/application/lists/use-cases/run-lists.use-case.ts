@@ -53,7 +53,7 @@ export class RunListsUseCase {
 			for (const userList of limitedLists) {
 				const list = await fetcher.fetchList(userList.url);
 
-				if (list.status === "inactive") continue;
+				if (list.status !== "active") continue;
 
 				allGameNames.push(...list.gameNames);
 			}

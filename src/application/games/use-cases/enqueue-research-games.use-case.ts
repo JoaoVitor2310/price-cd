@@ -1,11 +1,11 @@
-import type { ResearchGamesRequest } from "@/application/games/ports/research-games-runner.port.js";
+import type { ResearchJobRequest } from "@/application/games/ports/research-games-runner.port.js";
 import type { ResearchQueue } from "@/application/games/ports/research-queue.port.js";
 import type { ResearchResultNotifier } from "@/application/games/ports/research-result-notifier.port.js";
 import { isAllowedWebhookTarget } from "@/application/games/webhook-target.js";
 
 /** Só dado: as dependências estão no construtor. */
 export type EnqueueResearchGamesInput = {
-	request: ResearchGamesRequest;
+	request: ResearchJobRequest;
 };
 
 /**
@@ -51,8 +51,7 @@ export class InvalidResearchRequestError extends Error {
  *   repetida: o Estoque criou a Trade e a resposta não chegou (timeout), ou a
  *   Trade foi criada e o resultado não pôde ser guardado, ou o Estoque
  *   respondeu `201` sem `uuid` legível (`TradeOutcomeUnknownError`). Fecham com a
- *   idempotência do Estoque pelo `requestUuid` (`docs/INTEGRACAO_CHATBOT.md`,
- *   pergunta 4).
+ *   idempotência do Estoque pelo `requestUuid` (ADR 0010).
  *
  * Sem `requestUuid` não há como reconhecer um reenvio: cada pedido roda.
  */

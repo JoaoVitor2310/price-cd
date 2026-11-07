@@ -70,10 +70,19 @@ export class AllExceptionsFilter implements ExceptionFilter {
 	 * rotas que respondem a validação em outro formato sobrescrevem só isto.
 	 */
 	protected handleZodError(exception: ZodError, host: ArgumentsHost): void {
-		const response = host.switchToHttp().getResponse<Response>();
 		const details = exception.issues
 			.map((issue) => `${issue.path.join(".")}: ${issue.message}`)
 			.join(", ");
+
+		this.respondValidationFailed(details, host);
+	}
+
+	/** O 400 de validação, também para recusas que não vêm do Zod. */
+	protected respondValidationFailed(
+		details: string,
+		host: ArgumentsHost,
+	): void {
+		const response = host.switchToHttp().getResponse<Response>();
 
 		this.logger.warn(`Validation failed: ${details}`);
 		response.status(400).json({

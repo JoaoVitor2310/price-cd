@@ -28,6 +28,21 @@ export type ResearchGamesRequest = {
 };
 
 /**
+ * Pesquisa a partir de um tópico do SteamTrades: os jogos saem do `.have`, lido
+ * quando o pedido roda. Por isso não tem `gameNames`, e a raspagem pode falhar
+ * depois do `202`, como `scrape_failed`.
+ */
+export type TopicResearchRequest = Omit<ResearchGamesRequest, "gameNames"> & {
+	topicUrl: string;
+};
+
+/**
+ * O que a fila guarda e executa. Separados pela presença de `topicUrl`, e não por
+ * um campo de tipo: os jobs já guardados no Redis não têm esse campo.
+ */
+export type ResearchJobRequest = ResearchGamesRequest | TopicResearchRequest;
+
+/**
  * Se quem executa pediu para parar. Só a forma que a Application precisa: o
  * `AbortSignal` da plataforma a satisfaz, sem a Application depender dele.
  */
@@ -44,7 +59,7 @@ export type CancellationSignal = { readonly aborted: boolean };
  */
 export interface ResearchGamesRunner {
 	run(
-		request: ResearchGamesRequest,
+		request: ResearchJobRequest,
 		signal?: CancellationSignal,
 	): Promise<void>;
 }

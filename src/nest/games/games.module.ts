@@ -13,10 +13,12 @@ import { ResearchResultNotifier } from "@/application/games/ports/research-resul
 import { TradeWithOfferCreator } from "@/application/games/ports/trade-with-offer-creator.port.js";
 import { CachedPriceFetcher } from "@/application/games/services/cached-price-fetcher.js";
 import { PriceGames } from "@/application/games/services/price-games.js";
+import { ReadTopicGames } from "@/application/games/services/read-topic-games.js";
 import { EnqueueResearchGamesUseCase } from "@/application/games/use-cases/enqueue-research-games.use-case.js";
 import { CreateResearchTrade } from "@/application/games/services/create-research-trade.js";
 import { ResearchGamesUseCase } from "@/application/games/use-cases/research-games.use-case.js";
 import { RunResearchJobUseCase } from "@/application/games/use-cases/run-research-job.use-case.js";
+import { ListTopicFetcherFactory } from "@/application/lists/ports/list-run.ports.js";
 import type { Env } from "@/config/env.schema.js";
 import { createBullmqResearchQueue } from "@/infrastructure/background/bullmq-research-queue.js";
 import { createBullmqWebhookQueue } from "@/infrastructure/background/bullmq-webhook-queue.js";
@@ -35,6 +37,7 @@ import { HttpWebhookSender } from "@/infrastructure/webhooks/http-webhook-sender
 import { BrowserModule } from "@/nest/browser/browser.module.js";
 import { GamesController } from "@/nest/games/games.controller.js";
 import { RESEARCH_RUNNER } from "@/nest/games/games.tokens.js";
+import { ListTopicModule } from "@/nest/lists/list-topic.module.js";
 
 /** As duas Trades falam com o mesmo Estoque; faltando algo, a falha é no primeiro uso. */
 const stockCredentials = (config: ConfigService<Env, true>) => {
@@ -70,7 +73,7 @@ const stockCredentials = (config: ConfigService<Env, true>) => {
 	// quem é dono dela é o `BrowserModule`. Importar é obrigatório — redeclarar
 	// o provider aqui criaria uma SEGUNDA sessão de Chromium
 	// (`docs/nest-conceitos.md` §4).
-	imports: [BrowserModule],
+	imports: [BrowserModule, ListTopicModule],
 	controllers: [GamesController],
 	providers: [
 		{ provide: PopularityFetcher, useClass: SteamChartsPopularityFetcher },
@@ -196,15 +199,23 @@ const stockCredentials = (config: ConfigService<Env, true>) => {
 			inject: [ConfigService],
 		},
 
-		/** O que a fila executa: pesquisa, Trade e aviso a quem pediu. */
+		{
+			provide: ReadTopicGames,
+			useFactory: (fetcherFactory: ListTopicFetcherFactory) =>
+				new ReadTopicGames(fetcherFactory),
+			inject: [ListTopicFetcherFactory],
+		},
+
+		/** O que a fila executa: raspagem, pesquisa, Trade e aviso a quem pediu. */
 		{
 			provide: RESEARCH_RUNNER,
 			useFactory: (
 				createTrade: CreateResearchTrade,
 				notifier: ResearchResultNotifier,
+				readTopicGames: ReadTopicGames,
 			): ResearchGamesRunner =>
-				new RunResearchJobUseCase(createTrade, notifier),
-			inject: [CreateResearchTrade, ResearchResultNotifier],
+				new RunResearchJobUseCase(createTrade, notifier, readTopicGames),
+			inject: [CreateResearchTrade, ResearchResultNotifier, ReadTopicGames],
 		},
 
 		/**

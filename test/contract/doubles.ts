@@ -85,9 +85,9 @@ export const researchQueueDouble = () => {
 	const enqueued: unknown[] = [];
 	return {
 		enqueued,
-		enqueue: async (request: { gameNames: string[] }) => {
+		enqueue: async (request: { gameNames?: string[] }) => {
 			// O mesmo erro do adapter real com o Redis fora (`bullmq-research-queue.ts`).
-			if (request.gameNames.includes(CONTRACT_QUEUE_DOWN)) {
+			if (request.gameNames?.includes(CONTRACT_QUEUE_DOWN)) {
 				throw new ResearchQueueUnavailableError("Redis is not connected");
 			}
 			enqueued.push(request);

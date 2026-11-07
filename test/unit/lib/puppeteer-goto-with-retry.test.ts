@@ -4,7 +4,10 @@ vi.mock("@/helpers/utils.js", () => ({
 	delay: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { gotoWithRetry } from "@/lib/puppeteer-goto-with-retry.js";
+import {
+	gotoResponseWithRetry,
+	gotoWithRetry,
+} from "@/lib/puppeteer-goto-with-retry.js";
 import { delay } from "@/helpers/utils.js";
 import { TimeoutError } from "puppeteer";
 import type { PageWithCursor } from "puppeteer-real-browser";
@@ -167,5 +170,52 @@ describe("gotoWithRetry", () => {
 			expect(diagnosisLines(errorSpy)).toHaveLength(0);
 			errorSpy.mockRestore();
 		});
+	});
+});
+
+describe("gotoResponseWithRetry", () => {
+	it("returns the response of the attempt that was not a 429", async () => {
+		const ok = makeResponse(404);
+		const gotoMock = vi.fn()
+			.mockResolvedValueOnce(makeResponse(429))
+			.mockResolvedValueOnce(ok);
+
+		await expect(
+			gotoResponseWithRetry(makePage(gotoMock), "https://example.com"),
+		).resolves.toBe(ok);
+	});
+
+	it("returns the last 429 when every attempt got one, without waiting after it", async () => {
+		const gotoMock = vi.fn().mockResolvedValue(makeResponse(429));
+
+		const response = await gotoResponseWithRetry(
+			makePage(gotoMock),
+			"https://example.com",
+			{ maxRetries: 2 },
+		);
+
+		expect(response?.status()).toBe(429);
+		expect(gotoMock).toHaveBeenCalledTimes(2);
+		expect(delay).toHaveBeenCalledTimes(1);
+	});
+
+	it("throws the timeout once the attempts run out", async () => {
+		const gotoMock = vi.fn().mockRejectedValue(new TimeoutError("timed out"));
+
+		await expect(
+			gotoResponseWithRetry(makePage(gotoMock), "https://example.com", {
+				maxRetries: 2,
+			}),
+		).rejects.toBeInstanceOf(TimeoutError);
+		expect(gotoMock).toHaveBeenCalledTimes(2);
+	});
+
+	it("throws any other error at once", async () => {
+		const gotoMock = vi.fn().mockRejectedValue(new Error("browser died"));
+
+		await expect(
+			gotoResponseWithRetry(makePage(gotoMock), "https://example.com"),
+		).rejects.toThrow("browser died");
+		expect(gotoMock).toHaveBeenCalledTimes(1);
 	});
 });

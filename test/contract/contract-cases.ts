@@ -66,6 +66,23 @@ const VALID_RESEARCH_BODY = {
 	preset: "bundle-sync",
 };
 
+const VALID_TOPIC_BODY = {
+	topic_url: "https://www.steamtrades.com/trade/wGVYD/h-games-w-tf2",
+	steam_id: "76561198012345678",
+	currency: "tf2",
+	request_uuid: "8c1f0000-0000-4000-8000-000000000000",
+	webhook_url: "http://chatbot:3000/webhooks/price-cd",
+	internal_secret: CONTRACT_SECRET,
+};
+
+/**
+ * Só o token: `WEBHOOK_ALLOWED_HOSTS` passa por `transform` no schema e fica
+ * congelada no import, então aqui a allowlist é sempre vazia. O `202` desta rota
+ * está em `test/integration/nest/research-from-topic.test.ts`, que define o
+ * ambiente antes dos imports.
+ */
+const TOPIC_ENV = { INTERNAL_SECRET: CONTRACT_SECRET };
+
 export const CONTRACT_CASES: ContractCase[] = [
 	// ------------------------------------------------------------------ GET /
 	{
@@ -425,6 +442,87 @@ export const CONTRACT_CASES: ContractCase[] = [
 			// O prefixo está no nome do caso; verificá-lo é o mínimo.
 			data: expect.stringContaining("Invalid file content:"),
 		},
+	},
+
+	// ------------------------------- POST /api/games/research/from-topic
+	{
+		route: "/api/games/research/from-topic",
+		method: "post",
+		// Esta rota não tem demo: quem a chama espera uma Trade e um aviso.
+		name: "wrong token returns 401, not demo",
+		body: { ...VALID_TOPIC_BODY, internal_secret: "wrong" },
+		env: TOPIC_ENV,
+		expectStatus: 401,
+		expectBody: { success: false, error: "Invalid internal_secret" },
+	},
+	{
+		route: "/api/games/research/from-topic",
+		method: "post",
+		name: "missing token returns 401",
+		body: { ...VALID_TOPIC_BODY, internal_secret: undefined },
+		env: TOPIC_ENV,
+		expectStatus: 401,
+		expectBody: { success: false },
+	},
+	{
+		route: "/api/games/research/from-topic",
+		method: "post",
+		// Quem não tem o token não recebe as regras dos campos.
+		name: "invalid body without a token returns 401, not 400",
+		body: { topic_url: "not a link" },
+		env: TOPIC_ENV,
+		expectStatus: 401,
+		expectBody: { success: false, error: "Invalid internal_secret" },
+	},
+	{
+		route: "/api/games/research/from-topic",
+		method: "post",
+		name: "link outside www.steamtrades.com returns 400",
+		body: {
+			...VALID_TOPIC_BODY,
+			topic_url: "https://www.steamtrades.com@evil.io/trade/wGVYD/slug",
+		},
+		env: TOPIC_ENV,
+		expectStatus: 400,
+		expectBody: {
+			success: false,
+			error: "Validation failed",
+			details: expect.stringContaining("topic_url must be a topic link"),
+		},
+	},
+	{
+		route: "/api/games/research/from-topic",
+		method: "post",
+		name: "steam_id that is not a SteamID64 returns 400",
+		body: { ...VALID_TOPIC_BODY, steam_id: "someone" },
+		env: TOPIC_ENV,
+		expectStatus: 400,
+		expectBody: {
+			success: false,
+			details: expect.stringContaining("steam_id must be a SteamID64"),
+		},
+	},
+	{
+		route: "/api/games/research/from-topic",
+		method: "post",
+		name: "webhook host outside the allowlist returns 400 in the route's format",
+		body: { ...VALID_TOPIC_BODY, webhook_url: "http://evil.io/hook" },
+		env: TOPIC_ENV,
+		expectStatus: 400,
+		expectBody: {
+			success: false,
+			error: "Validation failed",
+			details: "webhook_url host is not allowed",
+		},
+	},
+	{
+		route: "/api/games/research/from-topic",
+		method: "post",
+		name: "unknown field returns 400",
+		body: { ...VALID_TOPIC_BODY, preset: "default" },
+		env: TOPIC_ENV,
+		expectStatus: 400,
+		expectBody: { success: false, error: "Validation failed" },
 	},
 
 	// -------------------------------------------------- POST /api/lists/run
