@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	type BullmqConnections,
+	closeQueueAndConnections,
 	createBullmqConnections,
 	PRODUCER_RECONNECT_CEILING_MS,
 	reconnectStrategy,
@@ -63,5 +64,30 @@ describe("createBullmqConnections", () => {
 
 		expect(connections.worker.options.maxRetriesPerRequest).toBeNull();
 		expect(connections.producer.options.enableOfflineQueue).toBe(false);
+	});
+});
+
+describe("closeQueueAndConnections", () => {
+	it("closes the queue, then the connections", async () => {
+		const calls: string[] = [];
+
+		await closeQueueAndConnections(
+			{ close: async () => void calls.push("queue") },
+			async () => void calls.push("connections"),
+		);
+
+		expect(calls).toEqual(["queue", "connections"]);
+	});
+
+	it("never throws, and still disconnects when closing the queue fails", async () => {
+		const disconnect = vi.fn().mockRejectedValue(new Error("gone"));
+
+		await expect(
+			closeQueueAndConnections(
+				{ close: vi.fn().mockRejectedValue(new Error("already closed")) },
+				disconnect,
+			),
+		).resolves.toBeUndefined();
+		expect(disconnect).toHaveBeenCalled();
 	});
 });

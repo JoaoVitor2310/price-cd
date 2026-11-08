@@ -1,4 +1,4 @@
-import { DelayedError, type JobsOptions, Queue, Worker } from "bullmq";
+import { type JobsOptions, Queue, Worker } from "bullmq";
 import type {
 	ResearchGamesRunner,
 	ResearchJobRequest,
@@ -16,11 +16,16 @@ import {
 	type BullmqWorkerClient,
 	readRunState,
 } from "@/infrastructure/background/bullmq-clients.js";
-import { createBullmqConnections } from "@/infrastructure/background/bullmq-connections.js";
+import { BullmqConnectionLog } from "@/infrastructure/background/bullmq-connection-log.js";
+import {
+	closeQueueAndConnections,
+	createBullmqConnections,
+} from "@/infrastructure/background/bullmq-connections.js";
 import {
 	parseResearchJobPayload,
 	readResearchFailureTarget,
 } from "@/infrastructure/background/research-job-payload.js";
+import { ResumableBullmqWorker } from "@/infrastructure/background/resumable-bullmq-worker.js";
 import { withTimeout } from "@/lib/with-timeout.js";
 
 /**
@@ -31,10 +36,11 @@ import { withTimeout } from "@/lib/with-timeout.js";
  * existem no mesmo processo e o price-cd é instância única. O worker é que
  * chama o `ResearchGamesRunner` — o use case não sabe que a fila existe.
  *
- * Aqui fica só o comportamento da fila. Cada parte que muda por outro motivo
- * mora no seu arquivo: o formato persistido do job (`research-job-payload.ts`),
- * a visão estreita da BullMQ (`bullmq-clients.ts`) e as conexões ioredis
- * (`bullmq-connections.ts`).
+ * Aqui fica só o que é da pesquisa. Cada parte que muda por outro motivo mora no
+ * seu arquivo: o formato persistido do job (`research-job-payload.ts`), o
+ * consumo com desligamento ordenado (`resumable-bullmq-worker.ts`), o log de
+ * conexão (`bullmq-connection-log.ts`), a visão estreita da BullMQ
+ * (`bullmq-clients.ts`) e as conexões ioredis (`bullmq-connections.ts`).
  */
 
 export const RESEARCH_QUEUE_NAME = "research";
@@ -75,13 +81,6 @@ const STATUS_TIMEOUT_MS = 1000;
  */
 const ENQUEUE_TIMEOUT_MS = 5000;
 
-/**
- * Quanto o desligamento espera os avisos de `failed` ainda sendo guardados. O
- * normal é levar milissegundos; com o Redis fora, esperar mais não salva o aviso
- * e só come o `stop_grace_period`, que os browsers também precisam.
- */
-const REPORT_DRAIN_TIMEOUT_MS = 10_000;
-
 export type BullmqResearchQueueDeps = {
 	queue: BullmqQueueClient;
 	createWorker: (processor: BullmqJobProcessor) => BullmqWorkerClient;
@@ -97,34 +96,28 @@ export type BullmqResearchQueueDeps = {
 };
 
 export class BullmqResearchQueue implements ResearchQueue {
-	private readonly worker: BullmqWorkerClient;
-	private active:
-		| {
-				job: BullmqJob;
-				token?: string;
-				returned: boolean;
-				/**
-				 * Abortado no desligamento: o runner para antes de chamar o Estoque, e a
-				 * falha vira `DelayedError` — sem evento `failed`, sem aviso.
-				 */
-				cancellation: AbortController;
-		  }
-		| undefined;
-	private shuttingDown = false;
-	/** Avisos de `failed` ainda sendo guardados — o desligamento os espera. */
-	private readonly pendingReports = new Set<Promise<void>>();
-	/**
-	 * `unknown` até a primeira conexão: um ping ou `enqueue` antes dela não é
-	 * queda — só um erro de **conexão** avisa nesse estado. Sem isso, o primeiro
-	 * health do boot logava "ping failed" seguido de "responding again".
-	 */
-	private connection: "unknown" | "up" | "down" = "unknown";
+	private readonly jobs: ResumableBullmqWorker;
+	private readonly connection = new BullmqConnectionLog({
+		connected: "📥 [QUEUE] Redis connected — research queue on.",
+		back: "📥 [QUEUE] Redis is responding again — research queue back on.",
+		down: (operation, reason) =>
+			`⚠️ [QUEUE] Redis ${operation} failed (${reason}) — new research requests are refused until it responds.`,
+	});
 
 	constructor(
 		private readonly deps: BullmqResearchQueueDeps,
 		private readonly runner: ResearchGamesRunner,
 	) {
-		this.worker = deps.createWorker((job, token) => this.process(job, token));
+		// O desligamento ordenado (devolver o job ativo, `DelayedError`) é o do
+		// `ResumableBullmqWorker`; aqui fica só o que o job significa.
+		this.jobs = new ResumableBullmqWorker({
+			label: "research",
+			tag: "[QUEUE]",
+			icon: "📥",
+			createWorker: deps.createWorker,
+			handle: (job, signal) =>
+				this.runner.run(parseResearchJobPayload(job.data), signal),
+		});
 	}
 
 	/**
@@ -194,145 +187,28 @@ export class BullmqResearchQueue implements ResearchQueue {
 		}
 	}
 
-	/**
-	 * Começa a consumir só quando o container inteiro está de pé (o Nest chama
-	 * o hook em todo provider que o tem): um job que começasse antes pegaria
-	 * dependências ainda não inicializadas.
-	 */
 	onApplicationBootstrap(): void {
-		this.worker.run().catch((error) => {
-			console.error("❌ [QUEUE] Research worker stopped:", error);
-		});
+		this.jobs.start();
 	}
 
 	/**
-	 * Para de consumir **antes** de os browsers fecharem: o Nest chama todos os
-	 * `beforeApplicationShutdown` antes de qualquer `onApplicationShutdown`, que
-	 * é onde o `BrowserShutdown` fecha o Chromium.
+	 * Devolve o job em andamento à fila, fecha o worker sem esperar e espera os
+	 * avisos de `failed` ainda sendo guardados (`ResumableBullmqWorker.stop`).
 	 *
-	 * O job em andamento volta para a fila (`moveToDelayed` com delay zero), sem
-	 * consumir tentativa, e roda inteiro de novo quando o serviço subir. Uma
-	 * pesquisa leva minutos e o `stop_grace_period` não espera isso. Se a
-	 * devolução falhar (Redis fora), o lock do job expira e o próximo worker o
-	 * recupera como travado — mais lento, mesmo resultado.
+	 * Para a pesquisa, o efeito irrepetível é chamar o Estoque: o `AbortSignal`
+	 * faz o `CreateResearchTrade` parar antes. Se o Estoque já estava sendo
+	 * chamado quando o sinal veio, a Trade nasce e o job roda de novo — janela
+	 * que só a idempotência do Estoque fecha (ADR 0010).
 	 *
-	 * `close(true)` não espera o processador terminar. Fechar o browser não
-	 * derruba a pesquisa por si só (cada jogo restante vira falha de catálogo); é
-	 * o `AbortSignal` que para o runner antes de chamar o Estoque, e o `process`
-	 * traduz essa falha em `DelayedError` para a BullMQ não marcar o job como
-	 * falho. Se o Estoque já estava sendo chamado quando o sinal veio, a Trade
-	 * nasce e o job roda de novo: janela que só a idempotência do Estoque fecha.
+	 * O produtor da fila de webhooks só fecha no `onApplicationShutdown`, então o
+	 * aviso ainda tem por onde sair enquanto este hook espera.
 	 */
-	async beforeApplicationShutdown(): Promise<void> {
-		this.shuttingDown = true;
-
-		const active = this.active;
-		if (active) {
-			// Antes da devolução: o que falhar daqui em diante é do desligamento.
-			active.cancellation.abort();
-			try {
-				await active.job.moveToDelayed(Date.now(), active.token);
-				active.returned = true;
-				console.log(
-					`📥 [QUEUE] Research job ${active.job.id} returned to the queue — it runs again on the next boot.`,
-				);
-			} catch (error) {
-				console.warn(
-					`⚠️ [QUEUE] Could not return research job ${active.job.id} to the queue (${errorMessage(error)}) — it will be recovered as stalled.`,
-				);
-			}
-		}
-
-		try {
-			await this.worker.close(true);
-		} catch (error) {
-			console.warn(
-				`⚠️ [QUEUE] Failed to close the research worker: ${errorMessage(error)}`,
-			);
-		}
-
-		// Depois do worker fechado, nenhum `failed` novo chega. O produtor da fila
-		// de webhooks só fecha no `onApplicationShutdown`, então o aviso ainda tem
-		// por onde sair aqui.
-		await this.drainReports();
+	beforeApplicationShutdown(): Promise<void> {
+		return this.jobs.stop();
 	}
 
-	private async drainReports(): Promise<void> {
-		if (this.pendingReports.size === 0) return;
-		try {
-			await withTimeout(
-				Promise.all(this.pendingReports),
-				REPORT_DRAIN_TIMEOUT_MS,
-			);
-		} catch {
-			console.warn(
-				`⚠️ [QUEUE] ${this.pendingReports.size} failed-research report(s) still pending at shutdown — they may be lost.`,
-			);
-		}
-	}
-
-	async onApplicationShutdown(): Promise<void> {
-		try {
-			await this.deps.queue.close();
-		} catch {
-			// Já fechada ou Redis fora — nada a liberar.
-		}
-		await this.deps.disconnect().catch(() => undefined);
-	}
-
-	private async process(job: BullmqJob, token?: string): Promise<void> {
-		// Pego no instante do desligamento — entre o `shuttingDown = true` e o
-		// `close(true)` o worker ainda busca job. Rodar seria começar uma pesquisa
-		// que o browser fechando vai derrubar; devolve na hora, sem consumir
-		// tentativa. Se a devolução falhar, `DelayedError` deixa o job ativo e ele
-		// volta como travado.
-		if (this.shuttingDown) {
-			await job
-				.moveToDelayed(Date.now(), token)
-				.catch((error) =>
-					console.warn(
-						`⚠️ [QUEUE] Could not return research job ${job.id} picked during shutdown (${errorMessage(error)}) — it will be recovered as stalled.`,
-					),
-				);
-			throw new DelayedError();
-		}
-
-		const request = parseResearchJobPayload(job.data);
-		const active = {
-			job,
-			token,
-			returned: false,
-			cancellation: new AbortController(),
-		};
-		this.active = active;
-
-		let outcome: { ok: true } | { ok: false; error: unknown };
-		try {
-			await this.runner.run(request, active.cancellation.signal);
-			outcome = { ok: true };
-		} catch (error) {
-			outcome = { ok: false, error };
-		} finally {
-			this.active = undefined;
-		}
-
-		if (outcome.ok) {
-			if (!active.returned) return;
-			// Terminou depois de ter sido devolvido à fila: vai rodar de novo. Só
-			// a idempotência do Estoque impede uma Trade repetida aqui
-			// (ADR 0010, janelas conhecidas). `DelayedError` diz à
-			// BullMQ que o job já foi movido e não deve ser tocado.
-			console.warn(
-				`⚠️ [QUEUE] Research job ${job.id} finished during shutdown, after being returned to the queue — it will run again.`,
-			);
-			throw new DelayedError();
-		}
-
-		// Durante o desligamento a falha é do próprio desligamento (browser
-		// fechado), não do pedido: devolvido, o job fica onde está; não
-		// devolvido, fica ativo e volta como travado. Os dois rodam de novo.
-		if (this.shuttingDown) throw new DelayedError();
-		throw outcome.error;
+	onApplicationShutdown(): Promise<void> {
+		return closeQueueAndConnections(this.deps.queue, this.deps.disconnect);
 	}
 
 	/**
@@ -346,18 +222,15 @@ export class BullmqResearchQueue implements ResearchQueue {
 	 *
 	 * Nunca lança: é ouvinte de evento. O notifier já tenta de novo por alguns
 	 * segundos; não conseguir mesmo assim fica no log, e quem pediu cai no alarme
-	 * dele — o reenvio roda o pedido de novo. A promessa fica registrada até
-	 * terminar, para o desligamento esperá-la (`drainReports`).
+	 * dele — o reenvio roda o pedido de novo. O desligamento espera o aviso
+	 * (`trackUntilShutdown`).
 	 */
 	onJobFailed(
 		job: Pick<BullmqJob, "data" | "id"> | undefined,
 		error: unknown,
 	): Promise<void> {
 		if (!job) return Promise.resolve();
-		const report = this.reportFailure(job, error);
-		this.pendingReports.add(report);
-		void report.finally(() => this.pendingReports.delete(report));
-		return report;
+		return this.jobs.trackUntilShutdown(this.reportFailure(job, error));
 	}
 
 	private async reportFailure(
@@ -379,30 +252,13 @@ export class BullmqResearchQueue implements ResearchQueue {
 
 	/** Públicos para os eventos de conexão (`createBullmqResearchQueue`). */
 	reportUp(): void {
-		if (this.connection === "up") return;
-		const previous = this.connection;
-		this.connection = "up";
-		console.log(
-			previous === "unknown"
-				? "📥 [QUEUE] Redis connected — research queue on."
-				: "📥 [QUEUE] Redis is responding again — research queue back on.",
-		);
+		this.connection.up();
 	}
 
 	reportDown(operation: string, error: unknown): void {
-		if (this.connection === "down") return;
-		// Antes da primeira conexão, ping e `enqueue` falham só por ela ainda não
-		// ter saído. Se o Redis estiver mesmo fora, o erro de conexão avisa.
-		if (this.connection === "unknown" && operation !== "connection") return;
-		this.connection = "down";
-		console.warn(
-			`⚠️ [QUEUE] Redis ${operation} failed (${errorMessage(error)}) — new research requests are refused until it responds.`,
-		);
+		this.connection.down(operation, error);
 	}
 }
-
-const errorMessage = (error: unknown): string =>
-	error instanceof Error ? error.message : String(error);
 
 /**
  * Cria as conexões, a fila e o worker. **Não espera a conexão**: o boot não
