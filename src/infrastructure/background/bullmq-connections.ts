@@ -1,4 +1,5 @@
 import { Redis } from "ioredis";
+import type { BullmqQueueClient } from "@/infrastructure/background/bullmq-clients.js";
 
 /**
  * As conexões ioredis de uma fila BullMQ. Ver `docs/adr/0009-fila-duravel-da-pesquisa.md`.
@@ -82,4 +83,21 @@ export const createBullmqConnections = (
 			worker.disconnect();
 		},
 	};
+};
+
+/**
+ * O `onApplicationShutdown` de toda fila: fecha a `Queue` e depois as conexões,
+ * que a BullMQ não fecha por ter recebido prontas. Nunca lança — já fechada ou
+ * Redis fora, não há nada a liberar, e o desligamento segue para os browsers.
+ */
+export const closeQueueAndConnections = async (
+	queue: Pick<BullmqQueueClient, "close">,
+	disconnect: () => Promise<void>,
+): Promise<void> => {
+	try {
+		await queue.close();
+	} catch {
+		// Já fechada ou Redis fora — nada a liberar.
+	}
+	await disconnect().catch(() => undefined);
 };

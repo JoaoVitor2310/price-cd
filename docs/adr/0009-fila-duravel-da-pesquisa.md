@@ -58,13 +58,15 @@ Marcar o progresso no job (`job.updateProgress` com os jogos já pesquisados) fo
 
 Tudo em `infrastructure/background/` — a Application só conhece a porta `ResearchQueue` e o tipo `ResearchGamesRequest` —, um arquivo por motivo de mudança:
 
-- `bullmq-research-queue.ts`: o comportamento da fila (enfileirar, consumir, devolver no desligamento, estado para o health).
+- `bullmq-research-queue.ts`: o que a fila tem de pesquisa (enfileirar, o job como pedido de pesquisa, o aviso de `failed`, estado para o health).
+- `resumable-bullmq-worker.ts`: o consumo de job longo com desligamento ordenado — o sinal abortado, a devolução do job ativo, a tradução em `DelayedError`, a espera do que ainda está sendo guardado. Não sabe o que o job é.
+- `bullmq-connection-log.ts`: o log de queda e volta do Redis, uma linha por queda.
 - `research-job-payload.ts`: o formato **persistido** do job. Não fica em `src/schemas/`, que é o contrato HTTP: este é o formato de armazenamento, lido pelo worker.
 - `bullmq-clients.ts`: a visão estreita da BullMQ que os testes substituem por dublês.
-- `bullmq-connections.ts`: as conexões ioredis e a reconexão com teto.
+- `bullmq-connections.ts`: as conexões ioredis, a reconexão com teto e o fechamento delas junto com a `Queue` (`closeQueueAndConnections`).
 - `src/lib/with-timeout.ts`: o teto de tempo de uma promessa, que o Node não tem pronto (`AbortSignal.timeout()` só serve a quem aceita `signal`).
 
-`bullmq-clients.ts` e `bullmq-connections.ts` não falam de pesquisa: são o que as filas de `lists` e `suppliers` vão reaproveitar.
+`resumable-bullmq-worker.ts`, `bullmq-connection-log.ts`, `bullmq-clients.ts` e `bullmq-connections.ts` não falam de pesquisa: são o que as filas de `lists` e `suppliers` vão reaproveitar. A fila de webhooks (ADR 0010) usa o log de conexão e o fechamento, mas não o `ResumableBullmqWorker`: entregar leva segundos, e o desligamento dela espera a entrega em vez de devolvê-la.
 
 ## Registro das execuções
 

@@ -13,7 +13,11 @@ import {
 	type BullmqWorkerClient,
 	readRunState,
 } from "@/infrastructure/background/bullmq-clients.js";
-import { createBullmqConnections } from "@/infrastructure/background/bullmq-connections.js";
+import { BullmqConnectionLog } from "@/infrastructure/background/bullmq-connection-log.js";
+import {
+	closeQueueAndConnections,
+	createBullmqConnections,
+} from "@/infrastructure/background/bullmq-connections.js";
 import {
 	type HttpWebhookSender,
 	WebhookTargetNotAllowedError,
@@ -22,6 +26,7 @@ import {
 	toWebhookBody,
 	type WebhookBody,
 } from "@/infrastructure/webhooks/webhook-body.js";
+import { errorMessage } from "@/lib/error-message.js";
 import { withTimeout } from "@/lib/with-timeout.js";
 
 /**
@@ -222,13 +227,8 @@ export class BullmqWebhookQueue implements ResearchResultNotifier {
 		}
 	}
 
-	async onApplicationShutdown(): Promise<void> {
-		try {
-			await this.deps.queue.close();
-		} catch {
-			// Já fechada ou Redis fora — nada a liberar.
-		}
-		await this.deps.disconnect().catch(() => undefined);
+	onApplicationShutdown(): Promise<void> {
+		return closeQueueAndConnections(this.deps.queue, this.deps.disconnect);
 	}
 
 	private async process(job: BullmqJob): Promise<void> {
@@ -251,9 +251,6 @@ export class BullmqWebhookQueue implements ResearchResultNotifier {
 	}
 }
 
-const errorMessage = (error: unknown): string =>
-	error instanceof Error ? error.message : String(error);
-
 /**
  * Cria conexões, fila e worker. Como a da pesquisa, **não espera a conexão**.
  *
@@ -264,22 +261,16 @@ export const createBullmqWebhookQueue = (
 	url: string,
 	sender: Pick<HttpWebhookSender, "send">,
 ): BullmqWebhookQueue => {
-	let down = false;
+	// Sem frase na primeira conexão: quem lê o log do boot já vê a da pesquisa,
+	// que está no mesmo Redis.
+	const connectionLog = new BullmqConnectionLog({
+		back: "📨 [WEBHOOK] Redis is responding again — webhook delivery back on.",
+		down: (operation, reason) =>
+			`⚠️ [WEBHOOK] Redis ${operation} failed (${reason}) — webhooks wait until it responds.`,
+	});
 	const connections = createBullmqConnections(url, {
-		up: () => {
-			if (!down) return;
-			down = false;
-			console.log(
-				"📨 [WEBHOOK] Redis is responding again — webhook delivery back on.",
-			);
-		},
-		down: (operation, error) => {
-			if (down) return;
-			down = true;
-			console.warn(
-				`⚠️ [WEBHOOK] Redis ${operation} failed (${errorMessage(error)}) — webhooks wait until it responds.`,
-			);
-		},
+		up: () => connectionLog.up(),
+		down: (operation, error) => connectionLog.down(operation, error),
 	});
 
 	const queue = new Queue(WEBHOOK_QUEUE_NAME, {

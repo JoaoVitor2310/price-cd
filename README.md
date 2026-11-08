@@ -138,7 +138,7 @@ src/
 │   └── suppliers/     #   HaveListing parsing
 ├── infrastructure/    # Concrete adapters implementing port interfaces
 │   ├── games/         #   AllKeyShopPriceFetcher, RedisPriceCache, HttpGameTradeImporter, HttpTradeWithOfferCreator
-│   ├── background/    #   BullmqResearchQueue (+ its job payload, BullMQ clients, ioredis connections), BullmqWebhookQueue, in-memory versions of both, LimitedConcurrencyScheduler
+│   ├── background/    #   BullmqResearchQueue (+ its job payload), BullmqWebhookQueue, the shared queue parts (ResumableBullmqWorker, connection log, BullMQ clients, ioredis connections), in-memory versions of both, LimitedConcurrencyScheduler
 │   ├── webhooks/      #   HttpWebhookSender, the HMAC signature and the webhook body
 │   ├── browser/       #   SharedBrowserSession, SuppliersBrowserSession
 │   ├── bump/          #   PuppeteerSteamTradesBumper
