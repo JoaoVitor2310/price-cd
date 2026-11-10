@@ -4,6 +4,7 @@ import type {
 	BullmqJobProcessor,
 	BullmqWorkerClient,
 } from "@/infrastructure/background/bullmq-clients.js";
+import { capitalize } from "@/lib/capitalize.js";
 import { errorMessage } from "@/lib/error-message.js";
 import { withTimeout } from "@/lib/with-timeout.js";
 
@@ -12,8 +13,8 @@ import { withTimeout } from "@/lib/with-timeout.js";
  * em vez de esperar. Ver `docs/adr/0009-fila-duravel-da-pesquisa.md`.
  *
  * É a parte da fila da pesquisa que não sabe nada de pesquisa: qualquer fluxo
- * cujo job leva minutos e usa o Chromium (a pesquisa, e depois o Reabastecimento
- * e a Descoberta — item 9 do `docs/IMPROVEMENTS.md`) precisa da mesma parada
+ * cujo job leva minutos e usa o Chromium (a pesquisa, o Reabastecimento e a
+ * Descoberta) precisa da mesma parada
  * ordenada, e ela é sutil demais para existir em mais de uma cópia.
  *
  * Não é provider do Nest: o adapter da fila é, e chama `start` e `stop` nos
@@ -65,7 +66,8 @@ type ActiveJob = {
 
 export class ResumableBullmqWorker {
 	private readonly worker: BullmqWorkerClient;
-	private active: ActiveJob | undefined;
+	/** Mais de um com concorrência acima de 1 (`RUN_LISTS_CONCURRENCY`). */
+	private readonly active = new Set<ActiveJob>();
 	private shuttingDown = false;
 	/** Trabalho em andamento que o desligamento espera (o aviso de `failed`). */
 	private readonly tracked = new Set<Promise<void>>();
@@ -96,7 +98,7 @@ export class ResumableBullmqWorker {
 	 * antes de qualquer `onApplicationShutdown`, que é onde o `BrowserShutdown`
 	 * fecha o Chromium.
 	 *
-	 * O job em andamento volta para a fila (`moveToDelayed` com delay zero), sem
+	 * Cada job em andamento volta para a fila (`moveToDelayed` com delay zero), sem
 	 * consumir tentativa, e roda inteiro de novo quando o serviço subir: um job
 	 * leva minutos e o `stop_grace_period` não espera isso. Se a devolução falhar
 	 * (Redis fora), o lock expira e o próximo worker o recupera como travado —
@@ -112,22 +114,11 @@ export class ResumableBullmqWorker {
 	async stop(): Promise<void> {
 		this.shuttingDown = true;
 
-		const active = this.active;
-		if (active) {
-			// Antes da devolução: o que falhar daqui em diante é do desligamento.
-			active.cancellation.abort();
-			try {
-				await active.job.moveToDelayed(Date.now(), active.token);
-				active.returned = true;
-				console.log(
-					`${this.options.icon} ${this.options.tag} ${this.jobName(active.job)} returned to the queue — it runs again on the next boot.`,
-				);
-			} catch (error) {
-				console.warn(
-					`⚠️ ${this.options.tag} Could not return ${this.options.label} job ${active.job.id} to the queue (${errorMessage(error)}) — it will be recovered as stalled.`,
-				);
-			}
-		}
+		const active = [...this.active];
+		// Todos antes de qualquer devolução: o que falhar daqui em diante é do
+		// desligamento.
+		for (const entry of active) entry.cancellation.abort();
+		await Promise.all(active.map((entry) => this.returnToQueue(entry)));
 
 		try {
 			await this.worker.close(true);
@@ -139,6 +130,20 @@ export class ResumableBullmqWorker {
 
 		// Depois do worker fechado, nada novo é registrado.
 		await this.drainTracked();
+	}
+
+	private async returnToQueue(entry: ActiveJob): Promise<void> {
+		try {
+			await entry.job.moveToDelayed(Date.now(), entry.token);
+			entry.returned = true;
+			console.log(
+				`${this.options.icon} ${this.options.tag} ${this.jobName(entry.job)} returned to the queue — it runs again on the next boot.`,
+			);
+		} catch (error) {
+			console.warn(
+				`⚠️ ${this.options.tag} Could not return ${this.options.label} job ${entry.job.id} to the queue (${errorMessage(error)}) — it will be recovered as stalled.`,
+			);
+		}
 	}
 
 	/**
@@ -198,7 +203,7 @@ export class ResumableBullmqWorker {
 			returned: false,
 			cancellation: new AbortController(),
 		};
-		this.active = active;
+		this.active.add(active);
 
 		let outcome: { ok: true } | { ok: false; error: unknown };
 		try {
@@ -207,7 +212,7 @@ export class ResumableBullmqWorker {
 		} catch (error) {
 			outcome = { ok: false, error };
 		} finally {
-			this.active = undefined;
+			this.active.delete(active);
 		}
 
 		if (outcome.ok) {
@@ -232,6 +237,3 @@ export class ResumableBullmqWorker {
 		return `${capitalize(this.options.label)} job ${job.id}`;
 	}
 }
-
-const capitalize = (text: string): string =>
-	text.charAt(0).toUpperCase() + text.slice(1);

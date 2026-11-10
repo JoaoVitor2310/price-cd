@@ -3,6 +3,10 @@ import type {
 	ListTopicFetcherFactory,
 } from "@/application/lists/ports/list-run.ports.js";
 import type { GameTradeImporter, GameTradeInput } from "@/application/games/ports/game-trade-importer.port.js";
+import {
+	type CancellationSignal,
+	throwIfCancelled,
+} from "@/application/shared/cancellation.js";
 import { resolveSearchCriteria } from "@/domain/games/search-presets.js";
 import { disposeIfPresent } from "@/lib/dispose.js";
 import type { SupplierListRequest } from "@/schemas/list.schema.js";
@@ -20,6 +24,11 @@ export type RunListsInput = {
  * 3) Inactive → skip. Active → accumulate games from all lists.
  * 4) Call popularity + price pipeline.
  * 5) Push priced games directly to the inventory system via tradeImporter.
+ *
+ * Com `signal` abortado (o serviço desligando, o pedido já de volta à fila),
+ * para antes de abrir a sessão do AllKeyShop e antes de criar a Trade: fechar o
+ * browser só transforma os jogos restantes em "sem preço", e a Trade nasceria com
+ * a lista pela metade — e de novo, quando o pedido rodasse outra vez.
  */
 export class RunListsUseCase {
 	constructor(
@@ -36,7 +45,10 @@ export class RunListsUseCase {
 		private readonly maxActiveLists: number,
 	) {}
 
-	async execute(input: RunListsInput): Promise<void> {
+	async execute(
+		input: RunListsInput,
+		signal?: CancellationSignal,
+	): Promise<void> {
 		const { supplierListRequest, checkGamivoOffer } = input;
 		const { gameSearcher, tradeImporter, maxActiveLists } = this;
 		const steam_id = supplierListRequest.steam_id;
@@ -51,6 +63,9 @@ export class RunListsUseCase {
 			const limitedLists = userLists.slice(0, Math.max(1, maxActiveLists));
 
 			for (const userList of limitedLists) {
+				// Cada Lista abre uma página do SteamTrades e pode esperar a
+				// Cloudflare: devolvido o job, não abre a próxima.
+				throwIfCancelled(signal);
 				const list = await fetcher.fetchList(userList.url);
 
 				if (list.status !== "active") continue;
@@ -60,6 +75,10 @@ export class RunListsUseCase {
 		} finally {
 			await disposeIfPresent(fetcher);
 		}
+
+		// Antes de pesquisar: com o serviço desligando, abrir a sessão do AllKeyShop
+		// agora subiria um Chromium depois do cleanup.
+		throwIfCancelled(signal);
 
 		// Os critérios do Reabastecimento são o preset `lists`; só a oferta Gamivo
 		// vem da requisição.
@@ -79,6 +98,7 @@ export class RunListsUseCase {
 				gamivo_id: g.gamivo_id ?? null,
 			}));
 
+		throwIfCancelled(signal);
 		if (pricedGames.length > 0) {
 			await tradeImporter.import(pricedGames, { supplier_steam_id: steam_id });
 		}

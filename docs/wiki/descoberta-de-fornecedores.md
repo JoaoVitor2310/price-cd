@@ -35,6 +35,7 @@ Nessa primeira etapa (coleta), o SteamTrades continua devolvendo anúncios além
 | 5 anúncios fechados seguidos numa mesma busca (na listagem) | Paramos de virar página pra aquele termo — sinal de que passamos da última página com anúncios de verdade |
 | 5 anúncios inativos seguidos (entre os já coletados) | Paramos de processar o restante — sinal de que chegamos na cauda de anúncios antigos |
 | Uma página não retorna nenhum anúncio | Paramos de virar página — sinal de que chegamos ao fim da lista |
+| O price-cd reinicia ou é atualizado no meio da varredura | O pedido não se perde: volta para a fila e a varredura recomeça do início quando o serviço sobe. Quem já foi comentado não recebe outro comentário — o Sistema Estoque lembra quando comentou. Os preços buscados na última hora vêm do cache |
 
 ## Parâmetros que dá pra ajustar
 

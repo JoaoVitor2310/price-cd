@@ -22,6 +22,11 @@ import {
 	createBullmqConnections,
 } from "@/infrastructure/background/bullmq-connections.js";
 import {
+	LONG_JOB_COMMAND_TIMEOUT_MS,
+	LONG_JOB_MAX_STALLED_COUNT,
+	LONG_JOB_OPTIONS,
+} from "@/infrastructure/background/long-job-policy.js";
+import {
 	parseResearchJobPayload,
 	readResearchFailureTarget,
 } from "@/infrastructure/background/research-job-payload.js";
@@ -46,40 +51,8 @@ import { withTimeout } from "@/lib/with-timeout.js";
 export const RESEARCH_QUEUE_NAME = "research";
 const RESEARCH_JOB_NAME = "research";
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-/**
- * O registro das execuções: quanto tempo um job terminado fica no Redis para
- * ser consultado. Por idade, não por contagem — "o que rodou na última semana"
- * é a pergunta, e uma rajada de pedidos não deve apagar o histórico.
- *
- * `attempts` fica no default (1) de propósito: repetir uma pesquisa que falhou
- * depois de chamar o Estoque pode criar uma segunda Trade, e o Estoque ainda não
- * tem idempotência. Interrupção por deploy **não** é tentativa — o job volta à
- * fila sem consumir nada (ver `beforeApplicationShutdown`).
- */
-export const RESEARCH_JOB_OPTIONS: JobsOptions = {
-	removeOnComplete: { age: (7 * DAY_MS) / 1000 },
-	removeOnFail: { age: (30 * DAY_MS) / 1000 },
-};
-
-/**
- * Um processo que morre no meio de um job (OOM, SIGKILL) deixa o job "travado";
- * o próximo worker o recoloca na fila. Depois de 2 travamentos, o job falha em
- * vez de entrar em loop derrubando o processo de novo: a BullMQ grava a falha no
- * job e o worker a aplica ao pegá-lo, sem chamar o processador. Passa pelo evento
- * `failed` como as outras (`onJobFailed`).
- */
-export const RESEARCH_MAX_STALLED_COUNT = 2;
-
 /** Ping do health: Redis lento conta como fora. */
 const STATUS_TIMEOUT_MS = 1000;
-
-/**
- * Teto para guardar um pedido com a conexão pronta. É rede de segurança, não o
- * caminho comum: o Redis fora é recusado antes, pelo `isConnected`.
- */
-const ENQUEUE_TIMEOUT_MS = 5000;
 
 export type BullmqResearchQueueDeps = {
 	queue: BullmqQueueClient;
@@ -133,11 +106,11 @@ export class BullmqResearchQueue implements ResearchQueue {
 	async enqueue(request: ResearchJobRequest): Promise<void> {
 		this.assertConnected();
 		const options: JobsOptions = request.requestUuid
-			? { ...RESEARCH_JOB_OPTIONS, jobId: request.requestUuid }
-			: RESEARCH_JOB_OPTIONS;
+			? { ...LONG_JOB_OPTIONS, jobId: request.requestUuid }
+			: LONG_JOB_OPTIONS;
 		await withTimeout(
 			this.deps.queue.add(RESEARCH_JOB_NAME, request, options),
-			ENQUEUE_TIMEOUT_MS,
+			LONG_JOB_COMMAND_TIMEOUT_MS,
 		);
 	}
 
@@ -150,7 +123,7 @@ export class BullmqResearchQueue implements ResearchQueue {
 		const { state } = await readRunState(
 			this.deps.queue,
 			requestUuid,
-			ENQUEUE_TIMEOUT_MS,
+			LONG_JOB_COMMAND_TIMEOUT_MS,
 		);
 		return state;
 	}
@@ -161,10 +134,10 @@ export class BullmqResearchQueue implements ResearchQueue {
 		const { job, state } = await readRunState(
 			this.deps.queue,
 			requestUuid,
-			ENQUEUE_TIMEOUT_MS,
+			LONG_JOB_COMMAND_TIMEOUT_MS,
 		);
 		if (job && (state === "completed" || state === "failed")) {
-			await withTimeout(job.remove(), ENQUEUE_TIMEOUT_MS);
+			await withTimeout(job.remove(), LONG_JOB_COMMAND_TIMEOUT_MS);
 		}
 	}
 
@@ -293,7 +266,9 @@ export const createBullmqResearchQueue = (
 					connection: connections.worker,
 					concurrency: 1,
 					autorun: false,
-					maxStalledCount: RESEARCH_MAX_STALLED_COUNT,
+					// Passado o limite, o job falha pelo evento `failed`, como as
+					// outras falhas (`onJobFailed`).
+					maxStalledCount: LONG_JOB_MAX_STALLED_COUNT,
 				});
 				worker.on("error", (error) => report.down("worker", error));
 				worker.on("completed", (job) =>

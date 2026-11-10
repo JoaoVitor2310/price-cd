@@ -6,16 +6,16 @@ import {
 } from "@/application/games/ports/game-search.ports.js";
 import { ResearchQueue } from "@/application/games/ports/research-queue.port.js";
 import { ListTopicFetcherFactory } from "@/application/lists/ports/list-run.ports.js";
+import { ListsRunQueue } from "@/application/lists/ports/lists-run-queue.port.js";
+import { SupplierDiscoveryQueue } from "@/application/suppliers/ports/supplier-discovery-queue.port.js";
 import { AppModule } from "@/nest/app.module.js";
 import { configureNestApp } from "@/nest/configure-app.js";
-import { LISTS_SCHEDULER } from "@/nest/lists/lists.tokens.js";
-import { SUPPLIERS_SCHEDULER } from "@/nest/suppliers/suppliers.tokens.js";
 import {
+	jobQueueDouble,
 	listTopicFetcherDouble,
 	popularityFetcherDouble,
 	priceFetcherDouble,
 	researchQueueDouble,
-	schedulerDouble,
 } from "./doubles.js";
 
 /**
@@ -59,12 +59,12 @@ export async function createContractNestApp(): Promise<NestExpressApplication> {
 		.useValue({ create: listTopicFetcherDouble })
 		// As filas são inertes: o contrato de um 202 é "aceitei e enfileirei",
 		// e executar a tarefa arrastaria scraping real para dentro do teste.
-		.overrideProvider(LISTS_SCHEDULER)
-		.useValue(schedulerDouble())
+		.overrideProvider(ListsRunQueue)
+		.useValue(jobQueueDouble("Lists"))
 		.overrideProvider(ResearchQueue)
 		.useValue(researchQueueDouble())
-		.overrideProvider(SUPPLIERS_SCHEDULER)
-		.useValue(schedulerDouble())
+		.overrideProvider(SupplierDiscoveryQueue)
+		.useValue(jobQueueDouble("Suppliers"))
 		.compile();
 
 	const app = moduleRef.createNestApplication<NestExpressApplication>();

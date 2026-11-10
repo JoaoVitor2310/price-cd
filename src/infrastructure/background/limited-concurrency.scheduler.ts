@@ -1,5 +1,15 @@
-import type { BackgroundScheduler } from "@/application/shared/ports/background-scheduler.port.js";
-import { positiveIntFromEnv } from "@/config/env.schema.js";
+/**
+ * Executa tarefas no próprio processo, com concorrência limitada. É o motor das
+ * filas **em memória** (`InMemoryJobQueue`, `InMemoryResearchQueue`), que existem
+ * para dev e testes rodarem sem Redis — em produção o schema exige
+ * `QUEUE_REDIS_URL`. Um reinício perde o que estava na fila.
+ *
+ * Não é porta da Application: as filas que ela conhece recebem dado
+ * (ADR 0009), e esta recebe uma closure.
+ */
+export interface BackgroundScheduler {
+	schedule(task: () => Promise<void>): void;
+}
 
 export class LimitedConcurrencyScheduler implements BackgroundScheduler {
 	private readonly queue: Array<() => Promise<void>> = [];
@@ -25,7 +35,7 @@ export class LimitedConcurrencyScheduler implements BackgroundScheduler {
 			Promise.resolve()
 				.then(next)
 				.catch((err) => {
-					// Mantém comportamento do SetImmediateScheduler: erro não derruba o loop.
+					// Uma tarefa que falha não derruba o laço: as próximas continuam.
 					console.error("❌ [ERROR] Background task failed:", err);
 				})
 				.finally(() => {
@@ -35,12 +45,3 @@ export class LimitedConcurrencyScheduler implements BackgroundScheduler {
 		}
 	}
 }
-
-export function createLimitedConcurrencySchedulerFromEnv(): BackgroundScheduler {
-	// Mesma regra que o schema aplica para o app Nest — uma fonte só, senão os
-	// dois apps divergem em valores de borda (foi o caso de `=0`).
-	return new LimitedConcurrencyScheduler(
-		positiveIntFromEnv(process.env.RUN_LISTS_CONCURRENCY, 1),
-	);
-}
-

@@ -9,10 +9,8 @@ import type {
 	BullmqQueueClient,
 	BullmqStoredJob,
 } from "@/infrastructure/background/bullmq-clients.js";
-import {
-	BullmqResearchQueue,
-	RESEARCH_JOB_OPTIONS,
-} from "@/infrastructure/background/bullmq-research-queue.js";
+import { BullmqResearchQueue } from "@/infrastructure/background/bullmq-research-queue.js";
+import { LONG_JOB_OPTIONS } from "@/infrastructure/background/long-job-policy.js";
 
 const request: ResearchGamesRequest = {
 	gameNames: ["Half-Life", "Portal 2"],
@@ -158,7 +156,7 @@ describe("BullmqResearchQueue", () => {
 			expect(queue.add).toHaveBeenCalledWith(
 				"research",
 				request,
-				RESEARCH_JOB_OPTIONS,
+				LONG_JOB_OPTIONS,
 			);
 		});
 
@@ -172,7 +170,7 @@ describe("BullmqResearchQueue", () => {
 			await adapter.enqueue(withUuid);
 
 			expect(queue.add).toHaveBeenCalledWith("research", withUuid, {
-				...RESEARCH_JOB_OPTIONS,
+				...LONG_JOB_OPTIONS,
 				jobId: "8c1f0000-0000-4000-8000-000000000000",
 			});
 		});
@@ -180,11 +178,11 @@ describe("BullmqResearchQueue", () => {
 		it("keeps finished jobs by age, and never retries a research on its own", () => {
 			// Repetir uma pesquisa que já chamou o Estoque pode criar outra Trade:
 			// sem `attempts`, a BullMQ tenta uma vez só.
-			expect(RESEARCH_JOB_OPTIONS.attempts).toBeUndefined();
-			expect(RESEARCH_JOB_OPTIONS.removeOnComplete).toEqual({
+			expect(LONG_JOB_OPTIONS.attempts).toBeUndefined();
+			expect(LONG_JOB_OPTIONS.removeOnComplete).toEqual({
 				age: 7 * 24 * 3600,
 			});
-			expect(RESEARCH_JOB_OPTIONS.removeOnFail).toEqual({
+			expect(LONG_JOB_OPTIONS.removeOnFail).toEqual({
 				age: 30 * 24 * 3600,
 			});
 		});

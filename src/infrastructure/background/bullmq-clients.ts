@@ -6,8 +6,8 @@ import { withTimeout } from "@/lib/with-timeout.js";
  * `RedisPriceCacheClient`: os testes passam dublês com estes métodos, sem Redis
  * de verdade, e uma mudança de API da BullMQ aparece aqui, num lugar só.
  *
- * Os nomes não falam de pesquisa: são os mesmos para qualquer fila. É o que o
- * item 9 do `docs/IMPROVEMENTS.md` (`lists` e `suppliers` duráveis) reaproveita.
+ * Os nomes não falam de pesquisa: são os mesmos para qualquer fila — a da
+ * pesquisa, a de webhooks e a `BullmqJobQueue` de `lists` e `suppliers`.
  */
 
 /** Um job entregue ao processador. `data` é `unknown`: veio do Redis. */

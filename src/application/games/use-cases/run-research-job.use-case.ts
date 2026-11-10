@@ -1,5 +1,4 @@
 import type {
-	CancellationSignal,
 	ResearchFailureTarget,
 	ResearchGamesRunner,
 	ResearchJobRequest,
@@ -19,6 +18,7 @@ import {
 	type ReadTopicGames,
 	TopicScrapeFailedError,
 } from "@/application/games/services/read-topic-games.js";
+import type { CancellationSignal } from "@/application/shared/cancellation.js";
 
 /**
  * Executa um pedido de pesquisa tirado da fila: lê o tópico (se o pedido veio de

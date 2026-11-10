@@ -8,7 +8,7 @@
  *
  * **Todo efeito externo precisa de dublê aqui.** A primeira versão deste arquivo
  * só substituía os fetchers de preço: o
- * `LISTS_SCHEDULER` era a fila real e a `ListTopicFetcherFactory` era a de
+ * agendador de listas (hoje a `ListsRunQueue`) era a fila real e a `ListTopicFetcherFactory` era a de
  * produção, então o caso de 202 de `/api/lists/run` disparava Puppeteer de
  * verdade durante a suíte. Passava — e deixava um Chromium subindo.
  */

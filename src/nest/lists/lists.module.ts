@@ -8,19 +8,18 @@ import {
 	ListTopicFetcherFactory,
 	type RunListsRunner,
 } from "@/application/lists/ports/list-run.ports.js";
+import { ListsRunQueue } from "@/application/lists/ports/lists-run-queue.port.js";
 import { EnqueueRunListsUseCase } from "@/application/lists/use-cases/enqueue-run-lists.use-case.js";
 import { RunListsUseCase } from "@/application/lists/use-cases/run-lists.use-case.js";
-import type { BackgroundScheduler } from "@/application/shared/ports/background-scheduler.port.js";
 import type { Env } from "@/config/env.schema.js";
+import { createBullmqJobQueue } from "@/infrastructure/background/bullmq-job-queue.js";
+import { InMemoryJobQueue } from "@/infrastructure/background/in-memory-job-queue.js";
 import { LimitedConcurrencyScheduler } from "@/infrastructure/background/limited-concurrency.scheduler.js";
+import { parseListsRunJobPayload } from "@/infrastructure/background/lists-run-job-payload.js";
 import { GamesModule } from "@/nest/games/games.module.js";
 import { ListTopicModule } from "@/nest/lists/list-topic.module.js";
 import { ListsController } from "@/nest/lists/lists.controller.js";
-import {
-	LISTS_RUNNER,
-	LISTS_SCHEDULER,
-	MAX_ACTIVE_LISTS,
-} from "@/nest/lists/lists.tokens.js";
+import { LISTS_RUNNER, MAX_ACTIVE_LISTS } from "@/nest/lists/lists.tokens.js";
 import type { SupplierListRequest } from "@/schemas/list.schema.js";
 
 /**
@@ -61,20 +60,6 @@ import type { SupplierListRequest } from "@/schemas/list.schema.js";
 			inject: [ConfigService],
 		},
 
-		/**
-		 * A fila do reabastecimento — **separada** da fila da pesquisa manual.
-		 * Concorrência vem do ambiente; a da pesquisa é 1 fixo. Ver
-		 * `lists.tokens.ts` para o porquê de não compartilharem token.
-		 */
-		{
-			provide: LISTS_SCHEDULER,
-			useFactory: (config: ConfigService<Env, true>) =>
-				new LimitedConcurrencyScheduler(
-					config.get("RUN_LISTS_CONCURRENCY", { infer: true }),
-				),
-			inject: [ConfigService],
-		},
-
 		{
 			provide: RunListsUseCase,
 			useFactory: (
@@ -101,19 +86,65 @@ import type { SupplierListRequest } from "@/schemas/list.schema.js";
 		{
 			provide: LISTS_RUNNER,
 			useFactory: (useCase: RunListsUseCase): RunListsRunner => ({
-				run: async (request: SupplierListRequest) =>
-					useCase.execute({
-						supplierListRequest: request,
-						checkGamivoOffer: request.checkGamivoOffer,
-					}),
+				run: async (request: SupplierListRequest, signal) =>
+					useCase.execute(
+						{
+							supplierListRequest: request,
+							checkGamivoOffer: request.checkGamivoOffer,
+						},
+						signal,
+					),
 			}),
 			inject: [RunListsUseCase],
 		},
+
+		/**
+		 * A fila do Reabastecimento — **separada** da fila da pesquisa manual, para
+		 * uma execução longa de listas não segurar quem está esperando na tela.
+		 * Concorrência vem do ambiente (`RUN_LISTS_CONCURRENCY`); a da pesquisa é 1
+		 * fixo. A porta é `abstract class`, então é o próprio token.
+		 *
+		 * Com `QUEUE_REDIS_URL`, durável (fila `lists` no banco 1, como a pesquisa):
+		 * o worker começa no `onApplicationBootstrap` e devolve o job em andamento
+		 * no `beforeApplicationShutdown`. Sem ela (só fora de produção), em memória.
+		 */
+		{
+			provide: ListsRunQueue,
+			useFactory: (
+				config: ConfigService<Env, true>,
+				runner: RunListsRunner,
+			): ListsRunQueue => {
+				const concurrency = config.get("RUN_LISTS_CONCURRENCY", {
+					infer: true,
+				});
+				const url = config.get("QUEUE_REDIS_URL", { infer: true });
+				if (!url) {
+					console.log(
+						"🗒️ [LISTS] QUEUE_REDIS_URL not set — lists queue in memory; a restart drops queued requests.",
+					);
+					return new InMemoryJobQueue<SupplierListRequest>(
+						new LimitedConcurrencyScheduler(concurrency),
+						(request) => runner.run(request),
+						"lists",
+					);
+				}
+				return createBullmqJobQueue<SupplierListRequest>(url, {
+					queueName: "lists",
+					jobName: "run-lists",
+					concurrency,
+					label: "lists",
+					tag: "[LISTS]",
+					icon: "🗒️",
+					parse: parseListsRunJobPayload,
+					run: (request, signal) => runner.run(request, signal),
+				});
+			},
+			inject: [ConfigService, LISTS_RUNNER],
+		},
 		{
 			provide: EnqueueRunListsUseCase,
-			useFactory: (scheduler: BackgroundScheduler, runner: RunListsRunner) =>
-				new EnqueueRunListsUseCase(scheduler, runner),
-			inject: [LISTS_SCHEDULER, LISTS_RUNNER],
+			useFactory: (queue: ListsRunQueue) => new EnqueueRunListsUseCase(queue),
+			inject: [ListsRunQueue],
 		},
 	],
 })

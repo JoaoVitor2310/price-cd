@@ -7,6 +7,7 @@ import {
 	WEBHOOK_QUEUE_NAME,
 } from "@/infrastructure/background/bullmq-webhook-queue.js";
 import type { WebhookBody } from "@/infrastructure/webhooks/webhook-body.js";
+import { queueTestUrl } from "./queue-test-db.js";
 
 /**
  * A fila de webhooks contra um Redis de verdade. **Opcional**, como a da
@@ -16,19 +17,11 @@ import type { WebhookBody } from "@/infrastructure/webhooks/webhook-body.js";
  * resultado concluído volta a ser entregue, e que a espera da nova tentativa é
  * a nossa (30s), não a padrão.
  */
-const baseUrl = process.env.QUEUE_REDIS_TEST_URL;
-
 /**
  * Um banco **vizinho** ao do teste da fila da pesquisa: o Vitest roda os
  * arquivos em paralelo, e o `FLUSHDB` de um apagaria os jobs do outro.
  */
-const url = (() => {
-	if (!baseUrl) return undefined;
-	const parsed = new URL(baseUrl);
-	const db = Number(parsed.pathname.slice(1) || 0);
-	parsed.pathname = `/${db > 0 ? db - 1 : db + 1}`;
-	return parsed.toString();
-})();
+const url = queueTestUrl(1);
 
 const REQUEST_UUID = "8c1f0000-0000-4000-8000-000000000000";
 const target = {

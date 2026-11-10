@@ -8,11 +8,17 @@ import type { FindNewSuppliersRunner } from "@/application/suppliers/ports/find-
 import { ProfitabilityChecker } from "@/application/suppliers/ports/profitability-checker.port.js";
 import { TopicScraper } from "@/application/suppliers/ports/topic-scraper.port.js";
 import { TradePaginator } from "@/application/suppliers/ports/trade-paginator.port.js";
+import {
+	type SupplierDiscoveryRequest,
+	SupplierDiscoveryQueue,
+} from "@/application/suppliers/ports/supplier-discovery-queue.port.js";
 import { EnqueueFindNewSuppliersUseCase } from "@/application/suppliers/use-cases/enqueue-find-new-suppliers.use-case.js";
 import { FindNewSuppliersUseCase } from "@/application/suppliers/use-cases/find-new-suppliers.use-case.js";
-import type { BackgroundScheduler } from "@/application/shared/ports/background-scheduler.port.js";
 import type { Env } from "@/config/env.schema.js";
+import { createBullmqJobQueue } from "@/infrastructure/background/bullmq-job-queue.js";
+import { InMemoryJobQueue } from "@/infrastructure/background/in-memory-job-queue.js";
 import { LimitedConcurrencyScheduler } from "@/infrastructure/background/limited-concurrency.scheduler.js";
+import { parseSupplierDiscoveryJobPayload } from "@/infrastructure/background/supplier-discovery-job-payload.js";
 import { SuppliersBrowserSession } from "@/infrastructure/browser/suppliers-browser-session.js";
 import { HttpProfitabilityChecker } from "@/infrastructure/suppliers/http-profitability-checker.js";
 import { LazyProfitabilityChecker } from "@/infrastructure/suppliers/lazy-profitability-checker.js";
@@ -24,7 +30,6 @@ import { GamesModule } from "@/nest/games/games.module.js";
 import {
 	IGNORED_STEAM_IDS,
 	SUPPLIERS_RUNNER,
-	SUPPLIERS_SCHEDULER,
 } from "@/nest/suppliers/suppliers.tokens.js";
 import { SuppliersController } from "@/nest/suppliers/suppliers.controller.js";
 
@@ -132,12 +137,6 @@ export function assertSuppliersEnv(config: ConfigService<Env, true>): void {
 			],
 		},
 
-		/** Concorrência 1: o scraping já é serializado por um único browser. */
-		{
-			provide: SUPPLIERS_SCHEDULER,
-			useValue: new LimitedConcurrencyScheduler(1),
-		},
-
 		/**
 		 * O runner: injeta o cookie de sessão **antes de qualquer navegação** e
 		 * limpa o browser no `finally`.
@@ -154,7 +153,7 @@ export function assertSuppliersEnv(config: ConfigService<Env, true>): void {
 				browser: SuppliersBrowserSession,
 				config: ConfigService<Env, true>,
 			): FindNewSuppliersRunner => ({
-				run: async () => {
+				run: async (signal) => {
 					assertSuppliersEnv(config);
 					const session = config.get("STEAMTRADES_SESSION", { infer: true }) as string;
 
@@ -169,7 +168,7 @@ export function assertSuppliersEnv(config: ConfigService<Env, true>): void {
 							secure: false,
 						});
 
-						return await useCase.execute();
+						return await useCase.execute(signal);
 					} finally {
 						await browser.cleanup();
 					}
@@ -178,13 +177,65 @@ export function assertSuppliersEnv(config: ConfigService<Env, true>): void {
 			inject: [FindNewSuppliersUseCase, SuppliersBrowserSession, ConfigService],
 		},
 
+		/**
+		 * A fila da Descoberta, a terceira do sistema, separada das outras duas
+		 * pelo mesmo motivo (`lists.module.ts`). Concorrência 1: o scraping já é
+		 * serializado por um único browser, e duas varreduras com a mesma conta do
+		 * SteamTrades ao mesmo tempo só dobram o risco de bloqueio.
+		 *
+		 * Com `QUEUE_REDIS_URL`, durável (fila `suppliers` no banco 1). Reexecutar
+		 * um job interrompido não comenta duas vezes: o Estoque grava
+		 * `last_commented_at` ao responder `should_comment: true`, e a reexecução
+		 * recebe `false`.
+		 */
+		{
+			provide: SupplierDiscoveryQueue,
+			useFactory: (
+				config: ConfigService<Env, true>,
+				runner: FindNewSuppliersRunner,
+			): SupplierDiscoveryQueue => {
+				const url = config.get("QUEUE_REDIS_URL", { infer: true });
+				if (!url) {
+					console.log(
+						"🔎 [SUPPLIERS] QUEUE_REDIS_URL not set — suppliers queue in memory; a restart drops queued requests.",
+					);
+					return new InMemoryJobQueue<SupplierDiscoveryRequest>(
+						new LimitedConcurrencyScheduler(1),
+						async () => {
+							await runner.run();
+						},
+						"suppliers",
+					);
+				}
+				return createBullmqJobQueue<SupplierDiscoveryRequest>(url, {
+					queueName: "suppliers",
+					jobName: "find-new-suppliers",
+					// Uma varredura esperando ou rodando já cobre um pedido novo:
+					// empilhar varreduras com a mesma conta do SteamTrades só
+					// aumenta o risco de bloqueio, e agora elas sobreviveriam ao
+					// restart.
+					deduplicationId: "find-new-suppliers",
+					concurrency: 1,
+					label: "suppliers",
+					tag: "[SUPPLIERS]",
+					icon: "🔎",
+					parse: parseSupplierDiscoveryJobPayload,
+					run: async (request, signal) => {
+						console.log(
+							`🔎 [SUPPLIERS] Starting the search requested at ${request.requestedAt}.`,
+						);
+						await runner.run(signal);
+					},
+				});
+			},
+			inject: [ConfigService, SUPPLIERS_RUNNER],
+		},
+
 		{
 			provide: EnqueueFindNewSuppliersUseCase,
-			useFactory: (
-				scheduler: BackgroundScheduler,
-				runner: FindNewSuppliersRunner,
-			) => new EnqueueFindNewSuppliersUseCase(scheduler, runner),
-			inject: [SUPPLIERS_SCHEDULER, SUPPLIERS_RUNNER],
+			useFactory: (queue: SupplierDiscoveryQueue) =>
+				new EnqueueFindNewSuppliersUseCase(queue),
+			inject: [SupplierDiscoveryQueue],
 		},
 	],
 })

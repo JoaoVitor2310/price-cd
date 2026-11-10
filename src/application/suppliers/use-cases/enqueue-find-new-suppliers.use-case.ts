@@ -1,32 +1,22 @@
-import type { BackgroundScheduler } from "@/application/shared/ports/background-scheduler.port.js";
-import type { FindNewSuppliersRunner } from "@/application/suppliers/ports/find-new-suppliers-runner.port.js";
+import type { SupplierDiscoveryQueue } from "@/application/suppliers/ports/supplier-discovery-queue.port.js";
 
 /**
- * Enfileira a varredura de descoberta de fornecedores para rodar em background.
- * O cliente HTTP recebe a confirmação imediatamente; a varredura pode levar minutos
- * (até 100 páginas do SteamTrades, uma pesquisa de preços por tópico elegível).
+ * Guarda o pedido de Descoberta de Fornecedores na fila. O cliente HTTP recebe a
+ * confirmação assim que o pedido está guardado; a varredura pode levar minutos
+ * (até 100 páginas do SteamTrades, uma pesquisa de preços por tópico elegível) e
+ * é o `FindNewSuppliersUseCase`, chamado pela fila, que a executa.
  *
- * Falhas do runner são registradas em log e não propagadas — não há ninguém
- * aguardando a resposta neste ponto.
+ * Sem try/catch: não conseguir guardar chega a quem está na requisição. Um pedido
+ * feito com outra varredura esperando ou rodando é absorvido por ela (a fila
+ * deduplica), e quem pediu recebe o mesmo `202`.
  */
 export class EnqueueFindNewSuppliersUseCase {
-    constructor(
-        private readonly scheduler: BackgroundScheduler,
-        private readonly runner: FindNewSuppliersRunner,
-    ) {}
+	constructor(
+		private readonly queue: SupplierDiscoveryQueue,
+		private readonly now: () => Date = () => new Date(),
+	) {}
 
-    async execute(): Promise<void> {
-        const { scheduler, runner } = this;
-
-        scheduler.schedule(async () => {
-            try {
-                const result = await runner.run();
-                console.log(
-                    `✅ [SUPPLIERS] Background search finished: ${result.pagesVisited} page(s) visited, ${result.topicsProcessed} topic(s) processed, ${result.suppliersCommented} supplier(s) commented.`,
-                );
-            } catch (error) {
-                console.error("❌ [ERROR] Find new suppliers run failed:", error);
-            }
-        });
-    }
+	async execute(): Promise<void> {
+		await this.queue.enqueue({ requestedAt: this.now().toISOString() });
+	}
 }

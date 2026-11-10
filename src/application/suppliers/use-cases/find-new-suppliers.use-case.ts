@@ -3,6 +3,7 @@ import type { TopicScraper } from "@/application/suppliers/ports/topic-scraper.p
 import type { CommentPoster } from "@/application/suppliers/ports/comment-poster.port.js";
 import type { ProfitabilityChecker, GamePriceInput, SupplierInput } from "@/application/suppliers/ports/profitability-checker.port.js";
 import type { GameSearcher } from "@/application/lists/ports/list-run.ports.js";
+import { type CancellationSignal, JobCancelledError, throwIfCancelled } from "@/application/shared/cancellation.js";
 import { resolveSearchCriteria } from "@/domain/games/search-presets.js";
 import { formatResult } from "@/domain/suppliers/profitability.js";
 import { SUPPLIER_SEARCH_TERMS } from "@/domain/suppliers/supplier-eligibility.js";
@@ -62,6 +63,12 @@ type ProcessDeps = {
  *
  * Para de processar antecipadamente quando 5 tópicos inativos são encontrados em sequência
  * entre os coletados (sinal de que chegamos na cauda de anúncios antigos).
+ *
+ * Com `signal` abortado (o serviço desligando, o pedido já de volta à fila), para a cada
+ * página, a cada tópico e antes de pedir a decisão ao Sistema Estoque — que grava
+ * `last_commented_at` ao responder `should_comment: true`: perguntar e não comentar
+ * perderia o comentário. Com o browser fechando, sem isso o laço seguiria tópico a tópico,
+ * cada um falhando, até o fim da lista coletada.
  */
 export class FindNewSuppliersUseCase {
     constructor(
@@ -74,10 +81,10 @@ export class FindNewSuppliersUseCase {
         private readonly ignoredSteamIds: ReadonlySet<string>,
     ) {}
 
-    async execute(): Promise<FindNewSuppliersResult> {
+    async execute(signal?: CancellationSignal): Promise<FindNewSuppliersResult> {
         const { paginator, scraper, commentPoster, profitabilityChecker, gameSearcher, ignoredSteamIds } = this;
 
-        const { collectedTopics, pagesVisited } = await this.collectTopics(paginator);
+        const { collectedTopics, pagesVisited } = await this.collectTopics(paginator, signal);
 
         console.log(`🗂️ [SUPPLIERS] Collected ${collectedTopics.size} unique topic(s) across ${pagesVisited} page(s). Processing...`);
 
@@ -87,14 +94,18 @@ export class FindNewSuppliersUseCase {
             profitabilityChecker,
             gameSearcher,
             ignoredSteamIds,
-        });
+        }, signal);
 
+        console.log(
+            `✅ [SUPPLIERS] Search finished: ${pagesVisited} page(s) visited, ${topicsProcessed} topic(s) processed, ${suppliersCommented} supplier(s) commented.`,
+        );
         return { pagesVisited, topicsProcessed, suppliersCommented };
     }
 
     /** Fase 1: varre `SUPPLIER_SEARCH_TERMS` × páginas, retornando `{code, url}` únicos por `code`. */
     private async collectTopics(
         paginator: TradePaginator,
+        signal?: CancellationSignal,
     ): Promise<{ collectedTopics: Map<string, string>; pagesVisited: number }> {
         let pagesVisited = 0;
         const collectedTopics = new Map<string, string>();
@@ -104,6 +115,7 @@ export class FindNewSuppliersUseCase {
             let consecutiveClosed = 0;
 
             pageLoop: for (let page = 1; page <= MAX_PAGES; page++) {
+                throwIfCancelled(signal);
                 console.log(`📄 [SUPPLIERS] Scanning page ${page}/${MAX_PAGES} ("${searchTerm}")...`);
                 pagesVisited++;
 
@@ -137,12 +149,14 @@ export class FindNewSuppliersUseCase {
     private async processTopics(
         collectedTopics: Map<string, string>,
         { scraper, commentPoster, profitabilityChecker, gameSearcher, ignoredSteamIds }: ProcessDeps,
+        signal?: CancellationSignal,
     ): Promise<{ topicsProcessed: number; suppliersCommented: number }> {
         let topicsProcessed = 0;
         let suppliersCommented = 0;
         let consecutiveInactive = 0;
 
         for (const [code, url] of collectedTopics) {
+            throwIfCancelled(signal);
             try {
                 const topic = await scraper.scrape(url);
 
@@ -206,6 +220,11 @@ export class FindNewSuppliersUseCase {
                     continue;
                 }
 
+                // A pesquisa de preço acabou de rodar: o desligamento pode ter
+                // chegado nela. Perguntar agora gravaria `last_commented_at`
+                // para um comentário que o browser fechando não vai postar.
+                throwIfCancelled(signal);
+
                 const supplier: SupplierInput = {
                     steam_id: topic.steamId,
                     list_code: code,
@@ -236,6 +255,8 @@ export class FindNewSuppliersUseCase {
                 suppliersCommented++;
                 console.log(`✅ [SUPPLIERS] Commented on ${code} with ${profitableGames.length} profitable game(s).`);
             } catch (err) {
+                // O cancelamento encerra a varredura; não é falha deste tópico.
+                if (err instanceof JobCancelledError) throw err;
                 const message = err instanceof Error ? err.message : String(err);
                 console.error(`❌ [SUPPLIERS] Failed to process topic ${code}: ${message}`);
                 topicsProcessed++;
