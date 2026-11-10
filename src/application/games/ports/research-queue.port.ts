@@ -31,8 +31,8 @@ export class ResearchQueueUnavailableError extends Error {
  * A fila da pesquisa autenticada. Ver `docs/adr/0009-fila-duravel-da-pesquisa.md`.
  *
  * Recebe **dado**, não uma função: um pedido precisa sobreviver a um reinício, e
- * uma closure não sai do processo. É por isso que a pesquisa não usa mais a
- * `BackgroundScheduler`, que continua servindo `lists` e `suppliers`.
+ * uma closure não sai do processo. As filas do Reabastecimento (`ListsRunQueue`)
+ * e da Descoberta (`SupplierDiscoveryQueue`) seguem a mesma regra.
  *
  * `enqueue` só resolve depois de o pedido estar guardado. Se não der para
  * guardar, lança — quem chamou ainda está na requisição e recebe o erro, em vez

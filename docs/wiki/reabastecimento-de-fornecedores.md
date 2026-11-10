@@ -20,6 +20,7 @@ Pra fornecedores que a gente já conhece (já temos o Steam ID guardado), buscam
 | A Lista tem jogos de outra plataforma (ex.: seção `GOG:`) | Ignora só esses jogos e segue com os da Steam — o preço de key de outra loja é diferente e ainda não sabemos buscar |
 | O SteamTrades pede verificação de robô (Cloudflare) | Espera a verificação passar sozinha (até 45s) e segue normalmente |
 | O SteamTrades bloqueia o acesso de vez | O reabastecimento para com erro registrado, em vez de terminar "sem nada encontrado" — bloqueio não é confundido com fornecedor sem jogos |
+| O price-cd reinicia ou é atualizado no meio do reabastecimento | O pedido não se perde: volta para a fila e roda inteiro de novo quando o serviço sobe, aproveitando os preços buscados na última hora. Nunca nasce uma Trade com a revisão pela metade |
 
 ## Parâmetros que dá pra ajustar
 

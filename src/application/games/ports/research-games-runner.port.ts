@@ -1,3 +1,4 @@
+import type { CancellationSignal } from "@/application/shared/cancellation.js";
 import type { SearchCriteria } from "@/domain/games/search-criteria.js";
 import type { OfferCurrency } from "@/domain/suppliers/offer.js";
 
@@ -41,12 +42,6 @@ export type TopicResearchRequest = Omit<ResearchGamesRequest, "gameNames"> & {
  * um campo de tipo: os jobs já guardados no Redis não têm esse campo.
  */
 export type ResearchJobRequest = ResearchGamesRequest | TopicResearchRequest;
-
-/**
- * Se quem executa pediu para parar. Só a forma que a Application precisa: o
- * `AbortSignal` da plataforma a satisfaz, sem a Application depender dele.
- */
-export type CancellationSignal = { readonly aborted: boolean };
 
 /** A quem avisar uma falha. Pode vir vazio: nem todo pedido quer aviso. */
 export type ResearchFailureTarget = Pick<

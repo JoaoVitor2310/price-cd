@@ -11,6 +11,7 @@ import {
 	createBullmqResearchQueue,
 	RESEARCH_QUEUE_NAME,
 } from "@/infrastructure/background/bullmq-research-queue.js";
+import { queueTestUrl } from "./queue-test-db.js";
 
 /**
  * A fila contra um Redis de verdade. **Opcional**: só roda com
@@ -24,7 +25,7 @@ import {
  *   docker run -d --name redis-queue-test -p 6390:6379 redis:7.4-alpine
  *   QUEUE_REDIS_TEST_URL=redis://127.0.0.1:6390/15 npx vitest run test/integration/queue
  */
-const url = process.env.QUEUE_REDIS_TEST_URL;
+const url = queueTestUrl(0);
 
 const request: ResearchGamesRequest = {
 	gameNames: ["Half-Life"],

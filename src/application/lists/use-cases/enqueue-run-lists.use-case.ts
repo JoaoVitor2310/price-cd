@@ -1,28 +1,20 @@
+import type { ListsRunQueue } from "@/application/lists/ports/lists-run-queue.port.js";
 import type { SupplierListRequest } from "@/schemas/list.schema.js";
-import type { RunListsRunner } from "@/application/lists/ports/list-run.ports.js";
-import type { BackgroundScheduler } from "@/application/shared/ports/background-scheduler.port.js";
 
 /** Só dado: as dependências estão no construtor. */
 export type EnqueueRunListsInput = {
 	request: SupplierListRequest;
 };
 
+/**
+ * Guarda o pedido de Reabastecimento na fila; quem o executa é o
+ * `RunListsUseCase`, chamado pela fila. Sem try/catch: não conseguir guardar
+ * chega a quem está na requisição.
+ */
 export class EnqueueRunListsUseCase {
-	constructor(
-		private readonly scheduler: BackgroundScheduler,
-		private readonly runner: RunListsRunner,
-	) {}
+	constructor(private readonly queue: ListsRunQueue) {}
 
 	async execute(input: EnqueueRunListsInput): Promise<void> {
-		const { request } = input;
-		const { scheduler, runner } = this;
-
-		scheduler.schedule(async () => {
-			try {
-				await runner.run(request);
-			} catch (error) {
-				console.error("❌ [ERROR] List run failed:", error);
-			}
-		});
+		await this.queue.enqueue(input.request);
 	}
 }

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { JobCancelledError } from "@/application/shared/cancellation.js";
 import { RunListsUseCase } from "@/application/lists/use-cases/run-lists.use-case.js";
 import { ListTopic } from "@/domain/lists/list-topic.js";
 import { SEARCH_PRESETS } from "@/domain/games/search-presets.js";
@@ -170,6 +171,76 @@ describe("RunListsUseCase", () => {
 		expect(vi.mocked(gameSearcher.search).mock.calls[0][0].criteria).toEqual({
 			...SEARCH_PRESETS.lists,
 			checkGamivoOffer: true,
+		});
+	});
+
+	describe("cancelled by the shutdown", () => {
+		it("stops opening the supplier's Lists once the signal is aborted", async () => {
+			const signal = { aborted: false };
+			const topics = [
+				new ListTopic("http://list-1", "active", ["Half-Life"]),
+				new ListTopic("http://list-2", "active", ["Portal"]),
+			];
+			const fetcher = makeFetcher(topics);
+			vi.mocked(fetcher.fetchList).mockImplementation(async () => {
+				signal.aborted = true;
+				return topics[0];
+			});
+			const gameSearcher: GameSearcher = { search: vi.fn() };
+
+			await expect(
+				new RunListsUseCase(
+					{ create: () => fetcher },
+					gameSearcher,
+					{ import: vi.fn() },
+					MAX_ACTIVE_LISTS,
+				).execute({ supplierListRequest: request, checkGamivoOffer: false }, signal),
+			).rejects.toBeInstanceOf(JobCancelledError);
+			expect(fetcher.fetchList).toHaveBeenCalledTimes(1);
+		});
+
+		it("does not open the price search once the signal is aborted", async () => {
+			const gameSearcher: GameSearcher = { search: vi.fn() };
+			const tradeImporter: GameTradeImporter = { import: vi.fn() };
+
+			await expect(
+				new RunListsUseCase(
+					{ create: () => makeFetcher() },
+					gameSearcher,
+					tradeImporter,
+					MAX_ACTIVE_LISTS,
+				).execute(
+					{ supplierListRequest: request, checkGamivoOffer: false },
+					{ aborted: true },
+				),
+			).rejects.toBeInstanceOf(JobCancelledError);
+			expect(gameSearcher.search).not.toHaveBeenCalled();
+		});
+
+		it("never creates a Trade from a search the shutdown cut short", async () => {
+			// Fechar o browser só transforma os jogos restantes em "sem preço": a
+			// Trade nasceria com a lista pela metade, e de novo na reexecução.
+			const signal = { aborted: false };
+			const gameSearcher: GameSearcher = {
+				search: vi.fn(async () => {
+					signal.aborted = true;
+					return makePricedGames();
+				}),
+			};
+			const tradeImporter: GameTradeImporter = { import: vi.fn() };
+
+			await expect(
+				new RunListsUseCase(
+					{ create: () => makeFetcher() },
+					gameSearcher,
+					tradeImporter,
+					MAX_ACTIVE_LISTS,
+				).execute(
+					{ supplierListRequest: request, checkGamivoOffer: false },
+					signal,
+				),
+			).rejects.toBeInstanceOf(JobCancelledError);
+			expect(tradeImporter.import).not.toHaveBeenCalled();
 		});
 	});
 });

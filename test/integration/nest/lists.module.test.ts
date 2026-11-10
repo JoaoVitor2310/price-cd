@@ -5,21 +5,18 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { GameTradeImporter } from "@/application/games/ports/game-trade-importer.port.js";
-import type { BackgroundScheduler } from "@/application/shared/ports/background-scheduler.port.js";
 import {
 	GameSearcher,
 	ListTopicFetcherFactory,
 } from "@/application/lists/ports/list-run.ports.js";
+import { ListsRunQueue } from "@/application/lists/ports/lists-run-queue.port.js";
 import { RunListsUseCase } from "@/application/lists/use-cases/run-lists.use-case.js";
 import { AppConfigModule } from "@/nest/config/config.module.js";
 import { ResearchQueue } from "@/application/games/ports/research-queue.port.js";
 import { resolveSearchCriteria } from "@/domain/games/search-presets.js";
 import { RESEARCH_RUNNER } from "@/nest/games/games.tokens.js";
 import { ListsModule } from "@/nest/lists/lists.module.js";
-import {
-	LISTS_SCHEDULER,
-	MAX_ACTIVE_LISTS,
-} from "@/nest/lists/lists.tokens.js";
+import { LISTS_RUNNER, MAX_ACTIVE_LISTS } from "@/nest/lists/lists.tokens.js";
 
 const list = (url: string, status: "active" | "inactive", gameNames: string[]) => ({
 	topicRef: url,
@@ -30,7 +27,7 @@ const list = (url: string, status: "active" | "inactive", gameNames: string[]) =
 
 describe("ListsModule", () => {
 	let app: NestExpressApplication;
-	const scheduled: Array<() => Promise<void>> = [];
+	const enqueued: unknown[] = [];
 	const fetcher = {
 		fetchUserLists: vi.fn(),
 		fetchList: vi.fn(),
@@ -52,8 +49,8 @@ describe("ListsModule", () => {
 			.useValue(gameSearcher)
 			.overrideProvider(GameTradeImporter)
 			.useValue(tradeImporter)
-			.overrideProvider(LISTS_SCHEDULER)
-			.useValue({ schedule: (task: () => Promise<void>) => scheduled.push(task) })
+			.overrideProvider(ListsRunQueue)
+			.useValue({ enqueue: async (r: unknown) => void enqueued.push(r) })
 			.compile();
 
 		app = moduleRef.createNestApplication<NestExpressApplication>();
@@ -71,7 +68,9 @@ describe("ListsModule", () => {
 
 		expect(response.status).toBe(202);
 		expect(response.body).toEqual({ success: true, status: "queued" });
-		expect(scheduled).toHaveLength(1);
+		expect(enqueued).toEqual([
+			{ steam_id: "76561198000000000", checkGamivoOffer: true },
+		]);
 		// O contrato é "aceitei e enfileirei", não "terminei".
 		expect(fetcher.fetchUserLists).not.toHaveBeenCalled();
 	});
@@ -90,19 +89,18 @@ describe("ListsModule", () => {
 	});
 
 	describe("the two queues", () => {
-		it("never runs a research on the lists scheduler", async () => {
-			// O wiring real, com só as pontas trocadas: o scheduler de listas vira
-			// um espião e o runner da pesquisa um dublê (nada de scraping). A
-			// suíte roda sem `QUEUE_REDIS_URL`, então a pesquisa usa a fila em
-			// memória — que também anda sobre um scheduler, e ele não pode ser o
-			// de listas.
-			const listsScheduler = { schedule: vi.fn() };
+		it("never runs a research on the lists queue", async () => {
+			// O wiring real, com só as pontas trocadas: a fila de listas vira um
+			// espião e o runner da pesquisa um dublê (nada de scraping). A suíte
+			// roda sem `QUEUE_REDIS_URL`, então as duas filas são em memória — e a
+			// de listas não pode ser a da pesquisa.
+			const listsQueue = { enqueue: vi.fn() };
 			const researchRunner = { run: vi.fn().mockResolvedValue(undefined) };
 			const moduleRef = await Test.createTestingModule({
 				imports: [AppConfigModule, ListsModule],
 			})
-				.overrideProvider(LISTS_SCHEDULER)
-				.useValue(listsScheduler)
+				.overrideProvider(ListsRunQueue)
+				.useValue(listsQueue)
 				.overrideProvider(RESEARCH_RUNNER)
 				.useValue(researchRunner)
 				.compile();
@@ -117,7 +115,7 @@ describe("ListsModule", () => {
 			// Mesmo scheduler significaria uma execução longa de listas segurando
 			// a pesquisa manual de alguém que está esperando na tela — sem erro
 			// nenhum aparecer.
-			expect(listsScheduler.schedule).not.toHaveBeenCalled();
+			expect(listsQueue.enqueue).not.toHaveBeenCalled();
 			await moduleRef.close();
 		});
 	});
@@ -131,10 +129,15 @@ describe("ListsModule", () => {
 		 * mexer em `process.env` entre testes não mudaria nada (ver o docblock de
 		 * `config.module.ts`).
 		 */
-		const withConfig = (values: Record<string, unknown>) =>
+		const withConfig = (
+			values: Record<string, unknown>,
+			runner = { run: vi.fn().mockResolvedValue(undefined) },
+		) =>
 			Test.createTestingModule({ imports: [AppConfigModule, ListsModule] })
 				.overrideProvider(ConfigService)
 				.useValue({ get: (key: string) => values[key] })
+				.overrideProvider(LISTS_RUNNER)
+				.useValue(runner)
 				.compile();
 
 		it("takes MAX_ACTIVE_LISTS from config, not from process.env", async () => {
@@ -148,19 +151,27 @@ describe("ListsModule", () => {
 
 		it("builds the lists queue with the configured concurrency", async () => {
 			// Prova pelo COMPORTAMENTO, não lendo campo privado: com concorrência 2,
-			// duas tarefas devem começar e a terceira esperar.
-			const moduleRef = await withConfig({ MAX_ACTIVE_LISTS: 3, RUN_LISTS_CONCURRENCY: 2 });
-			const queue = moduleRef.get<BackgroundScheduler>(LISTS_SCHEDULER);
-
+			// dois pedidos devem começar e o terceiro esperar. Sem
+			// `QUEUE_REDIS_URL` no config falso, a fila é a em memória.
 			let started = 0;
-			const neverEnds = () =>
-				new Promise<void>(() => {
-					started++;
-				});
+			const runner = {
+				run: vi.fn(
+					() =>
+						new Promise<void>(() => {
+							started++;
+						}),
+				),
+			};
+			const moduleRef = await withConfig(
+				{ MAX_ACTIVE_LISTS: 3, RUN_LISTS_CONCURRENCY: 2 },
+				runner,
+			);
+			const queue = moduleRef.get(ListsRunQueue);
+			vi.spyOn(console, "log").mockImplementation(() => {});
 
-			queue.schedule(neverEnds);
-			queue.schedule(neverEnds);
-			queue.schedule(neverEnds);
+			for (const steam_id of ["1", "2", "3"]) {
+				await queue.enqueue({ steam_id, checkGamivoOffer: true });
+			}
 			await new Promise((resolve) => setTimeout(resolve, 10));
 
 			expect(started).toBe(2);

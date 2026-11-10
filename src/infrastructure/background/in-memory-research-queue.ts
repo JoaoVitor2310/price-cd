@@ -7,7 +7,7 @@ import type {
 	ResearchQueue,
 	ResearchQueueStatus,
 } from "@/application/games/ports/research-queue.port.js";
-import type { BackgroundScheduler } from "@/application/shared/ports/background-scheduler.port.js";
+import type { BackgroundScheduler } from "@/infrastructure/background/limited-concurrency.scheduler.js";
 
 /**
  * A fila da pesquisa sem armazenamento: o comportamento de antes do ADR 0009.

@@ -81,7 +81,7 @@ This allows the tool to be publicly accessible for demonstration while keeping t
 - **Price cache** — the AllKeyShop price of each game is kept in Redis for 1 hour (`PRICE_CACHE_TTL_SECONDS`), keyed by normalised name + region + edition, so a game that shows up in several supplier lists is scraped once. Only the raw best price is cached — the preset's "require a Gamivo offer" cut is applied afterwards, in the domain — and only a definitive "not on AllKeyShop" is cached as a miss, never a transient failure. Written game by game as AllKeyShop answers, not at the end of the batch: a research interrupted by a deploy resumes from the cache, re-scraping only what was missing. Fail-open: with Redis down, every read is a miss and the search carries on. See `docs/adr/0008-cache-de-preco-em-redis.md`
 - **Durable research queue** — authenticated research is a BullMQ job on the same Redis as the price cache, in database 1 (the cache uses 0), with the server configured as the queue needs it (AOF on, `noeviction`), stored before the `202` is sent. On `SIGTERM` the job in progress goes back to the queue without spending an attempt and runs again on the next boot; a process that dies outright has its job recovered as stalled. Finished jobs are kept as an execution log (7 days completed, 30 days failed). See `docs/adr/0009-fila-duravel-da-pesquisa.md`
 - **Signed result webhook** — a caller that sends `webhook_url` is told the outcome (`trade_created` with the Trade uuid, `no_trade`, or `failed` with its kind) once the inventory system answered. The body is signed with HMAC-SHA256 (the secret never travels), only hosts in an allowlist are called (the URL comes from the request, and the service sits inside the internal network), and delivery is a second BullMQ queue retrying for ~24 hours. One result per `request_uuid`. See `docs/adr/0010-webhook-do-resultado-da-pesquisa.md`
-- **Async background jobs** — the `lists` and supplier-discovery flows still use `LimitedConcurrencyScheduler`, an in-process queue with configurable concurrency; on completion the Trade is created in the inventory system (there is no callback to the caller)
+- **Durable `lists` and supplier-discovery queues** — the same durability as research, each flow on its own BullMQ queue in database 1 (`lists`, with `RUN_LISTS_CONCURRENCY`; `suppliers`, one at a time), so a long run of one never holds the others. A job interrupted by `SIGTERM` goes back to the queue and runs again from the start; the flows check the cancellation signal before **starting** to create the Trade or to ask the inventory system whether to comment, so a run cut short before those calls never makes them. A call already in flight when the signal arrives still takes effect, and the rerun can repeat it — see the known windows in ADR 0009. There is no callback to the caller: a failure is recorded in the job (30 days) and logged
 - **Game name normalisation** — `clear-string.ts` normalises roman numerals, K-suffixed numbers, edition keywords, DLC tags, regional tags and special characters to maximise match accuracy across different naming conventions
 - **Full test suite** — unit, integration and contract tests with zero real network or browser calls; integration layer tests the full HTTP pipeline via supertest with vitest mocks at the infrastructure boundary
 - **CI/CD** — GitHub Actions runs the full test suite on every pull request; merging to `main` builds the Docker image in CI, publishes it to GHCR (`ghcr.io/joaovitor2310/price-cd`) and triggers a deploy over SSH that only pulls and restarts the container — the VPS never compiles anything
@@ -138,7 +138,7 @@ src/
 │   └── suppliers/     #   HaveListing parsing
 ├── infrastructure/    # Concrete adapters implementing port interfaces
 │   ├── games/         #   AllKeyShopPriceFetcher, RedisPriceCache, HttpGameTradeImporter, HttpTradeWithOfferCreator
-│   ├── background/    #   BullmqResearchQueue (+ its job payload), BullmqWebhookQueue, the shared queue parts (ResumableBullmqWorker, connection log, BullMQ clients, ioredis connections), in-memory versions of both, LimitedConcurrencyScheduler
+│   ├── background/    #   BullmqResearchQueue (+ its job payload), BullmqWebhookQueue, BullmqJobQueue for `lists` and `suppliers` (+ their job payloads), the shared queue parts (ResumableBullmqWorker, connection log, BullMQ clients, ioredis connections), in-memory versions, LimitedConcurrencyScheduler
 │   ├── webhooks/      #   HttpWebhookSender, the HMAC signature and the webhook body
 │   ├── browser/       #   SharedBrowserSession, SuppliersBrowserSession
 │   ├── bump/          #   PuppeteerSteamTradesBumper
@@ -411,7 +411,12 @@ Returns `202 Accepted` immediately:
 { "success": true, "status": "queued" }
 ```
 
-The crawl and pricing run in the background and the Trade is created in the inventory system when they finish. There is **no callback** to the caller, and a failure during background processing is currently only logged — see `docs/IMPROVEMENTS.md`.
+The request is stored in a durable queue before the `202` is sent; the crawl and pricing run in the background and the Trade is created in the inventory system when they finish. There is **no callback** to the caller, and a failure during background processing is only recorded in the queue's job and logged — see `docs/IMPROVEMENTS.md`.
+
+**Response** — `500`, when the queue cannot store the request (its Redis is down), in this route's legacy shape:
+```json
+{ "success": false, "error": "Internal server error.", "details": "<message>" }
+```
 
 </details>
 
@@ -424,11 +429,11 @@ No request body. Requires `STEAMTRADES_SESSION`, `SISTEMA_ESTOQUE_URL` and `EXTE
 ```json
 { "success": true, "status": "queued" }
 ```
-Returns as soon as the scan is queued — scanning up to 100 SteamTrades pages per search term — the TF2 variants plus `paypal`, `pp`, `euro`, `dollar`, `dolar`, `usdt`, `€` and `$` (the listing search is already filtered server-side) and researching prices per topic can take minutes. Runs in the background; eligible suppliers are commented on directly on SteamTrades once the Sistema Estoque approves. The comment states the offer in the list's offer currency — TF2 keys, else dollars, else euros (PayPal counts as euros) — and the Sistema Estoque is the one that computes and converts it. A failure during background processing is currently only logged.
+Returns as soon as the scan is queued — scanning up to 100 SteamTrades pages per search term — the TF2 variants plus `paypal`, `pp`, `euro`, `dollar`, `dolar`, `usdt`, `€` and `$` (the listing search is already filtered server-side) and researching prices per topic can take minutes. Runs in the background; eligible suppliers are commented on directly on SteamTrades once the Sistema Estoque approves. The comment states the offer in the list's offer currency — TF2 keys, else dollars, else euros (PayPal counts as euros) — and the Sistema Estoque is the one that computes and converts it. The request is stored in a durable queue before the `202`; a request made while another scan is waiting or running is absorbed by it (same `202`, no second scan). A failure during background processing is only recorded in the queue's job and logged.
 
-**Response** — `500`, when required env vars are missing:
+**Response** — `500`, when required env vars are missing, or when the queue cannot store the request (its Redis is down):
 ```json
-{ "error": "<missing env var message>" }
+{ "error": "<message>" }
 ```
 
 </details>

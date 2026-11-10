@@ -34,7 +34,6 @@ vi.mock("@/infrastructure/games/http-game-trade-importer.js", () => ({
 }));
 vi.mock("@/infrastructure/background/limited-concurrency.scheduler.js", () => ({
 	LimitedConcurrencyScheduler: vi.fn(asConstructor(schedulerDouble)),
-	createLimitedConcurrencySchedulerFromEnv: vi.fn(schedulerDouble),
 }));
 vi.mock("@/infrastructure/lists/fetch-list-topic.js", () => ({
 	fetchListTopic: vi.fn(listTopicFetcherDouble),

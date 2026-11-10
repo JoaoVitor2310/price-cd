@@ -168,6 +168,41 @@ describe("ResumableBullmqWorker", () => {
 			await expect(processing).resolves.toBeUndefined();
 		});
 
+		it("returns every job in progress, with concurrency above 1", async () => {
+			// Com `RUN_LISTS_CONCURRENCY` 2, dois jobs rodam ao mesmo tempo: devolver
+			// só um deixaria o outro preso como ativo até o lock expirar.
+			const handlers = [pendingHandler(), pendingHandler()];
+			let call = 0;
+			const handle = vi.fn<ResumableJobHandler>((job, signal) =>
+				handlers[call++].handle(job, signal),
+			);
+			const { consumer, process, job } = setup(handle);
+			vi.spyOn(console, "log").mockImplementation(() => {});
+			const one = { ...job(), id: "1" };
+			const two = { ...job(), id: "2" };
+
+			const processing = [process(one, "lock-1"), process(two, "lock-2")];
+			await consumer.stop();
+
+			expect(handle.mock.calls.every(([, signal]) => signal.aborted)).toBe(
+				true,
+			);
+			expect(one.moveToDelayed).toHaveBeenCalledWith(
+				expect.any(Number),
+				"lock-1",
+			);
+			expect(two.moveToDelayed).toHaveBeenCalledWith(
+				expect.any(Number),
+				"lock-2",
+			);
+
+			for (const handler of handlers)
+				handler.finish(new Error("Target closed"));
+			for (const result of processing) {
+				await expect(result).rejects.toBeInstanceOf(DelayedError);
+			}
+		});
+
 		it("returns a job picked after it began, without running it", async () => {
 			const { consumer, process, job, handle } = setup();
 			await consumer.stop();

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SEARCH_PRESETS } from "@/domain/games/search-presets.js";
+import { JobCancelledError } from "@/application/shared/cancellation.js";
 import { FindNewSuppliersUseCase } from "@/application/suppliers/use-cases/find-new-suppliers.use-case.js";
 import type { TradePaginator } from "@/application/suppliers/ports/trade-paginator.port.js";
 import type { TopicScraper } from "@/application/suppliers/ports/topic-scraper.port.js";
@@ -563,5 +564,58 @@ describe("FindNewSuppliersUseCase", () => {
         await useCase.execute();
 
         expect(input.scraper.scrape).toHaveBeenCalledTimes(1);
+    });
+
+    // --- cancelamento (desligamento do serviço, job de volta à fila) ---
+
+    describe("cancelled by the shutdown", () => {
+        it("does not scan a single page with the signal already aborted", async () => {
+            const { deps, useCase } = build();
+
+            await expect(useCase.execute({ aborted: true })).rejects.toBeInstanceOf(JobCancelledError);
+            expect(deps.paginator.getTopicsFromPage).not.toHaveBeenCalled();
+        });
+
+        it("never asks the Sistema Estoque once the price search ended under a shutdown", async () => {
+            // O Estoque grava `last_commented_at` ao responder `should_comment:
+            // true`: perguntar sem poder comentar perderia o comentário.
+            const signal = { aborted: false };
+            const { deps, useCase } = build({
+                gameSearcher: {
+                    search: vi.fn(async () => {
+                        signal.aborted = true;
+                        return makePricedGames();
+                    }),
+                },
+            });
+
+            await expect(useCase.execute(signal)).rejects.toBeInstanceOf(JobCancelledError);
+            expect(deps.profitabilityChecker.evaluate).not.toHaveBeenCalled();
+            expect(deps.commentPoster.post).not.toHaveBeenCalled();
+        });
+
+        it("stops at the next topic instead of failing every remaining one", async () => {
+            // Com o browser fechando, cada tópico restante falharia e seria só
+            // logado: o cancelamento não pode ser engolido como falha de tópico.
+            const signal = { aborted: false };
+            const { deps, useCase } = build({
+                paginator: {
+                    getTopicsFromPage: vi.fn()
+                        .mockResolvedValueOnce([makeTopicRef("ABC"), makeTopicRef("DEF"), makeTopicRef("GHI")])
+                        .mockResolvedValue([]),
+                },
+                scraper: {
+                    scrape: vi.fn(async () => {
+                        signal.aborted = true;
+                        throw new Error("Target closed");
+                    }),
+                },
+            });
+            const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+
+            await expect(useCase.execute(signal)).rejects.toBeInstanceOf(JobCancelledError);
+            expect(deps.scraper.scrape).toHaveBeenCalledTimes(1);
+            logged.mockRestore();
+        });
     });
 });

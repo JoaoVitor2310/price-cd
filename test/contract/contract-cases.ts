@@ -56,8 +56,9 @@ export const CONTRACT_SECRET = "contract-secret";
 export const CONTRACT_BOOM = "__contract_boom__";
 
 /**
- * Nome de jogo que faz o dublê da fila da pesquisa recusar o pedido, como o
- * adapter real faz com o Redis da fila fora (`doubles.ts`, ADR 0009).
+ * Nome de jogo (ou `steam_id`, no Reabastecimento) que faz o dublê da fila
+ * recusar o pedido, como o adapter real faz com o Redis da fila fora
+ * (`doubles.ts`, ADR 0009).
  */
 export const CONTRACT_QUEUE_DOWN = "__contract_queue_down__";
 
@@ -537,6 +538,18 @@ export const CONTRACT_CASES: ContractCase[] = [
 	{
 		route: "/api/lists/run",
 		method: "post",
+		name: "queue unavailable returns 500 instead of a 202 for a request that was not stored",
+		body: { steam_id: CONTRACT_QUEUE_DOWN },
+		expectStatus: 500,
+		expectBody: {
+			success: false,
+			error: "Internal server error.",
+			details: "Lists queue unavailable: Redis is not connected",
+		},
+	},
+	{
+		route: "/api/lists/run",
+		method: "post",
 		name: "empty steam_id returns 400 with the message in `data`",
 		body: { steam_id: "" },
 		expectStatus: 400,
@@ -568,6 +581,16 @@ export const CONTRACT_CASES: ContractCase[] = [
 		body: {},
 		expectStatus: 202,
 		expectBody: { success: true, status: "queued" },
+	},
+	{
+		route: "/api/suppliers/find-new",
+		method: "post",
+		name: "queue unavailable returns 500 with NO success field, instead of a 202 for a request that was not stored",
+		env: { CONTRACT_QUEUE_DOWN: "Suppliers" },
+		expectStatus: 500,
+		expectBody: {
+			error: "Suppliers queue unavailable: Redis is not connected",
+		},
 	},
 
 	// ---------------------------------------------------------------- 500

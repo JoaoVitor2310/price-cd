@@ -1,12 +1,7 @@
 /**
- * Tokens do módulo `suppliers`.
- *
- * Terceira fila do sistema, com token próprio pelo mesmo motivo das outras duas
- * (`lists.tokens.ts`): uma varredura longa do SteamTrades não pode competir por
- * concorrência com o reabastecimento nem com a pesquisa manual. Concorrência 1
- * — o scraping já é serializado por um único browser.
+ * Tokens do módulo `suppliers`. A fila não tem token: a porta
+ * `SupplierDiscoveryQueue` é `abstract class` e serve de token.
  */
-export const SUPPLIERS_SCHEDULER = Symbol("SUPPLIERS_SCHEDULER");
 
 /** O runner que a fila executa: injeta o cookie, varre, e limpa no `finally`. */
 export const SUPPLIERS_RUNNER = Symbol("SUPPLIERS_RUNNER");

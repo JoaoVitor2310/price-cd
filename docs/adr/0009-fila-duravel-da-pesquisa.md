@@ -8,7 +8,7 @@
 
 A `BackgroundScheduler` recebe uma closure (`schedule(task: () => Promise<void>)`), e uma closure não sai do processo. A pesquisa ganhou uma porta própria, `ResearchQueue.enqueue(request)`, que recebe o `ResearchGamesRequest`, já só dado (critérios resolvidos, sem dependência). O worker que consome a fila chama o mesmo `ResearchGamesRunner` de antes. O use case de pesquisa não sabe que a fila existe.
 
-`lists` e `suppliers` continuam na `BackgroundScheduler` em memória: o pedido do chatbot é só sobre a pesquisa, e migrá-los é outro PR (`docs/IMPROVEMENTS.md`).
+`lists` e `suppliers` ficaram na `BackgroundScheduler` em memória neste primeiro passo, e migraram depois pela mesma regra: ver "Reabastecimento e Descoberta" abaixo. A `BackgroundScheduler` saiu da Application; o que sobrou dela é o motor das filas em memória, em `infrastructure/`.
 
 ## Um Redis só, com a configuração da fila
 
@@ -66,11 +66,13 @@ Tudo em `infrastructure/background/` — a Application só conhece a porta `Rese
 - `bullmq-connections.ts`: as conexões ioredis, a reconexão com teto e o fechamento delas junto com a `Queue` (`closeQueueAndConnections`).
 - `src/lib/with-timeout.ts`: o teto de tempo de uma promessa, que o Node não tem pronto (`AbortSignal.timeout()` só serve a quem aceita `signal`).
 
-`resumable-bullmq-worker.ts`, `bullmq-connection-log.ts`, `bullmq-clients.ts` e `bullmq-connections.ts` não falam de pesquisa: são o que as filas de `lists` e `suppliers` vão reaproveitar. A fila de webhooks (ADR 0010) usa o log de conexão e o fechamento, mas não o `ResumableBullmqWorker`: entregar leva segundos, e o desligamento dela espera a entrega em vez de devolvê-la.
+- `bullmq-job-queue.ts`: a fila dos jobs longos sem nada de pesquisa — o Reabastecimento e a Descoberta —, com `lists-run-job-payload.ts` e `supplier-discovery-job-payload.ts` como formato persistido de cada um.
+
+`resumable-bullmq-worker.ts`, `bullmq-connection-log.ts`, `bullmq-clients.ts` e `bullmq-connections.ts` não falam de pesquisa: são o que a fila da pesquisa e a `BullmqJobQueue` compartilham. A fila de webhooks (ADR 0010) usa o log de conexão e o fechamento, mas não o `ResumableBullmqWorker`: entregar leva segundos, e o desligamento dela espera a entrega em vez de devolvê-la.
 
 ## Registro das execuções
 
-Jobs concluídos ficam 7 dias e falhos 30 dias no Redis, com o motivo da falha (`failedReason`). A retenção é por idade, não por contagem, para que uma rajada de pedidos não apague o histórico. Consultar é com `redis-cli` ou com qualquer painel de BullMQ apontado para o Redis da fila. Ainda não há painel no price-cd: é o item 10 do `docs/IMPROVEMENTS.md` (Bull Board, somente leitura — um *retry* pelo painel duplicaria a Trade).
+Jobs concluídos ficam 7 dias e falhos 30 dias no Redis, com o motivo da falha (`failedReason`). A retenção é por idade, não por contagem, para que uma rajada de pedidos não apague o histórico. Consultar é com `redis-cli` ou com qualquer painel de BullMQ apontado para o Redis da fila. Ainda não há painel no price-cd: é o item 9 do `docs/IMPROVEMENTS.md` (Bull Board, somente leitura — um *retry* pelo painel duplicaria a Trade).
 
 ## Por que BullMQ 5 e não 6
 
@@ -82,6 +84,23 @@ A 6 saiu em julho de 2026 e passou de 40 patches em três meses. No build ESM de
 - **Fila no Sistema Estoque (tabela + polling):** o Estoque tem banco, mas a fila guarda o pedido do price-cd, critérios de pesquisa incluídos. Seria detalhe de execução do price-cd vazando para o sistema principal.
 - **Persistir a fila em memória num arquivo:** reinventaria lock, retry e recuperação de job travado.
 - **`@nestjs/bullmq`:** acopla o worker a decorators do Nest. Aqui o adapter vive em `infrastructure/` e implementa uma porta da Application, como o resto.
+
+## Reabastecimento e Descoberta
+
+`POST /api/lists/run` e `POST /api/suppliers/find-new` tinham o mesmo problema: um `202` que um deploy desfazia. Cada um ganhou uma porta que recebe dado (`ListsRunQueue`, `SupplierDiscoveryQueue`) e uma fila BullMQ própria no banco 1 (`lists`, `suppliers`), separadas para uma execução longa de uma não segurar as outras.
+
+- **Uma fila genérica, não três cópias.** As duas não têm o que a da pesquisa tem (pedido repetido por `requestUuid`, aviso de `failed`, estado no health), então são o mesmo `BullmqJobQueue<T>`, parametrizado pelo formato persistido de cada uma. O desligamento ordenado é o do `ResumableBullmqWorker`, o mesmo da pesquisa.
+- **Onde parar.** O sinal de cancelamento chega aos use cases de execução, e cada um para antes do efeito que não pode repetir. O Reabastecimento para antes de abrir a sessão do AllKeyShop e antes de criar a Trade. A Descoberta para a cada página, a cada tópico e **antes de pedir a decisão ao Estoque**, porque o Estoque grava `last_commented_at` ao responder `should_comment: true`: perguntar e não comentar perderia o comentário. O `catch` por tópico repassa o cancelamento; sem isso, com o browser fechando, o laço falharia tópico a tópico até o fim.
+- **Concorrência.** `lists` usa `RUN_LISTS_CONCURRENCY` como concorrência do worker; por isso o `ResumableBullmqWorker` acompanha vários jobs ativos e devolve todos. `suppliers` é 1.
+- **Pedido da Descoberta.** A varredura não tem parâmetro; o job guarda `requestedAt`, que mostra quanto ele esperou.
+- **Deduplicação só na Descoberta.** A varredura não tem parâmetro, então um pedido feito com outra esperando ou rodando é o mesmo pedido: a `deduplication` da BullMQ, sem `ttl`, o absorve até o job concluir ou falhar, e quem pediu recebe o mesmo `202`. Sem isso, cliques repetidos empilhariam varreduras com a mesma conta do SteamTrades, agora sobrevivendo ao restart. Um `jobId` fixo não serviria: a BullMQ ignora o `add` enquanto o job existe, inclusive concluído, e seria preciso apagar o registro das execuções. O Reabastecimento não deduplica: dois pedidos são dois fornecedores, ou o mesmo pedido de propósito. A fila em memória (sem `QUEUE_REDIS_URL`, só fora de produção) não deduplica: em dev, cliques repetidos empilham varreduras.
+- **Conexões próprias.** Cada fila tem as duas conexões dela: o comando bloqueante do worker de uma não segura o de outra. O health continua pingando só a da pesquisa, que é o mesmo servidor.
+- **Contrato.** Com o Redis da fila fora, as duas rotas respondem `500` no formato legado de cada uma, em vez de um `202` para um pedido que não foi guardado.
+- **Falha.** Fica registrada no job (30 dias) e no log; ninguém é avisado (item 4 do `docs/IMPROVEMENTS.md`).
+- **Janelas conhecidas.** A durabilidade troca "o pedido se perde" por "o pedido roda de novo", e rodar de novo tem custo:
+  - **Trade duplicada no Reabastecimento:** o deploy chega com o POST ao Estoque em andamento (a Trade nasce, o job já foi devolvido e roda de novo), ou o processo morre (OOM, SIGKILL) depois da Trade e antes de o job concluir (volta como travado e roda de novo; o limite de 2 travamentos é uma repetição implícita). O mesmo vale para a pesquisa, e só a idempotência do Estoque fecha (item 21 do `docs/IMPROVEMENTS.md`).
+  - **Comentário perdido na Descoberta:** o desligamento chega com a consulta ao Estoque em andamento. O Estoque grava `last_commented_at` ao responder `should_comment: true`, o browser fecha antes do comentário, e a reexecução recebe `false`. A verificação antes da consulta só impede perguntar **depois** do sinal; a janela é a duração de uma chamada HTTP, aceita.
+  - **Chromium depois do cleanup:** nos dois casos acima o job segue rodando depois de devolvido, e as sessões de browser reabrem o Chromium se alguém pedir uma depois do desligamento (item 10 do `docs/IMPROVEMENTS.md`).
 
 ## Revê o ADR 0001 num ponto
 

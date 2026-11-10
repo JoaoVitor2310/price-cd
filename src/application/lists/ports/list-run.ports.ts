@@ -1,6 +1,7 @@
 import type { SupplierListRequest } from "@/schemas/list.schema.js";
 import type { ListTopic } from "@/domain/lists/list-topic.js";
 import type { FoundGames, SearchGamesRequest } from "@/application/games/game.types.js";
+import type { CancellationSignal } from "@/application/shared/cancellation.js";
 
 /**
  * Portas (interfaces): o caso de uso depende disso; a infraestrutura implementa.
@@ -31,10 +32,17 @@ export interface InactiveListNotifier {
 }
 
 /**
- * Porta para executar o fluxo principal das listas.
+ * Porta para executar o fluxo principal das listas. É o que a `ListsRunQueue`
+ * executa ao consumir um pedido.
+ *
+ * `signal` é a fila avisando que o pedido foi **devolvido** a ela (desligamento
+ * do serviço) e vai rodar de novo: `run` para antes de criar a Trade.
  */
 export interface RunListsRunner {
-	run(supplierListRequest: SupplierListRequest): Promise<void>;
+	run(
+		supplierListRequest: SupplierListRequest,
+		signal?: CancellationSignal,
+	): Promise<void>;
 }
 
 /**

@@ -77,6 +77,29 @@ export const schedulerDouble = () => {
 };
 
 /**
+ * Fila inerte do Reabastecimento ou da Descoberta: guarda o pedido e **não o
+ * executa**, pelo mesmo motivo do `schedulerDouble`.
+ */
+export const jobQueueDouble = (label: string) => {
+	const enqueued: unknown[] = [];
+	return {
+		enqueued,
+		enqueue: async (request: { steam_id?: string }) => {
+			// O mesmo erro do adapter real com o Redis fora (`bullmq-job-queue.ts`).
+			// A Descoberta não tem corpo, então o caso dela liga a recusa pelo
+			// `env` (`CONTRACT_QUEUE_DOWN` com o nome da fila).
+			if (
+				request.steam_id === CONTRACT_QUEUE_DOWN ||
+				process.env.CONTRACT_QUEUE_DOWN === label
+			) {
+				throw new Error(`${label} queue unavailable: Redis is not connected`);
+			}
+			enqueued.push(request);
+		},
+	};
+};
+
+/**
  * Fila da pesquisa inerte: guarda o pedido e **não o executa**, pelo mesmo
  * motivo do `schedulerDouble`. Responde `in-memory` no health, como a fila real
  * da suíte (que roda sem `QUEUE_REDIS_URL`).

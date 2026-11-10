@@ -1,11 +1,12 @@
 import type { GameTradeImporter } from "@/application/games/ports/game-trade-importer.port.js";
-import type {
-	CancellationSignal,
-	ResearchGamesRequest,
-} from "@/application/games/ports/research-games-runner.port.js";
+import type { ResearchGamesRequest } from "@/application/games/ports/research-games-runner.port.js";
 import type { TradeWithOfferCreator } from "@/application/games/ports/trade-with-offer-creator.port.js";
 import type { PriceGames } from "@/application/games/services/price-games.js";
 import { priceResearchGames } from "@/application/games/services/price-research-games.js";
+import {
+	type CancellationSignal,
+	JobCancelledError,
+} from "@/application/shared/cancellation.js";
 
 /**
  * Como terminou o pedido.
@@ -36,7 +37,7 @@ export class PriceResearchIncompleteError extends Error {
  * não derruba a pesquisa — os jogos restantes só viram falha de catálogo —, então
  * é preciso parar aqui, antes de criar uma Trade com a lista pela metade.
  */
-export class ResearchCancelledError extends Error {
+export class ResearchCancelledError extends JobCancelledError {
 	constructor() {
 		super("The research was cancelled by the shutdown");
 		this.name = "ResearchCancelledError";
