@@ -118,4 +118,36 @@ describe("HaveListing.parse", () => {
 		expect(HaveListing.parse("").priceableGames).toEqual([]);
 		expect(HaveListing.parse("   \n\n").sections).toEqual([]);
 	});
+
+	it("reports the header lines it took out", () => {
+		const listing = HaveListing.parse("Keys:\nHades\nGOG:\nRight and Down");
+
+		expect(listing.headers).toEqual(["Keys:", "GOG:"]);
+	});
+});
+
+describe("HaveListing.fromLines", () => {
+	it("reads a listing that arrived as names, the way a pasted .have does", () => {
+		// O pedido real do dev: o Fornecedor colou a Lista com os cabeçalhos dele.
+		const listing = HaveListing.fromLines([
+			"Woodle Tree Adventures",
+			"DLC(Steam Gifts):",
+			"PAYDAY 2: A Merry Payday Christmas Soundtrack",
+			"Keys:",
+			"Spec Ops: The Line",
+		]);
+
+		expect(listing.priceableGames).toEqual([
+			"Woodle Tree Adventures",
+			"PAYDAY 2: A Merry Payday Christmas Soundtrack",
+			"Spec Ops: The Line",
+		]);
+		expect(listing.headers).toEqual(["DLC(Steam Gifts):", "Keys:"]);
+	});
+
+	it("drops a GOG section sent as names too", () => {
+		expect(
+			HaveListing.fromLines(["Hades", "GOG:", "Right and Down"]).priceableGames,
+		).toEqual(["Hades"]);
+	});
 });

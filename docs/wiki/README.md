@@ -31,6 +31,12 @@ O que isso significa na prática:
 
 Para forçar preços novos na hora (por exemplo, depois de corrigir a busca), alguém com acesso ao servidor limpa o cache. O comando está no `README.md` da raiz.
 
+## Acompanhar o que está na fila
+
+As pesquisas, os Reabastecimentos, as Descobertas e os avisos ao chatbot passam por filas. O painel das filas, no endereço `/api/admin/queues` do price-cd, mostra o que está esperando, rodando, concluído ou falho, e o motivo de cada falha. Pede usuário e senha, e só existe se o servidor estiver configurado com eles.
+
+O painel só olha: não dá para repetir, apagar ou adiantar nada por ele. Repetir uma pesquisa que já criou a Trade criaria outra Trade igual.
+
 ## Termos usados nessa wiki
 
 - **Fornecedor** — pessoa no SteamTrades disposta a trocar jogos por TF2 Keys, PayPal, euro ou dólar. Não precisa já ter negociado com a gente antes pra ser chamada assim.

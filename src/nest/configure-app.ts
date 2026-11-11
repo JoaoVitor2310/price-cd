@@ -2,6 +2,7 @@ import path from "node:path";
 import { ConfigService } from "@nestjs/config";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import type { Env } from "@/config/env.schema.js";
+import { QueueDashboard } from "@/nest/queue-dashboard/queue-dashboard.js";
 
 /**
  * Configuração de bootstrap compartilhada entre `src/main.ts` e os testes.
@@ -24,6 +25,10 @@ export function configureNestApp(app: NestExpressApplication): void {
 	// que faz `GET /` servir `public/index.html` em vez do handler de autoria.
 	app.useStaticAssets(path.join(process.cwd(), "public"));
 	app.setGlobalPrefix("api", { exclude: ["/"] });
+
+	// O painel das filas (ADR 0011) é um router Express, não uma rota de
+	// controller: montado aqui para o `main.ts` e os testes terem o mesmo.
+	app.get(QueueDashboard).mount(app);
 
 	// Equivalente ao `server.setTimeout()` do `server.ts`: scraping de uma lista
 	// grande passa fácil do default de 2 minutos do Node.

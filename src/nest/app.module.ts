@@ -7,12 +7,14 @@ import { AppConfigModule } from "@/nest/config/config.module.js";
 import { GamesModule } from "@/nest/games/games.module.js";
 import { HealthController } from "@/nest/health/health.controller.js";
 import { ListsModule } from "@/nest/lists/lists.module.js";
+import { QueueDashboardModule } from "@/nest/queue-dashboard/queue-dashboard.module.js";
 import { SuppliersModule } from "@/nest/suppliers/suppliers.module.js";
 
 /**
  * A raiz do app — o composition root do processo inteiro.
  *
- * Serve `games`, `lists` e `suppliers`, mais o agendador de bump.
+ * Serve `games`, `lists` e `suppliers`, mais o agendador de bump e o painel das
+ * filas.
  *
  * O filter é registrado como provider via `APP_FILTER`, não com
  * `app.useGlobalFilters()`. A diferença importa: registrado assim ele participa
@@ -37,6 +39,7 @@ import { SuppliersModule } from "@/nest/suppliers/suppliers.module.js";
 		GamesModule,
 		ListsModule,
 		SuppliersModule,
+		QueueDashboardModule,
 	],
 	controllers: [HealthController],
 	providers: [{ provide: APP_FILTER, useClass: AllExceptionsFilter }],

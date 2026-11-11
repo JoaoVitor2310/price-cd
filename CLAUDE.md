@@ -91,6 +91,7 @@ src/
 ├── nest/                  # Apresentação + wiring: módulos, controllers, filters, pipes
 │   ├── common/            # AllExceptionsFilter, ZodValidationPipe
 │   ├── browser/           # BrowserModule — dono das sessões de Chromium
+│   ├── queue-dashboard/   # Painel das filas (Bull Board) + Basic Auth, montado pelo `configureNestApp`
 │   └── bump/              # BumpScheduler (@Interval + hooks de ciclo de vida)
 ├── schemas/               # Schemas Zod + helpers de parse
 ├── application/<módulo>/  # Camada de aplicação, um diretório por subdomínio
@@ -134,6 +135,7 @@ Segue uma arquitetura hexagonal leve: o subdomínio `lists` declara portas expl�
 | SWC | Transform dos testes (`unplugin-swc`) e do `npm run dev` (`@swc-node/register`). **Obrigatório**: o esbuild do Vitest e o `tsx` não emitem `design:paramtypes`, e sem essa metadata o Nest injeta `undefined` sem erro no boot — ver ADR 0004 |
 | Redis 7 (servidor, `redis:7.4-alpine`) + `redis` 6 (cliente node-redis — numeração independente da do servidor) | Cache de preço do AllKeyShop (ADR 0008). Opcional: sem `REDIS_URL` o app usa um no-op |
 | BullMQ 5 + `ioredis` 5, sobre o mesmo Redis 7 do cache (banco 1, AOF) | Filas duráveis da pesquisa autenticada, do Reabastecimento e da Descoberta (ADR 0009) e fila `webhooks`, a entrega do Resultado da pesquisa (ADR 0010). Obrigatória em produção (`QUEUE_REDIS_URL`); fora dela, ausente é fila em memória |
+| Bull Board (`@bull-board/api` + `@bull-board/express` 9) | Painel das filas em `/api/admin/queues` (ADR 0011): as quatro filas do banco 1, **somente leitura** (`readOnlyMode`, aplicado no servidor — escrita responde 405), atrás de Basic Auth (`QUEUE_DASHBOARD_USER`/`QUEUE_DASHBOARD_PASSWORD`, comparação em tempo constante). Sem as credenciais ou sem `QUEUE_REDIS_URL`, não é montado (404). Router Express via `app.use`, não controller — por isso o prefixo global não se aplica e o caminho é completo. Conexão de leitura própria, um `Queue` por nome de `queue-names.ts`. O `@bull-board/nestjs` não entrou: exige `@nestjs/bull-shared` |
 | Xvfb (Docker) | Display virtual para Chromium headed em containers Linux |
 
 ### Padrões de Concorrência
@@ -168,7 +170,7 @@ O módulo `clear-string.ts` é a camada central de normalização usada em todo 
 ### Tratamento de Erros
 
 - `ZodError` (400) e `Error` genérico (500) são tratados num arquivo só, `src/nest/common/all-exceptions.filter.ts`, registrado via `APP_FILTER` (provider do container, não `useGlobalFilters`, para poder injetar dependências). Os controllers Express faziam esse `try/catch` cinco vezes.
-- O formato de erro **não é uniforme entre as rotas**: ficou congelado durante a migração para que qualquer diferença do app Nest fosse bug, não melhoria acidental. `test/contract/contract-cases.ts` continua travando o contrato como ele é. Uniformizar é o item 16 do `docs/IMPROVEMENTS.md` — PR próprio, agora desbloqueado.
+- O formato de erro **não é uniforme entre as rotas**: ficou congelado durante a migração para que qualquer diferença do app Nest fosse bug, não melhoria acidental. `test/contract/contract-cases.ts` continua travando o contrato como ele é. Uniformizar é o item 17 do `docs/IMPROVEMENTS.md` — PR próprio, agora desbloqueado.
 - Funções de service retornam `null` em falhas individuais de jogo (não fatais), permitindo que o batch continue.
 - **`biome check --write` quebra a injeção de dependência.** A regra `style/useImportType` converte `import { SharedBrowserSession }` em `import type { ... }`, o import é apagado na compilação, e o `design:paramtypes` do decorator passa a registrar nada — o Nest injeta `undefined` **sem erro no boot**, exatamente o modo de falha do ADR 0004. Aconteceu nos quatro adapters que recebem sessão de browser pelo construtor. `biome.json` desliga a regra em `src/infrastructure/**` e `src/nest/**`; os testes de módulo (`test/integration/nest/*.module.test.ts`) são o que pega se alguém religar.
 - **Variável com default no schema não é configurável pelo `.env` se o dotenv chegar tarde.** `ConfigModule.forRoot()` valida o ambiente no **import** do arquivo, e import de ESM é hoisted: por isso `src/main.ts` faz `import "dotenv/config"` antes de qualquer outro import, e `test/unit/config/dotenv-order.test.ts` trava essa ordem. Na suíte, o equivalente é `test/setup.ts` — `setupFiles` roda antes do grafo de imports. Era isso que fazia `BUMP_SCHEDULER_ENABLED=false` num `beforeAll` não desligar nada.

@@ -26,6 +26,7 @@ import {
 	LONG_JOB_MAX_STALLED_COUNT,
 	LONG_JOB_OPTIONS,
 } from "@/infrastructure/background/long-job-policy.js";
+import { RESEARCH_QUEUE_NAME } from "@/infrastructure/background/queue-names.js";
 import {
 	parseResearchJobPayload,
 	readResearchFailureTarget,
@@ -48,7 +49,8 @@ import { withTimeout } from "@/lib/with-timeout.js";
  * (`bullmq-clients.ts`) e as conexões ioredis (`bullmq-connections.ts`).
  */
 
-export const RESEARCH_QUEUE_NAME = "research";
+export { RESEARCH_QUEUE_NAME } from "@/infrastructure/background/queue-names.js";
+
 const RESEARCH_JOB_NAME = "research";
 
 /** Ping do health: Redis lento conta como fora. */

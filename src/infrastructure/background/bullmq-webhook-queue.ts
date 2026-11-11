@@ -18,6 +18,7 @@ import {
 	closeQueueAndConnections,
 	createBullmqConnections,
 } from "@/infrastructure/background/bullmq-connections.js";
+import { WEBHOOK_QUEUE_NAME } from "@/infrastructure/background/queue-names.js";
 import {
 	type HttpWebhookSender,
 	WebhookTargetNotAllowedError,
@@ -43,7 +44,8 @@ import { withTimeout } from "@/lib/with-timeout.js";
  *   (`webhookRetryDelayMs`). Desistir é registrado no job falho.
  */
 
-export const WEBHOOK_QUEUE_NAME = "webhooks";
+export { WEBHOOK_QUEUE_NAME } from "@/infrastructure/background/queue-names.js";
+
 const WEBHOOK_JOB_NAME = "research-result";
 
 const SECOND_MS = 1000;
@@ -276,9 +278,9 @@ export const createBullmqWebhookQueue = (
 	const queue = new Queue(WEBHOOK_QUEUE_NAME, {
 		connection: connections.producer,
 	});
-	queue.on("error", (error) =>
-		console.warn(`⚠️ [WEBHOOK] Queue error: ${errorMessage(error)}`),
-	);
+	// Pelo log de conexão, como as outras filas: com o Redis fora, uma linha por
+	// queda, não uma por comando que falha.
+	queue.on("error", (error) => connectionLog.down("queue", error));
 
 	return new BullmqWebhookQueue(
 		{
@@ -294,9 +296,7 @@ export const createBullmqWebhookQueue = (
 							webhookRetryDelayMs(attemptsMade),
 					},
 				});
-				worker.on("error", (error) =>
-					console.warn(`⚠️ [WEBHOOK] Worker error: ${errorMessage(error)}`),
-				);
+				worker.on("error", (error) => connectionLog.down("worker", error));
 				worker.on("completed", (job) =>
 					console.log(
 						`📨 [WEBHOOK] Delivered the result of request ${job.id}.`,

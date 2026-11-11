@@ -72,7 +72,7 @@ Tudo em `infrastructure/background/` — a Application só conhece a porta `Rese
 
 ## Registro das execuções
 
-Jobs concluídos ficam 7 dias e falhos 30 dias no Redis, com o motivo da falha (`failedReason`). A retenção é por idade, não por contagem, para que uma rajada de pedidos não apague o histórico. Consultar é com `redis-cli` ou com qualquer painel de BullMQ apontado para o Redis da fila. Ainda não há painel no price-cd: é o item 9 do `docs/IMPROVEMENTS.md` (Bull Board, somente leitura — um *retry* pelo painel duplicaria a Trade).
+Jobs concluídos ficam 7 dias e falhos 30 dias no Redis, com o motivo da falha (`failedReason`). A retenção é por idade, não por contagem, para que uma rajada de pedidos não apague o histórico. Consultar é pelo painel das filas em `/api/admin/queues` (ADR 0011: Bull Board, somente leitura — um *retry* pelo painel duplicaria a Trade) ou com `redis-cli` no banco 1.
 
 ## Por que BullMQ 5 e não 6
 
@@ -98,9 +98,9 @@ A 6 saiu em julho de 2026 e passou de 40 patches em três meses. No build ESM de
 - **Contrato.** Com o Redis da fila fora, as duas rotas respondem `500` no formato legado de cada uma, em vez de um `202` para um pedido que não foi guardado.
 - **Falha.** Fica registrada no job (30 dias) e no log; ninguém é avisado (item 4 do `docs/IMPROVEMENTS.md`).
 - **Janelas conhecidas.** A durabilidade troca "o pedido se perde" por "o pedido roda de novo", e rodar de novo tem custo:
-  - **Trade duplicada no Reabastecimento:** o deploy chega com o POST ao Estoque em andamento (a Trade nasce, o job já foi devolvido e roda de novo), ou o processo morre (OOM, SIGKILL) depois da Trade e antes de o job concluir (volta como travado e roda de novo; o limite de 2 travamentos é uma repetição implícita). O mesmo vale para a pesquisa, e só a idempotência do Estoque fecha (item 21 do `docs/IMPROVEMENTS.md`).
+  - **Trade duplicada no Reabastecimento:** o deploy chega com o POST ao Estoque em andamento (a Trade nasce, o job já foi devolvido e roda de novo), ou o processo morre (OOM, SIGKILL) depois da Trade e antes de o job concluir (volta como travado e roda de novo; o limite de 2 travamentos é uma repetição implícita). O mesmo vale para a pesquisa, e só a idempotência do Estoque fecha (item 22 do `docs/IMPROVEMENTS.md`).
   - **Comentário perdido na Descoberta:** o desligamento chega com a consulta ao Estoque em andamento. O Estoque grava `last_commented_at` ao responder `should_comment: true`, o browser fecha antes do comentário, e a reexecução recebe `false`. A verificação antes da consulta só impede perguntar **depois** do sinal; a janela é a duração de uma chamada HTTP, aceita.
-  - **Chromium depois do cleanup:** nos dois casos acima o job segue rodando depois de devolvido, e as sessões de browser reabrem o Chromium se alguém pedir uma depois do desligamento (item 10 do `docs/IMPROVEMENTS.md`).
+  - **Chromium depois do cleanup:** nos dois casos acima o job segue rodando depois de devolvido, e as sessões de browser reabrem o Chromium se alguém pedir uma depois do desligamento (item 11 do `docs/IMPROVEMENTS.md`).
 
 ## Revê o ADR 0001 num ponto
 

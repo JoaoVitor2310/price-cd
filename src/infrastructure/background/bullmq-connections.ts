@@ -86,6 +86,28 @@ export const createBullmqConnections = (
 };
 
 /**
+ * Uma conexão só de **leitura** das filas, para quem as inspeciona sem produzir
+ * nem consumir: o painel das filas (ADR 0011). Os `Queue` da BullMQ podem
+ * compartilhá-la, porque só fazem comandos não bloqueantes.
+ *
+ * Como a do produtor: fila offline desligada (com o Redis fora, o painel responde
+ * erro na hora em vez de pendurar a página) e reconexão com teto curto.
+ */
+export const createBullmqReaderConnection = (
+	url: string,
+	events: ConnectionEvents,
+): Redis => {
+	const connection = new Redis(url, {
+		enableOfflineQueue: false,
+		connectTimeout: CONNECT_TIMEOUT_MS,
+		retryStrategy: reconnectStrategy(PRODUCER_RECONNECT_CEILING_MS),
+	});
+	connection.on("error", (error) => events.down("connection", error));
+	connection.on("ready", () => events.up());
+	return connection;
+};
+
+/**
  * O `onApplicationShutdown` de toda fila: fecha a `Queue` e depois as conexões,
  * que a BullMQ não fecha por ter recebido prontas. Nunca lança — já fechada ou
  * Redis fora, não há nada a liberar, e o desligamento segue para os browsers.

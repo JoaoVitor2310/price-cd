@@ -101,6 +101,7 @@ This allows the tool to be publicly accessible for demonstration while keeping t
 | Price cache | Redis 7 server (`redis:7.4-alpine`) + `redis` 6 Node client (node-redis; its version line is independent of the server's) — optional, see `REDIS_URL` |
 | Research queue | BullMQ 5 + `ioredis`, on the same Redis 7 as the cache (database 1, AOF) — required in production, see `QUEUE_REDIS_URL` |
 | Result webhook | `node:crypto` HMAC-SHA256 + native `fetch`; delivery is a second BullMQ queue (`webhooks`) — see `WEBHOOK_ALLOWED_HOSTS` and `WEBHOOK_SIGNING_SECRET` |
+| Queue dashboard | Bull Board (`@bull-board/api` + `@bull-board/express`), read-only, Basic Auth — see `QUEUE_DASHBOARD_USER` and `QUEUE_DASHBOARD_PASSWORD` |
 | Testing | Vitest + Supertest |
 | Linting / Formatting | Biome |
 | Containerisation | Docker + Xvfb (headless Chromium in Linux containers) |
@@ -224,6 +225,7 @@ QUEUE_REDIS_TEST_URL=redis://127.0.0.1:6390/15 npx vitest run test/integration/q
 | `POST` | `/api/lists/run` | Async: crawl a Steam user's trade lists and run full analysis |
 | `POST` | `/api/suppliers/find-new` | Async, queued: scan SteamTrades for new suppliers offering games for TF2 keys, PayPal, euros or dollars |
 | `GET` | `/api/health` | Liveness probe, plus the price cache state |
+| `GET` | `/api/admin/queues` | Queue dashboard (Bull Board), read-only, behind Basic Auth — only when configured |
 
 <details>
 <summary><strong>POST /api/games/research — request body</strong></summary>
@@ -448,6 +450,17 @@ Returns as soon as the scan is queued — scanning up to 100 SteamTrades pages p
 `cache` is the price cache state: `up`, `down` (Redis configured but not answering) or `disabled` (no `REDIS_URL`). The response stays `200` when the cache is down — the app still searches, only slower — so a container healthcheck never restarts the app because of Redis. An external monitor that wants to know about a Redis outage should check this field.
 
 `queue` is the research queue state: `up`, `down` (queue Redis configured but not answering — authenticated research is refused with `500`) or `in-memory` (no `QUEUE_REDIS_URL`; only possible outside production). It does not change the `200` either: demo, `respond`, `lists` and supplier discovery keep working.
+
+</details>
+
+<details>
+<summary><strong>GET /api/admin/queues</strong></summary>
+
+The queue dashboard: [Bull Board](https://github.com/felixmosh/bull-board) over the four BullMQ queues (`research`, `webhooks`, `lists`, `suppliers`) — waiting, active, completed, failed and delayed jobs, with their payload, `failedReason` and stack trace. Open it in a browser; the page and its own API live under this path.
+
+- **Exists only when configured:** `QUEUE_REDIS_URL`, `QUEUE_DASHBOARD_USER` and `QUEUE_DASHBOARD_PASSWORD` (at least 16 characters). Otherwise the route answers `404`.
+- **HTTP Basic Auth:** without valid credentials, `401` with a `WWW-Authenticate: Basic` challenge.
+- **Read-only:** retry, promote, clean, add and pause are refused by the server with `405` — retrying a research or a restock that already called the inventory system would create a second Trade. See `docs/adr/0011-painel-das-filas.md`.
 
 </details>
 

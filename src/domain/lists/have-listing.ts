@@ -15,6 +15,11 @@ export type PlatformSection = {
  * (`GOG:`) e listam os jogos daquela loja abaixo dele. O price-cd só sabe
  * precificar keys da Steam: pesquisar um jogo de outra loja no AllKeyShop
  * devolve o preço do produto errado, então essas seções são descartadas.
+ *
+ * Vale também para uma Lista que chega pronta à pesquisa, como lista de nomes
+ * (`fromLines`, pelo `priceResearchGames`): quem cola o `.have` na interface web
+ * ou no chatbot traz os cabeçalhos junto (`Keys:`, `DLC(Steam Gifts):`), e um
+ * cabeçalho não é jogo.
  */
 export class HaveListing {
 	/**
@@ -48,12 +53,22 @@ export class HaveListing {
 	 */
 	private static readonly SECTION_HEADER = /^([^:]{1,40}):$/;
 
-	private constructor(readonly sections: readonly PlatformSection[]) {}
+	private constructor(
+		readonly sections: readonly PlatformSection[],
+		/** As linhas de cabeçalho como vieram, para o chamador logar o que ignorou. */
+		readonly headers: readonly string[],
+	) {}
+
+	/** A mesma leitura, para uma Lista que já chegou quebrada em linhas. */
+	static fromLines(lines: readonly string[]): HaveListing {
+		return HaveListing.parse(lines.join("\n"));
+	}
 
 	static parse(rawText: string): HaveListing {
 		const sections: PlatformSection[] = [];
 		let current: PlatformSection = { platform: null, games: [] };
 		sections.push(current);
+		const headers: string[] = [];
 
 		for (const rawLine of rawText.split("\n")) {
 			const line = rawLine.trim();
@@ -61,6 +76,7 @@ export class HaveListing {
 
 			const header = line.match(HaveListing.SECTION_HEADER);
 			if (header) {
+				headers.push(line);
 				current = { platform: header[1].trim(), games: [] };
 				sections.push(current);
 				continue;
@@ -71,6 +87,7 @@ export class HaveListing {
 
 		return new HaveListing(
 			sections.filter((section) => section.games.length > 0),
+			headers,
 		);
 	}
 
