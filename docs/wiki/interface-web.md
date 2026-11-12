@@ -30,6 +30,7 @@ Preço mínimo e Limite de preço ocupam uma linha inteira cada, nessa ordem, se
 |---|---|
 | Token interno informado | A tela confirma o recebimento na hora e libera o usuário; o processamento roda em segundo plano e a Trade é criada no Sistema Estoque ao final. Os campos de Steam ID e Título são limpos para a próxima lista |
 | Sem token (modo demonstração) | Processa só os 10 primeiros jogos e mostra o resultado na própria tela — nada é enviado ao Sistema Estoque. Aqui a tela fica aguardando, porque o resultado é exibido nela |
+| A lista colada traz os cabeçalhos do Fornecedor (ex.: `Keys:`, `DLC(Steam Gifts):`) | O cabeçalho é ignorado, não é pesquisado como jogo. Os jogos embaixo de `GOG:` também são ignorados, como na leitura de um tópico — o preço de key de outra loja é diferente e ainda não sabemos buscar |
 | Lista de jogos vazia | Erro, pede para preencher antes de enviar |
 | Falha durante o processamento em segundo plano | O usuário não é avisado — a Trade simplesmente não aparece no Sistema Estoque. O erro fica registrado apenas nos logs do servidor |
 

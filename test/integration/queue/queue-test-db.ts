@@ -2,7 +2,7 @@
  * O banco Redis de cada teste de fila contra Redis real, a partir de
  * `QUEUE_REDIS_TEST_URL`. Os testes fazem `FLUSHDB` no banco deles, e o Vitest
  * roda os arquivos em paralelo: cada arquivo pega um `offset` próprio (pesquisa
- * 0, webhook 1, `BullmqJobQueue` 2) para um não apagar os jobs do outro.
+ * 0, webhook 1, `BullmqJobQueue` 2, painel 3) para um não apagar os jobs do outro.
  *
  * Nunca devolve os bancos que o app usa — 0 é o cache de preço, 1 são as filas
  * (ADR 0009) —, mesmo que alguém aponte a variável para o Redis do dev: um

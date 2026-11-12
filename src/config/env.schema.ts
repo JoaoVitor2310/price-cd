@@ -230,6 +230,46 @@ const baseEnvSchema = z.object({
 		)
 		.optional(),
 
+	// ── Painel das filas (ADR 0011) ───────────────────────────────────────────
+	/**
+	 * Usuário e senha do painel das filas (Basic Auth em `/api/admin/queues`).
+	 * Os dois juntos, ou nenhum: sem eles o painel não é montado (404). O payload
+	 * dos jobs carrega listas de jogos e critérios, então o painel nunca fica
+	 * aberto pelo domínio público.
+	 *
+	 * Mínimo de 16 caracteres na senha: a rota é pública e o Basic Auth não tem
+	 * limite de tentativas. `openssl rand -hex 16` gera uma.
+	 */
+	// Vazio conta como ausente, como a linha em branco do `.env.example`. Sem `:`:
+	// o Basic Auth separa usuário e senha no primeiro dois-pontos, e um usuário
+	// com ele nunca conseguiria entrar.
+	QUEUE_DASHBOARD_USER: z
+		.string()
+		.trim()
+		.transform((value) => value || undefined)
+		.pipe(
+			z
+				.string()
+				.refine((value) => !value.includes(":"), {
+					message: "QUEUE_DASHBOARD_USER cannot contain ':'",
+				})
+				.optional(),
+		)
+		.optional(),
+	QUEUE_DASHBOARD_PASSWORD: z
+		.string()
+		.trim()
+		.transform((value) => value || undefined)
+		.pipe(
+			z
+				.string()
+				.min(16, {
+					message: "QUEUE_DASHBOARD_PASSWORD must have at least 16 characters",
+				})
+				.optional(),
+		)
+		.optional(),
+
 	// ── SteamTrades ───────────────────────────────────────────────────────────
 	STEAM_ID: optionalNonEmpty("STEAM_ID"),
 	/**
@@ -305,6 +345,24 @@ export const envSchema = baseEnvSchema.superRefine((env, ctx) => {
 			path: ["WEBHOOK_SIGNING_SECRET"],
 			message:
 				"WEBHOOK_SIGNING_SECRET is required when WEBHOOK_ALLOWED_HOSTS is set",
+		});
+	}
+
+	// Um sem o outro é configuração pela metade: o painel ficaria desligado sem
+	// ninguém perceber por quê.
+	if (
+		(env.QUEUE_DASHBOARD_USER === undefined) !==
+		(env.QUEUE_DASHBOARD_PASSWORD === undefined)
+	) {
+		ctx.addIssue({
+			code: "custom",
+			path: [
+				env.QUEUE_DASHBOARD_USER === undefined
+					? "QUEUE_DASHBOARD_USER"
+					: "QUEUE_DASHBOARD_PASSWORD",
+			],
+			message:
+				"QUEUE_DASHBOARD_USER and QUEUE_DASHBOARD_PASSWORD go together: set both, or neither",
 		});
 	}
 

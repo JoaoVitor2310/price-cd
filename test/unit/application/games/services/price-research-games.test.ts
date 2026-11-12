@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FoundGames } from "@/application/games/game.types.js";
 import type {
 	PopularityFetcher,
@@ -38,6 +38,10 @@ const request = (gameNames: string[]) => ({
 	},
 });
 
+afterEach(() => {
+	vi.restoreAllMocks();
+});
+
 describe("priceResearchGames", () => {
 	it("searches each name once", async () => {
 		const { popularity, priceGames } = setup([game("Hades")], []);
@@ -53,6 +57,78 @@ describe("priceResearchGames", () => {
 		await priceResearchGames(priceGames, request(["Hades", "Rust"]), 1);
 
 		expect(vi.mocked(popularity.fetch).mock.calls[0][0]).toEqual(["Hades"]);
+	});
+
+	describe("a List pasted with the supplier's section headers", () => {
+		it("never searches a header, and logs it", async () => {
+			const { popularity, priceGames } = setup([game("Hades")], []);
+			const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+			await priceResearchGames(priceGames, request(["Keys:", "Hades"]));
+
+			expect(vi.mocked(popularity.fetch).mock.calls[0][0]).toEqual(["Hades"]);
+			expect(log).toHaveBeenCalledWith(
+				'⏭️ [INFO] "Keys:" is a section header, not a game — ignored.',
+			);
+			log.mockRestore();
+		});
+
+		it("drops the games under GOG, and logs how many", async () => {
+			const { popularity, priceGames } = setup([game("Hades")], []);
+			const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+			await priceResearchGames(
+				priceGames,
+				request(["Hades", "GOG:", "Right and Down", "Wizorb"]),
+			);
+
+			expect(vi.mocked(popularity.fetch).mock.calls[0][0]).toEqual(["Hades"]);
+			expect(log).toHaveBeenCalledWith(
+				'⏭️ [INFO] 2 game(s) under "GOG" ignored — that platform cannot be priced yet.',
+			);
+			log.mockRestore();
+		});
+
+		it("reads the sections before removing repeated names, so no game changes section", async () => {
+			// Deduplicar antes tiraria o segundo `GOG:`, e Celeste cairia em `Keys`.
+			const { popularity, priceGames } = setup([game("Hades")], []);
+			vi.spyOn(console, "log").mockImplementation(() => {});
+
+			await priceResearchGames(
+				priceGames,
+				request(["GOG:", "Inside", "Keys:", "Hades", "GOG:", "Celeste"]),
+			);
+
+			expect(vi.mocked(popularity.fetch).mock.calls[0][0]).toEqual(["Hades"]);
+		});
+
+		it("keeps a game listed under GOG and under Steam, by its Steam entry", async () => {
+			const { popularity, priceGames } = setup([game("Hades")], []);
+			vi.spyOn(console, "log").mockImplementation(() => {});
+
+			await priceResearchGames(
+				priceGames,
+				request(["GOG:", "Hades", "Steam:", "Hades"]),
+			);
+
+			expect(vi.mocked(popularity.fetch).mock.calls[0][0]).toEqual(["Hades"]);
+		});
+
+		it("does not let headers and GOG games use up the demo limit", async () => {
+			const { popularity, priceGames } = setup([game("Hades")], []);
+			vi.spyOn(console, "log").mockImplementation(() => {});
+
+			await priceResearchGames(
+				priceGames,
+				request(["Keys:", "GOG:", "Inside", "Steam:", "Hades", "Celeste"]),
+				2,
+			);
+
+			expect(vi.mocked(popularity.fetch).mock.calls[0][0]).toEqual([
+				"Hades",
+				"Celeste",
+			]);
+		});
 	});
 
 	it("maps a priced game to the outgoing format, with null for what is missing", async () => {

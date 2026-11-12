@@ -16,6 +16,7 @@ import { createBullmqJobQueue } from "@/infrastructure/background/bullmq-job-que
 import { InMemoryJobQueue } from "@/infrastructure/background/in-memory-job-queue.js";
 import { LimitedConcurrencyScheduler } from "@/infrastructure/background/limited-concurrency.scheduler.js";
 import { parseListsRunJobPayload } from "@/infrastructure/background/lists-run-job-payload.js";
+import { LISTS_QUEUE_NAME } from "@/infrastructure/background/queue-names.js";
 import { GamesModule } from "@/nest/games/games.module.js";
 import { ListTopicModule } from "@/nest/lists/list-topic.module.js";
 import { ListsController } from "@/nest/lists/lists.controller.js";
@@ -129,7 +130,7 @@ import type { SupplierListRequest } from "@/schemas/list.schema.js";
 					);
 				}
 				return createBullmqJobQueue<SupplierListRequest>(url, {
-					queueName: "lists",
+					queueName: LISTS_QUEUE_NAME,
 					jobName: "run-lists",
 					concurrency,
 					label: "lists",

@@ -253,6 +253,64 @@ describe("validateEnv", () => {
 		});
 	});
 
+	describe("queue dashboard (ADR 0011)", () => {
+		const PASSWORD = "p".repeat(16);
+
+		it("is off by default", () => {
+			const env = validateEnv({});
+
+			expect(env.QUEUE_DASHBOARD_USER).toBeUndefined();
+			expect(env.QUEUE_DASHBOARD_PASSWORD).toBeUndefined();
+		});
+
+		it("accepts a user with a long enough password", () => {
+			const env = validateEnv({
+				QUEUE_DASHBOARD_USER: "ops",
+				QUEUE_DASHBOARD_PASSWORD: PASSWORD,
+			});
+
+			expect(env.QUEUE_DASHBOARD_USER).toBe("ops");
+			expect(env.QUEUE_DASHBOARD_PASSWORD).toBe(PASSWORD);
+		});
+
+		it.each([
+			["a user without a password", { QUEUE_DASHBOARD_USER: "ops" }],
+			["a password without a user", { QUEUE_DASHBOARD_PASSWORD: PASSWORD }],
+		])("refuses %s, in any environment", (_label, raw) => {
+			expect(() => validateEnv(raw)).toThrow(
+				/QUEUE_DASHBOARD_USER and QUEUE_DASHBOARD_PASSWORD go together/,
+			);
+		});
+
+		it("rejects a user with a colon, which Basic Auth could never match", () => {
+			expect(() =>
+				validateEnv({
+					QUEUE_DASHBOARD_USER: "ops:admin",
+					QUEUE_DASHBOARD_PASSWORD: PASSWORD,
+				}),
+			).toThrow(/QUEUE_DASHBOARD_USER cannot contain ':'/);
+		});
+
+		it("rejects a password shorter than 16 characters", () => {
+			expect(() =>
+				validateEnv({
+					QUEUE_DASHBOARD_USER: "ops",
+					QUEUE_DASHBOARD_PASSWORD: "short",
+				}),
+			).toThrow(/QUEUE_DASHBOARD_PASSWORD must have at least 16 characters/);
+		});
+
+		it("treats empty values as absent", () => {
+			const env = validateEnv({
+				QUEUE_DASHBOARD_USER: "",
+				QUEUE_DASHBOARD_PASSWORD: "",
+			});
+
+			expect(env.QUEUE_DASHBOARD_USER).toBeUndefined();
+			expect(env.QUEUE_DASHBOARD_PASSWORD).toBeUndefined();
+		});
+	});
+
 	describe("requirements that only apply in production", () => {
 		const productionEnv = {
 			NODE_ENV: "production",

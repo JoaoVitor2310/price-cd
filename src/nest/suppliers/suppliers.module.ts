@@ -18,6 +18,7 @@ import type { Env } from "@/config/env.schema.js";
 import { createBullmqJobQueue } from "@/infrastructure/background/bullmq-job-queue.js";
 import { InMemoryJobQueue } from "@/infrastructure/background/in-memory-job-queue.js";
 import { LimitedConcurrencyScheduler } from "@/infrastructure/background/limited-concurrency.scheduler.js";
+import { SUPPLIERS_QUEUE_NAME } from "@/infrastructure/background/queue-names.js";
 import { parseSupplierDiscoveryJobPayload } from "@/infrastructure/background/supplier-discovery-job-payload.js";
 import { SuppliersBrowserSession } from "@/infrastructure/browser/suppliers-browser-session.js";
 import { HttpProfitabilityChecker } from "@/infrastructure/suppliers/http-profitability-checker.js";
@@ -208,7 +209,7 @@ export function assertSuppliersEnv(config: ConfigService<Env, true>): void {
 					);
 				}
 				return createBullmqJobQueue<SupplierDiscoveryRequest>(url, {
-					queueName: "suppliers",
+					queueName: SUPPLIERS_QUEUE_NAME,
 					jobName: "find-new-suppliers",
 					// Uma varredura esperando ou rodando já cobre um pedido novo:
 					// empilhar varreduras com a mesma conta do SteamTrades só
