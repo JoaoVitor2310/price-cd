@@ -15,6 +15,7 @@ Ao terminar, o price-cd **avisa o chatbot** do resultado, para ele mostrar a ofe
 | Moeda escolhida | Em que moeda a oferta é calculada |
 | Identificador do pedido | Gerado pelo chatbot; volta no aviso, para ele saber de qual pedido é |
 | Endereço do aviso | Para onde o price-cd manda o resultado |
+| Token do chatbot | Prova que o pedido veio do chatbot. É só dele, diferente do usado pela interface web e pelo Sistema Estoque: dá para cortar o acesso do chatbot sem mexer nos outros |
 
 Os critérios de pesquisa são os do preset padrão; com o link, os do Reabastecimento, que hoje são iguais. O price-cd não confere de quem é o tópico, pesquisa mesmo se ele estiver fechado (foi o Fornecedor quem mandou o link), e só lê jogos de Steam: seções de outras lojas, como GOG, ficam de fora.
 

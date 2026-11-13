@@ -253,6 +253,41 @@ describe("validateEnv", () => {
 		});
 	});
 
+	describe("the chatbot's research token (ADR 0012)", () => {
+		const TOKEN = "c".repeat(32);
+
+		it("is absent by default", () => {
+			expect(validateEnv({}).CHATBOT_INTERNAL_SECRET).toBeUndefined();
+		});
+
+		it("accepts a long enough token, next to INTERNAL_SECRET", () => {
+			const env = validateEnv({
+				INTERNAL_SECRET: "internal",
+				CHATBOT_INTERNAL_SECRET: TOKEN,
+			});
+
+			expect(env.CHATBOT_INTERNAL_SECRET).toBe(TOKEN);
+		});
+
+		it("rejects a token shorter than 32 characters", () => {
+			expect(() => validateEnv({ CHATBOT_INTERNAL_SECRET: "short" })).toThrow(
+				/CHATBOT_INTERNAL_SECRET must have at least 32 characters/,
+			);
+		});
+
+		it("refuses the same value as INTERNAL_SECRET, which could not be revoked alone", () => {
+			expect(() =>
+				validateEnv({ INTERNAL_SECRET: TOKEN, CHATBOT_INTERNAL_SECRET: TOKEN }),
+			).toThrow(/CHATBOT_INTERNAL_SECRET must differ from INTERNAL_SECRET/);
+		});
+
+		it("treats an empty value as absent, like the blank line in .env.example", () => {
+			expect(
+				validateEnv({ CHATBOT_INTERNAL_SECRET: "" }).CHATBOT_INTERNAL_SECRET,
+			).toBeUndefined();
+		});
+	});
+
 	describe("queue dashboard (ADR 0011)", () => {
 		const PASSWORD = "p".repeat(16);
 

@@ -13,7 +13,7 @@ import { expect } from "vitest";
  * propósito**: `/games/research` devolve a mensagem de erro em `data`,
  * `/games/search-id-steam` devolve em `error` + `details`, `/suppliers/find-new` nem tem
  * campo `success` no 500, e "Internal server error" aparece com e sem ponto
- * final. Uniformizar é o item 17 do `docs/IMPROVEMENTS.md`: uma mudança de
+ * final. Uniformizar é o item 16 do `docs/IMPROVEMENTS.md`: uma mudança de
  * contrato deliberada, num PR próprio que atualiza esta tabela junto — nunca um
  * efeito colateral de outra mudança.
  *
@@ -61,6 +61,9 @@ export const CONTRACT_BOOM = "__contract_boom__";
  * (`doubles.ts`, ADR 0009).
  */
 export const CONTRACT_QUEUE_DOWN = "__contract_queue_down__";
+
+/** O token do chatbot (ADR 0012): ao menos 32 caracteres, diferente do outro. */
+const CONTRACT_CHATBOT_SECRET = "contract-chatbot-secret-0123456789abcdef";
 
 const VALID_RESEARCH_BODY = {
 	gameNames: ["Hades"],
@@ -200,6 +203,30 @@ export const CONTRACT_CASES: ContractCase[] = [
 			error: "Internal server error.",
 			details: "Research queue unavailable: Redis is not connected",
 		},
+	},
+	{
+		route: "/api/games/research",
+		method: "post",
+		name: "the chatbot's own token returns 202 queued (ADR 0012)",
+		body: { ...VALID_RESEARCH_BODY, internal_secret: CONTRACT_CHATBOT_SECRET },
+		env: {
+			INTERNAL_SECRET: CONTRACT_SECRET,
+			CHATBOT_INTERNAL_SECRET: CONTRACT_CHATBOT_SECRET,
+		},
+		expectStatus: 202,
+		expectBody: { success: true, status: "queued" },
+	},
+	{
+		route: "/api/games/research",
+		method: "post",
+		name: "the chatbot's token is demo once CHATBOT_INTERNAL_SECRET is unset, so revoking it works",
+		body: { ...VALID_RESEARCH_BODY, internal_secret: CONTRACT_CHATBOT_SECRET },
+		env: {
+			INTERNAL_SECRET: CONTRACT_SECRET,
+			CHATBOT_INTERNAL_SECRET: undefined,
+		},
+		expectStatus: 200,
+		expectBody: { success: true, demo: true },
 	},
 	{
 		route: "/api/games/research",
@@ -455,6 +482,24 @@ export const CONTRACT_CASES: ContractCase[] = [
 		env: TOPIC_ENV,
 		expectStatus: 401,
 		expectBody: { success: false, error: "Invalid internal_secret" },
+	},
+	{
+		route: "/api/games/research/from-topic",
+		method: "post",
+		// Passou do guard: o 400 é da validação do corpo, que só quem tem um
+		// token válido recebe.
+		name: "the chatbot's own token gets past the guard (ADR 0012)",
+		body: {
+			...VALID_TOPIC_BODY,
+			internal_secret: CONTRACT_CHATBOT_SECRET,
+			steam_id: "someone",
+		},
+		env: { CHATBOT_INTERNAL_SECRET: CONTRACT_CHATBOT_SECRET },
+		expectStatus: 400,
+		expectBody: {
+			success: false,
+			details: expect.stringContaining("steam_id must be a SteamID64"),
+		},
 	},
 	{
 		route: "/api/games/research/from-topic",

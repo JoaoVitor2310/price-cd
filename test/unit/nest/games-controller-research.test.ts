@@ -1,5 +1,6 @@
 import "reflect-metadata";
-import { describe, expect, it, vi } from "vitest";
+import { Logger } from "@nestjs/common";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { SEARCH_PRESETS } from "@/domain/games/search-presets.js";
 import { GamesController } from "@/nest/games/games.controller.js";
 
@@ -17,7 +18,8 @@ const build = () => {
 		config as never,
 	);
 	const response = { status: vi.fn() };
-	return { controller, research, enqueue, response };
+	const request = { method: "POST", path: "/api/games/research" };
+	return { controller, research, enqueue, response, request };
 };
 
 const call = async (body: Record<string, unknown>) => {
@@ -25,9 +27,36 @@ const call = async (body: Record<string, unknown>) => {
 	const result = await deps.controller.research(
 		{ gameNames: ["Hades"], ...body } as never,
 		deps.response as never,
+		deps.request as never,
 	);
 	return { ...deps, result };
 };
+
+afterEach(() => {
+	vi.restoreAllMocks();
+});
+
+describe("GamesController.research — who authenticated", () => {
+	it("logs the consumer and the route it called, never the token (ADR 0012)", async () => {
+		const log = vi.spyOn(Logger.prototype, "log").mockImplementation(() => {});
+
+		await call({ internal_secret: SECRET });
+
+		const lines = log.mock.calls.map(([line]) => String(line));
+		expect(lines).toContain(
+			"POST /api/games/research authenticated as internal",
+		);
+		expect(lines.join("\n")).not.toContain(SECRET);
+	});
+
+	it("logs nobody for the demo", async () => {
+		const log = vi.spyOn(Logger.prototype, "log").mockImplementation(() => {});
+
+		await call({ internal_secret: "wrong" });
+
+		expect(log).not.toHaveBeenCalled();
+	});
+});
 
 // Os critérios em si são testados em `research-request.mapper.test.ts`; aqui só
 // interessa que o controller entrega a requisição traduzida.

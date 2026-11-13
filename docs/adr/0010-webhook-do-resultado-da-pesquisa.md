@@ -85,7 +85,7 @@ A fila `webhooks` fica no mesmo Redis da pesquisa (banco 1). Separada porque o r
 - O sinal de desligamento chega com o Estoque já sendo chamado: a Trade nasce e o job roda de novo; o segundo aviso é ignorado pelo `jobId`, e o chatbot fica com a primeira Trade.
 - O Estoque responde `201` sem `uuid` legível: `pricing_failed`, para não convidar à repetição; reenviado mesmo assim, roda de novo e pode criar outra.
 
-O Estoque receber `request_uuid` como `pricing_request_id` (item 2 do backlog dele) fecha as quatro. Até lá o price-cd não manda o campo, e o critério de aceite do chatbot, um resultado lógico por `request_uuid`, não está garantido nessas janelas. É o item 22 do `docs/IMPROVEMENTS.md`. Paliativo descartado: gravar o `tradeUuid` no job antes de guardar o aviso encurta a janela, mas não fecha.
+O Estoque receber `request_uuid` como `pricing_request_id` (item 2 do backlog dele) fecha as quatro. Até lá o price-cd não manda o campo, e o critério de aceite do chatbot, um resultado lógico por `request_uuid`, não está garantido nessas janelas. É o item 21 do `docs/IMPROVEMENTS.md`. Paliativo descartado: gravar o `tradeUuid` no job antes de guardar o aviso encurta a janela, mas não fecha.
 
 ## Consequences
 

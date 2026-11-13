@@ -60,12 +60,14 @@ The API supports two modes controlled by a bearer token:
 
 | | Demo mode | Authenticated mode |
 |---|---|---|
-| Token | Not provided | Valid `INTERNAL_SECRET` |
+| Token | Not provided | Valid `INTERNAL_SECRET` or `CHATBOT_INTERNAL_SECRET` |
 | Game limit | 10 | Unlimited |
 | Output | JSON returned in the UI | Pushed to inventory system |
 | Use case | Try it out | Production pipeline |
 
 This allows the tool to be publicly accessible for demonstration while keeping the full pipeline secure. Auth lives in the controller (presentation layer) — the use case is auth-agnostic and only knows whether a `GameTradeImporter` was injected.
+
+**One token per consumer.** `internal_secret` accepts either `INTERNAL_SECRET` (the web interface and the inventory system) or `CHATBOT_INTERNAL_SECRET` (the Steam chatbot), compared in constant time. Unsetting `CHATBOT_INTERNAL_SECRET` revokes the chatbot alone; the log records which consumer authenticated, never the token. See `docs/adr/0012-um-token-por-consumidor-da-pesquisa.md`.
 
 ---
 
@@ -255,6 +257,7 @@ Only `gameNames` (non-empty) is required. Every search criterion comes from a **
 - `popularity` — minimum 24h peak players **by price tier**: `upToThreshold` applies to games priced up to `priceThresholdEuro` (inclusive), `aboveThreshold` to pricier ones. Flat popularity is the same value in both. The tiers **only discard**: `0` discards nobody, and a game SteamCharts does not know counts as popularity `0`, so it survives only a tier of `0`.
 - `lookupPopularity` — whether SteamCharts is consulted to report each game's popularity; separate from the tiers on purpose. Off, every game comes back with popularity `0`. Any tier above `0` forces it on (without the number every game would be discarded), whatever is sent. `bundle-research` turns it on with tiers `0/0`: the number is reported and nobody is discarded, not even a game SteamCharts does not know. `bundle-sync` keeps it off.
 - `minPrice` — games must be priced **above** it (default €0.50); send `0` to keep any priced game.
+- `internal_secret` — the consumer's token: `INTERNAL_SECRET` or `CHATBOT_INTERNAL_SECRET`. Missing or wrong, the request gets the demo.
 - `delivery` — only with a valid token: `trade` (default) or `respond`. Ignored without a token, which always gets the demo.
 
 **Demo mode response** — `200`, no token or wrong token:
@@ -390,7 +393,7 @@ All fields are required. `currency`, `request_uuid` and `webhook_url` work as in
 |---|---|---|
 | `202` | `{ "success": true, "status": "queued" }` | Stored in the durable queue. The topic is read when the job runs, so a scrape failure arrives as `failed` with `kind: scrape_failed` |
 | `400` | `{ "success": false, "error": "Validation failed", "details": "..." }` | Invalid body, `topic_url` that is not `https://www.steamtrades.com/trade/{code}/...`, `steam_id` that is not a SteamID64, or `webhook_url` host not in `WEBHOOK_ALLOWED_HOSTS` |
-| `401` | `{ "success": false, "error": "Invalid internal_secret" }` | Missing or wrong token, checked before the body. This route has no demo mode |
+| `401` | `{ "success": false, "error": "Invalid internal_secret" }` | Missing or wrong token (`INTERNAL_SECRET` or `CHATBOT_INTERNAL_SECRET`), checked before the body. This route has no demo mode |
 | `500` | `{ "success": false, "error": "Internal server error.", "details": "..." }` | The request could not be stored (queue down) |
 
 </details>

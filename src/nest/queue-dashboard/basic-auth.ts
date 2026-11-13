@@ -1,5 +1,5 @@
-import { createHash, timingSafeEqual } from "node:crypto";
 import type { RequestHandler } from "express";
+import { constantTimeEqual } from "@/lib/constant-time-equal.js";
 
 /**
  * HTTP Basic Auth para o painel das filas (ADR 0011). Um usuário só, vindo do
@@ -9,26 +9,22 @@ import type { RequestHandler } from "express";
  * por fora das rotas do Nest (`app.use`), e guard só vale para handler de
  * controller.
  *
- * A comparação é em tempo constante (`timingSafeEqual` do Node), sobre o
- * SHA-256 de cada lado: os dois buffers ficam do mesmo tamanho, e o tempo da
- * resposta não diz quantos caracteres acertaram nem o tamanho da senha. Usuário
- * e senha são sempre os dois comparados, para o tempo não dizer qual errou.
+ * A comparação é em tempo constante (`constantTimeEqual`): o tempo da resposta
+ * não diz quantos caracteres acertaram nem o tamanho da senha. Usuário e senha
+ * são sempre os dois comparados, para o tempo não dizer qual errou.
  */
 export const basicAuth = (credentials: {
 	user: string;
 	password: string;
 	realm: string;
 }): RequestHandler => {
-	const expectedUser = digest(credentials.user);
-	const expectedPassword = digest(credentials.password);
-
 	return (req, res, next) => {
 		const given = readBasicCredentials(req.headers.authorization);
 		if (given) {
-			const userMatches = timingSafeEqual(digest(given.user), expectedUser);
-			const passwordMatches = timingSafeEqual(
-				digest(given.password),
-				expectedPassword,
+			const userMatches = constantTimeEqual(given.user, credentials.user);
+			const passwordMatches = constantTimeEqual(
+				given.password,
+				credentials.password,
 			);
 			if (userMatches && passwordMatches) {
 				next();
@@ -43,9 +39,6 @@ export const basicAuth = (credentials: {
 		res.status(401).send("Authentication required.");
 	};
 };
-
-const digest = (value: string): Buffer =>
-	createHash("sha256").update(value, "utf8").digest();
 
 /**
  * `Basic base64(user:password)`; a senha pode conter `:`, o usuário não. O

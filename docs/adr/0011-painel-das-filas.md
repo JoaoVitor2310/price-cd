@@ -12,7 +12,7 @@ Acompanhar as filas (ADR 0009 e 0010) era `redis-cli` no banco 1: saber se um pe
 
 ## Somente leitura, conferido no servidor
 
-O painel tem botões de *retry*, *promote*, *clean*, *add*. Repetir um job de pesquisa ou de Reabastecimento que já chamou o Estoque cria outra Trade, pelo mesmo motivo do `attempts: 1` (ADR 0009). `readOnlyMode` em todas as filas, inclusive `webhooks`, onde repetir seria inofensivo (quem recebe é idempotente pelo `request_uuid`): uma regra só é mais fácil de conferir que uma exceção. O Bull Board aplica o modo no **servidor** — as rotas de escrita respondem 405 mesmo chamadas direto, não só somem da tela —, e um teste contra Redis real trava isso. Liberar escrita só depois da idempotência do Estoque (item 22 do `docs/IMPROVEMENTS.md`).
+O painel tem botões de *retry*, *promote*, *clean*, *add*. Repetir um job de pesquisa ou de Reabastecimento que já chamou o Estoque cria outra Trade, pelo mesmo motivo do `attempts: 1` (ADR 0009). `readOnlyMode` em todas as filas, inclusive `webhooks`, onde repetir seria inofensivo (quem recebe é idempotente pelo `request_uuid`): uma regra só é mais fácil de conferir que uma exceção. O Bull Board aplica o modo no **servidor** — as rotas de escrita respondem 405 mesmo chamadas direto, não só somem da tela —, e um teste contra Redis real trava isso. Liberar escrita só depois da idempotência do Estoque (item 21 do `docs/IMPROVEMENTS.md`).
 
 ## Acesso
 

@@ -5,12 +5,13 @@ import {
 	HttpCode,
 	HttpStatus,
 	Post,
+	Req,
 	Res,
 	UseFilters,
 	UseGuards,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import type { Response } from "express";
+import type { Request, Response } from "express";
 import {
 	EnqueueResearchGamesUseCase,
 	InvalidResearchRequestError,
@@ -29,7 +30,8 @@ import { ZodValidationPipe } from "@/nest/common/zod-validation.pipe.js";
 import { LazyGameTradeImporter } from "@/infrastructure/games/lazy-game-trade-importer.js";
 import {
 	InternalSecretGuard,
-	isInternalSecret,
+	logResearchConsumer,
+	researchConsumer,
 } from "@/nest/games/internal-secret.guard.js";
 import { ResearchLegacyErrorFilter } from "@/nest/games/research-legacy-error.filter.js";
 import {
@@ -75,9 +77,17 @@ export class GamesController {
 	 *
 	 * Ver `docs/nest-conceitos.md` §6 e o caso de contrato
 	 * "wrong internal_secret returns 200 demo, not 403".
+	 *
+	 * Vale o token de qualquer consumidor (ADR 0012): o do Sistema Estoque e da
+	 * interface web, ou o do chatbot.
 	 */
-	private isAuthenticated(token: string | undefined): boolean {
-		return isInternalSecret(this.config, token);
+	private isAuthenticated(
+		token: string | undefined,
+		request: Pick<Request, "method" | "path">,
+	): boolean {
+		const consumer = researchConsumer(this.config, token);
+		if (consumer) logResearchConsumer(request, consumer);
+		return consumer !== undefined;
 	}
 
 	/**
@@ -162,9 +172,13 @@ export class GamesController {
 	async research(
 		@Body(new ZodValidationPipe(researchGamesBodySchema)) body: ResearchGamesBody,
 		@Res({ passthrough: true }) response: Response,
+		@Req() httpRequest: Request,
 	) {
 		const request = toResearchRequest(body);
-		const authenticated = this.isAuthenticated(body.internal_secret);
+		const authenticated = this.isAuthenticated(
+			body.internal_secret,
+			httpRequest,
+		);
 
 		if (
 			!authenticated &&

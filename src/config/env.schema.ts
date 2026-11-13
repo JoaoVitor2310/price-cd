@@ -13,8 +13,9 @@ import { parseEnvList } from "@/helpers/parse-env-list.js";
  * ## Por que quase nada é obrigatório
  *
  * Exigir variável no boot muda o comportamento do sistema, e a maioria dos
- * fluxos aqui é degradável: `POST /api/games/research` sem `INTERNAL_SECRET`
- * responde em modo demo de propósito, e isso é contrato coberto em
+ * fluxos aqui é degradável: `POST /api/games/research` sem nenhum token
+ * configurado (`INTERNAL_SECRET`, `CHATBOT_INTERNAL_SECRET`) responde em modo
+ * demo de propósito, e isso é contrato coberto em
  * `test/contract/`. Então a regra é:
  *
  * - **Sempre:** validar forma (número é número, porta é porta) e aplicar os
@@ -156,8 +157,35 @@ const baseEnvSchema = z.object({
 
 	// ── Autenticação e integrações ────────────────────────────────────────────
 	STEAMTRADES_SESSION: optionalNonEmpty("STEAMTRADES_SESSION"),
-	/** Ausente → `/api/games/research` só responde em modo demo. Nunca obrigatório. */
+	/**
+	 * O token da interface web e do Sistema Estoque nas rotas de pesquisa. Nunca
+	 * obrigatório: com ele e o `CHATBOT_INTERNAL_SECRET` ausentes,
+	 * `/api/games/research` só responde em modo demo. Ausente só ele, o chatbot
+	 * continua autenticando (ADR 0012).
+	 */
 	INTERNAL_SECRET: optionalNonEmpty("INTERNAL_SECRET"),
+	/**
+	 * O token do chatbot nas rotas de pesquisa, aceito ao lado do `INTERNAL_SECRET`
+	 * (ADR 0012): cada consumidor com o seu, para revogar o do chatbot sem mexer
+	 * na interface web nem no Sistema Estoque. Ausente → o chatbot não autentica.
+	 *
+	 * Mínimo de 32 caracteres, e diferente do `INTERNAL_SECRET` (conferido no
+	 * `superRefine`): repetido, revogar um derrubaria o outro.
+	 * `openssl rand -hex 32` gera um.
+	 */
+	CHATBOT_INTERNAL_SECRET: z
+		.string()
+		.trim()
+		.transform((value) => value || undefined)
+		.pipe(
+			z
+				.string()
+				.min(32, {
+					message: "CHATBOT_INTERNAL_SECRET must have at least 32 characters",
+				})
+				.optional(),
+		)
+		.optional(),
 	EXTERNAL_SECRET: optionalNonEmpty("EXTERNAL_SECRET"),
 	SISTEMA_ESTOQUE_URL: z
 		.string()
@@ -345,6 +373,19 @@ export const envSchema = baseEnvSchema.superRefine((env, ctx) => {
 			path: ["WEBHOOK_SIGNING_SECRET"],
 			message:
 				"WEBHOOK_SIGNING_SECRET is required when WEBHOOK_ALLOWED_HOSTS is set",
+		});
+	}
+
+	// O mesmo valor nos dois tokens desfaz o motivo de existir um por consumidor.
+	if (
+		env.CHATBOT_INTERNAL_SECRET !== undefined &&
+		env.CHATBOT_INTERNAL_SECRET === env.INTERNAL_SECRET
+	) {
+		ctx.addIssue({
+			code: "custom",
+			path: ["CHATBOT_INTERNAL_SECRET"],
+			message:
+				"CHATBOT_INTERNAL_SECRET must differ from INTERNAL_SECRET, or revoking one revokes both",
 		});
 	}
 
