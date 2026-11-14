@@ -14,7 +14,21 @@ import { withTimeout } from "@/lib/with-timeout.js";
 export type BullmqJob = {
 	id?: string;
 	data: unknown;
+	/**
+	 * Preenchido pela BullMQ quando o job termina — no evento `failed`, só na falha
+	 * **definitiva**. Uma tentativa que vai se repetir dispara o mesmo evento e
+	 * deixa o campo vazio.
+	 */
+	finishedOn?: number;
 	moveToDelayed(timestamp: number, token?: string): Promise<void>;
+	/**
+	 * Marca o job para não tentar de novo, seja quantas `attempts` ele tiver.
+	 * Diferente de lançar `UnrecoverableError`: o erro original segue sendo o do
+	 * job, e com ele o tipo da falha.
+	 */
+	discard(): void;
+	/** Troca o dado guardado do job — é onde o checkpoint da pesquisa mora. */
+	updateData(data: unknown): Promise<void>;
 };
 
 /** `token` é o lock do job — exigido para movê-lo enquanto ativo. */

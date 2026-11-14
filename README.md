@@ -328,7 +328,9 @@ X-Webhook-Signature: sha256=<64 hex chars>
 |---|---|
 | `trade_created` | The inventory system created the Trade (`201`); `trade_uuid` is its uuid |
 | `no_trade` | No game passed the filters (the inventory system is not even called), it had nothing to offer (`200 { created: false }`), or, on `/from-topic`, the topic shows no priceable game. Never sent when a game could not be looked up and nothing passed: that is `failed` |
-| `failed` | `failure.kind` is `scrape_failed` (only on `/from-topic`: the topic could not be read — retrying later may work), `pricing_failed` (the research itself failed, including a job that kept crashing the process or could not be read, no game passed while at least one could not be looked up, the inventory system rejected the request with `422`, or it answered `201` without a readable uuid — do not retry blindly: in that last case the Trade exists), or `stock_unavailable` (the inventory system could not answer: `503`, timeout, any other error — retrying later may work) |
+| `failed` | `failure.kind` is `scrape_failed` (only on `/from-topic`: the topic could not be read — retrying later may work), `pricing_failed` (the research itself failed, including a job that kept crashing the process or could not be read, no game passed while at least one could not be looked up, the inventory system rejected the request with `422`, or it kept answering `201` without a readable uuid), or `stock_unavailable` (the inventory system could not answer: `503`, timeout, any other error) |
+
+**Automatic retries.** A request with `request_uuid` and `currency` is idempotent in the inventory system: the price researcher sends the `request_uuid` on `POST /api/trades`, and the same request gets the same Trade back while it exists. So a transient failure — the inventory system down, the topic that did not open, the catalog that did not answer, a `201` without a readable uuid, the result that could not be stored — is tried again by the price researcher itself, up to 4 attempts (waiting 30 s, 1 min and 2 min). A `failed` arrives only after the last one, so up to about 3.5 minutes after the first failure; a `422` or anything that would fail the same way fails at once. Each attempt continues from where the previous one stopped: once the inventory system answered, a retry only stores the result again, and if the attempts run out after that the result sent is the Trade (`trade_created`), never a `failed` for a Trade that exists. A request without `request_uuid` is not idempotent there and is tried once.
 
 When only some games cannot be looked up, the Trade is created with the ones that could, and the rest are logged.
 
@@ -463,7 +465,7 @@ The queue dashboard: [Bull Board](https://github.com/felixmosh/bull-board) over 
 
 - **Exists only when configured:** `QUEUE_REDIS_URL`, `QUEUE_DASHBOARD_USER` and `QUEUE_DASHBOARD_PASSWORD` (at least 16 characters). Otherwise the route answers `404`.
 - **HTTP Basic Auth:** without valid credentials, `401` with a `WWW-Authenticate: Basic` challenge.
-- **Read-only:** retry, promote, clean, add and pause are refused by the server with `405` — retrying a research or a restock that already called the inventory system would create a second Trade. See `docs/adr/0011-painel-das-filas.md`.
+- **Read-only:** retry, promote, clean, add and pause are refused by the server with `405` — retrying a restock, or a research without `request_uuid`, that already called the inventory system would create a second Trade; the research with it retries by itself (see "Automatic retries" above). See `docs/adr/0011-painel-das-filas.md`.
 
 </details>
 

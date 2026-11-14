@@ -36,6 +36,8 @@ O aviso só sai **depois** de o Sistema Estoque responder: quando chega "Trade c
 | Situação | O que acontece |
 |---|---|
 | O price-cd reinicia ou é atualizado no meio da pesquisa | O pedido não se perde: volta para a fila e roda de novo quando o serviço sobe, aproveitando os preços já buscados na última hora |
+| O Sistema Estoque cai ou demora no meio da pesquisa, ou o tópico não abre | O price-cd tenta de novo sozinho: até 4 vezes, esperando 30 segundos, 1 minuto e 2 minutos. Uma oscilação de poucos minutos termina em "Trade criada", não em "Falhou". Só avisa "Falhou" depois da última tentativa, uns 3 minutos e meio depois do primeiro erro |
+| Repetir cria uma segunda Trade? | Não: o mesmo pedido devolve a mesma Trade no Sistema Estoque, e cada tentativa continua de onde a anterior parou. Se a Trade já foi criada e só o aviso falhou, a nova tentativa só refaz o aviso |
 | O chatbot está fora do ar quando o resultado fica pronto | O price-cd tenta de novo por cerca de 24 horas: a primeira nova tentativa depois de 30 segundos, e o intervalo dobra até 1 hora |
 | O chatbot manda o mesmo pedido de novo | Se ainda está rodando, nada muda. Se já terminou, o mesmo resultado é avisado de novo, sem pesquisar outra vez. Se tinha falhado, a pesquisa roda de novo |
 | Alguém tenta se passar pelo price-cd | O aviso vai assinado com um segredo que só o price-cd e o chatbot conhecem, e que nunca viaja na mensagem; o chatbot confere a assinatura |

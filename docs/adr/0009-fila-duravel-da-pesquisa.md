@@ -38,11 +38,13 @@ Uma pesquisa leva minutos, e o Docker espera `stop_grace_period` (agora 90s) ent
 
 Se a devolução falhar (Redis fora no desligamento) ou o processo morrer sem desligar (OOM, SIGKILL), o lock do job expira e o próximo worker o recupera como *stalled*. É mais lento (até ~1 minuto depois do boot) e chega ao mesmo resultado. `maxStalledCount: 2`: um job que derruba o processo duas vezes falha, em vez de entrar em loop.
 
-## Sem nova tentativa automática
+## Nova tentativa só para o pedido idempotente
 
-`attempts` fica em 1. Repetir uma pesquisa que falhou depois de chamar o Sistema Estoque pode criar uma segunda Trade, e o Estoque ainda não tem idempotência (item 2 do backlog dele). A interrupção por deploy não conta como tentativa (passo 1 acima). Quando o `request_uuid` virar chave de idempotência no Estoque, retry passa a ser seguro e pode ser ligado.
+No começo, `attempts` ficava em 1: repetir uma pesquisa que falhou depois de chamar o Sistema Estoque criava uma segunda Trade. O Estoque passou a ser idempotente pelo `request_uuid` na Trade **com oferta** (ADR 0010, "Idempotência no Estoque"), e a pesquisa ganhou **4 tentativas**, esperando 30s, 1min e 2min (`RESEARCH_JOB_OPTIONS`).
 
-**Janela conhecida:** se o SIGTERM chega enquanto a chamada ao Estoque está em voo e ela termina com sucesso depois de o job ter sido devolvido, o job roda de novo e cria outra Trade. O adapter loga um aviso quando isso acontece. A mesma idempotência fecha essa janela.
+Quem decide se uma falha pode ser repetida é a Application (`ResearchGamesRunner.canRetry`): só o pedido com `request_uuid` e `currency`, e só falha passageira (Estoque fora, tópico que não abriu, catálogo que não respondeu, `201` sem uuid legível, aviso que não foi guardado). O resto — a pesquisa sem `request_uuid`, que sai pelo callback sem oferta, e as falhas que se repetiriam iguais — o adapter descarta na primeira falha (`job.discard()`, que mantém o erro original e com ele o tipo do `failed`). A interrupção por deploy continua não contando como tentativa (passo 1 acima). Cada tentativa continua de onde a anterior parou, pelo progresso guardado no próprio job (ADR 0010, "Idempotência no Estoque"): os jogos aprovados e o desfecho do Estoque — o que também vale para o job devolvido num deploy.
+
+**Janela conhecida, só sem `request_uuid`:** se o SIGTERM chega enquanto a chamada ao Estoque está em voo e ela termina com sucesso depois de o job ter sido devolvido, o job roda de novo e cria outra Trade. O adapter loga um aviso quando isso acontece. Com `request_uuid`, a repetição devolve a mesma Trade.
 
 ## O que a retomada reaproveita
 
@@ -98,7 +100,7 @@ A 6 saiu em julho de 2026 e passou de 40 patches em três meses. No build ESM de
 - **Contrato.** Com o Redis da fila fora, as duas rotas respondem `500` no formato legado de cada uma, em vez de um `202` para um pedido que não foi guardado.
 - **Falha.** Fica registrada no job (30 dias) e no log; ninguém é avisado (item 4 do `docs/IMPROVEMENTS.md`).
 - **Janelas conhecidas.** A durabilidade troca "o pedido se perde" por "o pedido roda de novo", e rodar de novo tem custo:
-  - **Trade duplicada no Reabastecimento:** o deploy chega com o POST ao Estoque em andamento (a Trade nasce, o job já foi devolvido e roda de novo), ou o processo morre (OOM, SIGKILL) depois da Trade e antes de o job concluir (volta como travado e roda de novo; o limite de 2 travamentos é uma repetição implícita). O mesmo vale para a pesquisa, e só a idempotência do Estoque fecha (item 21 do `docs/IMPROVEMENTS.md`).
+  - **Trade duplicada no Reabastecimento:** o deploy chega com o POST ao Estoque em andamento (a Trade nasce, o job já foi devolvido e roda de novo), ou o processo morre (OOM, SIGKILL) depois da Trade e antes de o job concluir (volta como travado e roda de novo; o limite de 2 travamentos é uma repetição implícita). O mesmo vale para a pesquisa **sem** `request_uuid`; a com ele já é idempotente no Estoque (ADR 0010). Fechar o Reabastecimento exige o callback sem oferta do Estoque idempotente também (item 12 do `docs/IMPROVEMENTS.md`).
   - **Comentário perdido na Descoberta:** o desligamento chega com a consulta ao Estoque em andamento. O Estoque grava `last_commented_at` ao responder `should_comment: true`, o browser fecha antes do comentário, e a reexecução recebe `false`. A verificação antes da consulta só impede perguntar **depois** do sinal; a janela é a duração de uma chamada HTTP, aceita.
   - **Chromium depois do cleanup:** nos dois casos acima o job segue rodando depois de devolvido, e as sessões de browser reabrem o Chromium se alguém pedir uma depois do desligamento (item 11 do `docs/IMPROVEMENTS.md`).
 

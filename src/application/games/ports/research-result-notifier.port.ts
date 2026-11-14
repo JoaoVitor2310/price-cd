@@ -32,6 +32,21 @@ export type ResearchResultTarget = {
 };
 
 /**
+ * Não deu para **guardar** o aviso para entrega: o armazenamento da fila de
+ * avisos não respondeu, mesmo depois das tentativas do adapter. Passageiro — e
+ * o único erro de `notify` que vale tentar de novo: um aviso que não se consegue
+ * montar falharia igual.
+ *
+ * A causa vai na mensagem: o target do build (ES6) não tem `Error.cause`.
+ */
+export class ResultStoreUnavailableError extends Error {
+	constructor(reason: string) {
+		super(`The research result could not be stored for delivery: ${reason}`);
+		this.name = "ResultStoreUnavailableError";
+	}
+}
+
+/**
  * Avisa quem pediu a pesquisa. `notify` só resolve depois de o aviso estar
  * **guardado** para entrega — a entrega em si (com as novas tentativas) é do
  * adapter, e pode acontecer bem depois.
@@ -40,6 +55,7 @@ export type ResearchResultTarget = {
  * pediu já recebeu.
  */
 export abstract class ResearchResultNotifier {
+	/** @throws ResultStoreUnavailableError quando não consegue guardar o aviso */
 	abstract notify(
 		target: ResearchResultTarget,
 		result: ResearchResult,

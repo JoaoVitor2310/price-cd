@@ -93,6 +93,19 @@ describe("parseResearchJobPayload", () => {
 	});
 });
 
+describe("the progress saved next to the request", () => {
+	it("never reaches the use case as part of the request", () => {
+		const stored = JSON.parse(
+			JSON.stringify({
+				...request,
+				checkpoint: { outcome: { status: "created", tradeUuid: "3a9e" } },
+			}),
+		);
+
+		expect(parseResearchJobPayload(stored)).toEqual(request);
+	});
+});
+
 describe("readResearchFailureTarget", () => {
 	const target = {
 		webhookUrl: "http://chatbot:3000/webhooks/price-cd",

@@ -1,9 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import type {
+	ResearchCheckpoint,
 	ResearchGamesRequest,
 	TopicResearchRequest,
 } from "@/application/games/ports/research-games-runner.port.js";
-import type { ResearchResultNotifier } from "@/application/games/ports/research-result-notifier.port.js";
+import {
+	type ResearchResultNotifier,
+	ResultStoreUnavailableError,
+} from "@/application/games/ports/research-result-notifier.port.js";
 import {
 	StockUnavailableError,
 	TradeOutcomeUnknownError,
@@ -86,6 +90,7 @@ describe("RunResearchJobUseCase — research from a topic", () => {
 		expect(createTrade.run).toHaveBeenCalledWith(
 			{ ...rest, gameNames: ["Hades", "Celeste"] },
 			undefined,
+			undefined,
 		);
 		expect(notifier.notify).toHaveBeenCalledWith(target, {
 			result: "trade_created",
@@ -163,7 +168,11 @@ describe("RunResearchJobUseCase", () => {
 
 		await useCase.run(request());
 
-		expect(createTrade.run).toHaveBeenCalledWith(request(), undefined);
+		expect(createTrade.run).toHaveBeenCalledWith(
+			request(),
+			undefined,
+			undefined,
+		);
 		expect(notifier.notify).toHaveBeenCalledWith(target, {
 			result: "trade_created",
 			tradeUuid: TRADE_UUID,
@@ -272,7 +281,7 @@ describe("RunResearchJobUseCase", () => {
 
 		await expect(useCase.run(request(), signal)).rejects.toBe(error);
 
-		expect(createTrade.run).toHaveBeenCalledWith(request(), signal);
+		expect(createTrade.run).toHaveBeenCalledWith(request(), signal, undefined);
 		expect(notifier.notify).not.toHaveBeenCalled();
 	});
 
@@ -339,5 +348,135 @@ describe("RunResearchJobUseCase", () => {
 
 		const [, result] = notifier.notify.mock.calls[0];
 		expect(JSON.stringify(result)).not.toContain("allkeyshop");
+	});
+
+	it("lets a result that could not be stored propagate, so the queue can retry the notice", async () => {
+		const { useCase, notifier } = setup(async () => ({
+			status: "created",
+			tradeUuid: TRADE_UUID,
+		}));
+		const failure = new ResultStoreUnavailableError("Redis is not connected");
+		notifier.notify.mockRejectedValue(failure);
+
+		await expect(useCase.run(request())).rejects.toBe(failure);
+	});
+});
+
+/** Um checkpoint em memória, com o que uma tentativa anterior teria guardado. */
+const checkpoint = (
+	stored: Partial<Pick<ResearchCheckpoint, "pricedGames" | "outcome">> = {},
+) => ({
+	...stored,
+	savePricedGames: vi.fn(async () => {}),
+	saveOutcome: vi.fn(async () => {}),
+});
+
+describe("RunResearchJobUseCase — progress kept between attempts", () => {
+	it("saves the Sistema Estoque outcome before notifying, so a retry only notifies", async () => {
+		const outcome = { status: "created" as const, tradeUuid: TRADE_UUID };
+		const { useCase, createTrade } = setup(async () => outcome);
+		const progress = checkpoint();
+
+		await useCase.run(request(), undefined, progress);
+
+		expect(createTrade.run).toHaveBeenCalledWith(request(), undefined, progress);
+		expect(progress.saveOutcome).toHaveBeenCalledWith(outcome);
+	});
+
+	it("does not research again when the outcome is already saved", async () => {
+		// O caso que importava: pesquisar de novo podia não aprovar nenhum jogo e
+		// responder `no_trade` com a Trade existindo.
+		const { useCase, createTrade, notifier } = setup(async () => ({
+			status: "not_created",
+			reason: "nothing_priced",
+		}));
+		const progress = checkpoint({
+			outcome: { status: "created", tradeUuid: TRADE_UUID },
+		});
+
+		await useCase.run(request(), undefined, progress);
+
+		expect(createTrade.run).not.toHaveBeenCalled();
+		expect(notifier.notify).toHaveBeenCalledWith(target, {
+			result: "trade_created",
+			tradeUuid: TRADE_UUID,
+		});
+	});
+
+	it("does not read the topic again when the priced games are already saved", async () => {
+		const { useCase, readTopicGames, createTrade } = setup(async () => ({
+			status: "created",
+			tradeUuid: TRADE_UUID,
+		}));
+		const progress = checkpoint({
+			pricedGames: [
+				{
+					name: "Hades",
+					market_price_euro: 5,
+					popularity: 500,
+					region: null,
+					id_steam: null,
+					gamivo_id: null,
+				},
+			],
+		});
+		const { gameNames: _gameNames, ...rest } = request();
+
+		await useCase.run(
+			{ ...rest, topicUrl: TOPIC_URL, listCode: "wGVYD" },
+			undefined,
+			progress,
+		);
+
+		expect(readTopicGames.run).not.toHaveBeenCalled();
+		expect(createTrade.run.mock.calls[0][2]).toBe(progress);
+	});
+
+	it("reports the saved outcome on the final failure, not a failed with the Trade existing", async () => {
+		const { useCase, notifier } = setup(async () => ({ status: "created" }));
+
+		await useCase.reportFailure(
+			target,
+			new ResultStoreUnavailableError("Redis is not connected"),
+			{ status: "created", tradeUuid: TRADE_UUID },
+		);
+
+		expect(notifier.notify).toHaveBeenCalledWith(target, {
+			result: "trade_created",
+			tradeUuid: TRADE_UUID,
+		});
+	});
+});
+
+describe("RunResearchJobUseCase — when the queue may try again", () => {
+	const { useCase } = setup(async () => ({ status: "created" }));
+
+	it.each([
+		["the Sistema Estoque was down", new StockUnavailableError("503")],
+		["the topic could not be read", new TopicScrapeFailedError(TOPIC_URL)],
+		["the catalog did not answer", new PriceResearchIncompleteError(3)],
+		["the Trade uuid could not be read", new TradeOutcomeUnknownError("201")],
+		[
+			"the result could not be stored",
+			new ResultStoreUnavailableError("Redis is not connected"),
+		],
+	])("retries an idempotent request when %s", (_label, error) => {
+		// Com `requestUuid` e `currency`, o Estoque devolve a mesma Trade na repetição.
+		expect(useCase.canRetry(request(), error)).toBe(true);
+	});
+
+	it.each([
+		["the Sistema Estoque rejected it", new TradeRejectedError("422")],
+		["something unexpected broke", new Error("boom")],
+	])("never retries when %s: it would fail the same way", (_label, error) => {
+		expect(useCase.canRetry(request(), error)).toBe(false);
+	});
+
+	it.each([
+		["without a request uuid", request({ requestUuid: undefined, webhookUrl: undefined })],
+		// Sem moeda a Trade sai pelo callback sem oferta, que cria outra a cada chamada.
+		["without a currency", request({ currency: undefined, webhookUrl: undefined })],
+	])("never retries a request %s, which would create a second Trade", (_label, req) => {
+		expect(useCase.canRetry(req, new StockUnavailableError("503"))).toBe(false);
 	});
 });

@@ -7,6 +7,12 @@ export type TradeWithOfferOptions = {
 	currency: OfferCurrency;
 	listCode?: string;
 	title?: string;
+	/**
+	 * O id do pedido (o `request_uuid` de quem pediu): a chave de idempotência do
+	 * Estoque. O mesmo pedido repetido devolve a Trade que ele já criou, enquanto
+	 * ela existir, em vez de criar outra — é o que torna seguro tentar de novo.
+	 */
+	requestUuid?: string;
 };
 
 /**
@@ -45,8 +51,9 @@ export class TradeRejectedError extends Error {
 
 /**
  * O Sistema Estoque confirmou a criação, mas não deu para ler o uuid: a Trade
- * **existe**, só não se sabe qual é. Não é `StockUnavailableError` de propósito —
- * aquele convida a repetir, e repetir aqui criaria uma segunda Trade.
+ * **existe**, só não se sabe qual é. Não é `StockUnavailableError`: sem
+ * `requestUuid`, repetir criaria uma segunda Trade. Com ele, a repetição devolve
+ * a mesma Trade, e tentar de novo é o jeito de descobrir qual é.
  */
 export class TradeOutcomeUnknownError extends Error {
 	constructor(message: string) {

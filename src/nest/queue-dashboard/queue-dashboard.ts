@@ -20,9 +20,9 @@ import { basicAuth } from "@/nest/queue-dashboard/basic-auth.js";
  * painel não se acopla a como cada fila é montada, e só existe quando ligado.
  *
  * **Somente leitura em todas** (`readOnlyMode`, conferido no servidor do Bull
- * Board: as rotas de escrita respondem 405). Repetir um job de pesquisa ou de
- * Reabastecimento pelo painel criaria outra Trade, pelo mesmo motivo do
- * `attempts: 1` (ADR 0009).
+ * Board: as rotas de escrita respondem 405). Repetir um job de Reabastecimento, ou
+ * de pesquisa sem `request_uuid`, pelo painel criaria outra Trade — o mesmo
+ * motivo de esses jobs terem uma tentativa só (ADR 0009).
  */
 
 /** Sob o mesmo prefixo das rotas da API, para passar pelo mesmo proxy. */

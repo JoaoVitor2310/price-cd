@@ -2,6 +2,7 @@ import { Queue, UnrecoverableError } from "bullmq";
 import { Redis } from "ioredis";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
+	ResearchCheckpoint,
 	ResearchGamesRequest,
 	ResearchGamesRunner,
 } from "@/application/games/ports/research-games-runner.port.js";
@@ -57,11 +58,13 @@ describe.skipIf(!url)("BullmqResearchQueue against a real Redis", () => {
 	const started: BullmqResearchQueue[] = [];
 
 	const start = (runner: {
-		run: (request: ResearchGamesRequest) => Promise<void>;
+		run: ResearchGamesRunner["run"];
 		reportFailure?: ResearchGamesRunner["reportFailure"];
+		canRetry?: ResearchGamesRunner["canRetry"];
 	}) => {
 		const queue = createBullmqResearchQueue(url as string, {
 			reportFailure: async () => {},
+			canRetry: () => false,
 			...runner,
 		});
 		started.push(queue);
@@ -100,7 +103,11 @@ describe.skipIf(!url)("BullmqResearchQueue against a real Redis", () => {
 		await waitFor(
 			async () => (await inspector.getJobCounts("completed")).completed === 1,
 		);
-		expect(runner.run).toHaveBeenCalledWith(request, expect.any(AbortSignal));
+		expect(runner.run).toHaveBeenCalledWith(
+			request,
+			expect.any(AbortSignal),
+			expect.anything(),
+		);
 	});
 
 	it("records a failed run with its reason, without retrying it", async () => {
@@ -120,6 +127,132 @@ describe.skipIf(!url)("BullmqResearchQueue against a real Redis", () => {
 		const [failed] = await inspector.getFailed();
 		expect(failed.failedReason).toBe("Sistema Estoque returned 500");
 		expect(runner.run).toHaveBeenCalledTimes(1);
+	});
+
+	describe("retrying an idempotent request", () => {
+		const uuid = "9d2f0000-0000-4000-8000-000000000000";
+
+		it("waits for the next attempt instead of reporting, and completes when it succeeds", async () => {
+			const reportFailure = vi.fn(async () => {});
+			const run = vi
+				.fn()
+				.mockRejectedValueOnce(new Error("Sistema Estoque answered 503"))
+				.mockResolvedValue(undefined);
+			vi.spyOn(console, "warn").mockImplementation(() => {});
+			const queue = start({ run, reportFailure, canRetry: () => true });
+			await connected(queue);
+			queue.onApplicationBootstrap();
+
+			await queue.enqueue({ ...request, requestUuid: uuid });
+
+			// A primeira falha leva o job a esperar a próxima tentativa (30s); o teste
+			// a adianta em vez de esperar.
+			await waitFor(async () => {
+				const state = await (await inspector.getJob(uuid))?.getState();
+				return state === "delayed";
+			});
+			expect(reportFailure).not.toHaveBeenCalled();
+			await (await inspector.getJob(uuid))?.promote();
+
+			await waitFor(
+				async () => (await inspector.getJobCounts("completed")).completed === 1,
+			);
+			const completed = await inspector.getJob(uuid);
+			expect(completed?.attemptsMade).toBe(2);
+			expect(reportFailure).not.toHaveBeenCalled();
+		});
+
+		it("hands the next attempt the progress the previous one saved, through Redis", async () => {
+			// A Trade nasceu e o aviso não pôde ser guardado: a próxima tentativa
+			// precisa achar o desfecho e só refazer o aviso, sem pesquisar de novo.
+			const seen: unknown[] = [];
+			const run = vi.fn(
+				async (
+					_request: unknown,
+					_signal: unknown,
+					checkpoint?: ResearchCheckpoint,
+				) => {
+					seen.push(checkpoint?.outcome);
+					if (checkpoint?.outcome === undefined) {
+						await checkpoint?.saveOutcome({
+							status: "created",
+							tradeUuid: "3a9e",
+						});
+						throw new Error("The research result could not be stored");
+					}
+				},
+			);
+			vi.spyOn(console, "warn").mockImplementation(() => {});
+			const queue = start({ run, canRetry: () => true });
+			await connected(queue);
+			queue.onApplicationBootstrap();
+
+			await queue.enqueue({ ...request, requestUuid: uuid });
+			await waitFor(async () => {
+				const state = await (await inspector.getJob(uuid))?.getState();
+				return state === "delayed";
+			});
+			await (await inspector.getJob(uuid))?.promote();
+
+			await waitFor(
+				async () => (await inspector.getJobCounts("completed")).completed === 1,
+			);
+			expect(seen).toEqual([
+				undefined,
+				{ status: "created", tradeUuid: "3a9e" },
+			]);
+		});
+
+		it("reports the saved outcome when the last attempt fails, not a failed", async () => {
+			const reportFailure = vi.fn(async () => {});
+			vi.spyOn(console, "error").mockImplementation(() => {});
+			const queue = start({
+				run: async (_request, _signal, checkpoint) => {
+					await checkpoint?.saveOutcome({
+						status: "created",
+						tradeUuid: "3a9e",
+					});
+					throw new Error("The research result could not be stored");
+				},
+				reportFailure,
+				canRetry: () => false,
+			});
+			await connected(queue);
+			queue.onApplicationBootstrap();
+
+			await queue.enqueue({ ...request, requestUuid: uuid });
+
+			await waitFor(async () => reportFailure.mock.calls.length === 1);
+			expect(reportFailure).toHaveBeenCalledWith(
+				expect.anything(),
+				expect.any(Error),
+				{ status: "created", tradeUuid: "3a9e" },
+			);
+		});
+
+		it("fails at once, with its own error, when the runner says it cannot be repeated", async () => {
+			const reportFailure = vi.fn(async () => {});
+			vi.spyOn(console, "error").mockImplementation(() => {});
+			const queue = start({
+				run: vi
+					.fn()
+					.mockRejectedValue(new Error("Sistema Estoque answered 422")),
+				reportFailure,
+				canRetry: () => false,
+			});
+			await connected(queue);
+			queue.onApplicationBootstrap();
+
+			await queue.enqueue({ ...request, requestUuid: uuid });
+
+			await waitFor(
+				async () => (await inspector.getJobCounts("failed")).failed === 1,
+			);
+			const failed = await inspector.getJob(uuid);
+			expect(failed?.attemptsMade).toBe(1);
+			expect(failed?.failedReason).toBe("Sistema Estoque answered 422");
+			await waitFor(async () => reportFailure.mock.calls.length === 1);
+		});
 	});
 
 	describe("reporting a failure", () => {
@@ -148,7 +281,7 @@ describe.skipIf(!url)("BullmqResearchQueue against a real Redis", () => {
 			await queue.enqueue({ ...request, ...target });
 
 			await waitFor(async () => reportFailure.mock.calls.length === 1);
-			expect(reportFailure).toHaveBeenCalledWith(target, error);
+			expect(reportFailure).toHaveBeenCalledWith(target, error, undefined);
 			await waitFor(async () => stateWhenReported !== undefined);
 			expect(stateWhenReported).toBe("failed");
 		});
@@ -164,7 +297,11 @@ describe.skipIf(!url)("BullmqResearchQueue against a real Redis", () => {
 			await inspector.add("research", target);
 
 			await waitFor(async () => reportFailure.mock.calls.length === 1);
-			expect(reportFailure).toHaveBeenCalledWith(target, expect.any(Error));
+			expect(reportFailure).toHaveBeenCalledWith(
+				target,
+				expect.any(Error),
+				undefined,
+			);
 			expect(run).not.toHaveBeenCalled();
 		});
 
@@ -189,6 +326,7 @@ describe.skipIf(!url)("BullmqResearchQueue against a real Redis", () => {
 			expect(reportFailure).toHaveBeenCalledWith(
 				target,
 				expect.any(UnrecoverableError),
+				undefined,
 			);
 			expect(run).not.toHaveBeenCalled();
 			expect(await stateOf(target.requestUuid)).toBe("failed");
@@ -259,6 +397,7 @@ describe.skipIf(!url)("BullmqResearchQueue against a real Redis", () => {
 		expect(secondRunner.run).toHaveBeenCalledWith(
 			request,
 			expect.any(AbortSignal),
+			expect.anything(),
 		);
 		const [completed] = await inspector.getCompleted();
 		// Interrupção não é tentativa: o job não gastou a única que tem.
@@ -283,7 +422,11 @@ describe.skipIf(!url)("BullmqResearchQueue against a real Redis", () => {
 		await waitFor(
 			async () => (await inspector.getJobCounts("completed")).completed === 1,
 		);
-		expect(runner.run).toHaveBeenCalledWith(request, expect.any(AbortSignal));
+		expect(runner.run).toHaveBeenCalledWith(
+			request,
+			expect.any(AbortSignal),
+			expect.anything(),
+		);
 	});
 
 	it("recognizes a request_uuid: one job while pending, and a failed one can be forgotten and run again", async () => {
