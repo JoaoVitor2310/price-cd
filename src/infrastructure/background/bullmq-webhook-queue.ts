@@ -1,10 +1,11 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { type JobsOptions, Queue, UnrecoverableError, Worker } from "bullmq";
 import * as z from "zod";
-import type {
-	ResearchResult,
-	ResearchResultNotifier,
-	ResearchResultTarget,
+import {
+	type ResearchResult,
+	type ResearchResultNotifier,
+	type ResearchResultTarget,
+	ResultStoreUnavailableError,
 } from "@/application/games/ports/research-result-notifier.port.js";
 import {
 	type BullmqJob,
@@ -125,9 +126,11 @@ export class BullmqWebhookQueue implements ResearchResultNotifier {
 	 * um aviso perdido aqui é quem recebeu `202` sem resposta. Repetir o `add` é
 	 * seguro, porque o `jobId` é o `requestUuid` e um segundo `add` é ignorado.
 	 *
-	 * Esgotadas as tentativas, lança. Com o resultado da pesquisa, o job falha e a
-	 * fila da pesquisa tenta o `failed`; com o `failed`, o evento da fila só
-	 * registra no log, e sobra o alarme de quem pediu.
+	 * Esgotadas as tentativas, lança `ResultStoreUnavailableError`. Com o resultado
+	 * da pesquisa, o job do pedido idempotente tenta de novo e, pelo checkpoint,
+	 * só refaz o aviso; na falha definitiva, a fila tenta avisar o desfecho
+	 * guardado. Com o `failed`, o evento da fila só registra no log, e sobra o
+	 * alarme de quem pediu.
 	 */
 	async notify(
 		target: ResearchResultTarget,
@@ -152,7 +155,11 @@ export class BullmqWebhookQueue implements ResearchResultNotifier {
 				return;
 			} catch (error) {
 				const delay = delays[attempt];
-				if (delay === undefined) throw error;
+				// O tipo que a Application reconhece como passageiro: só o
+				// armazenamento falhou, e a pesquisa pode tentar o aviso de novo.
+				if (delay === undefined) {
+					throw new ResultStoreUnavailableError(errorMessage(error));
+				}
 				console.warn(
 					`⚠️ [WEBHOOK] Could not store the result of request ${target.requestUuid} (${errorMessage(error)}) — trying again in ${delay}ms.`,
 				);

@@ -84,6 +84,21 @@ describe("HttpTradeWithOfferCreator", () => {
 		});
 	});
 
+	it("sends the request uuid, so a repeated request gets the same Trade back", async () => {
+		const fetchMock = stubFetch(201, { uuid: "3a9e", currency: "eur" });
+
+		await creator().create(games, {
+			...options,
+			requestUuid: "8c1f0000-0000-4000-8000-000000000000",
+		});
+
+		const body = JSON.parse(
+			(fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1]
+				.body as string,
+		);
+		expect(body.request_uuid).toBe("8c1f0000-0000-4000-8000-000000000000");
+	});
+
 	it("leaves out the optional fields it does not have", async () => {
 		const fetchMock = stubFetch(201, { uuid: "3a9e", currency: "tf2" });
 
@@ -98,6 +113,7 @@ describe("HttpTradeWithOfferCreator", () => {
 		);
 		expect(body).not.toHaveProperty("list_code");
 		expect(body).not.toHaveProperty("title");
+		expect(body).not.toHaveProperty("request_uuid");
 	});
 
 	it("201: created, whatever else the body says, since the Trade already exists", async () => {

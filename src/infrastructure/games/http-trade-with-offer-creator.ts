@@ -59,6 +59,9 @@ export class HttpTradeWithOfferCreator implements TradeWithOfferCreator {
 		};
 		if (options.listCode) payload.list_code = options.listCode;
 		if (options.title) payload.title = options.title;
+		// A chave de idempotência do Estoque: a repetição do mesmo pedido devolve
+		// a Trade que ele já criou (201, mesmo uuid). Sem ela, cria sempre.
+		if (options.requestUuid) payload.request_uuid = options.requestUuid;
 
 		let response: Response;
 		try {

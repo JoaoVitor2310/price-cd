@@ -9,8 +9,11 @@ import type {
 	BullmqQueueClient,
 	BullmqStoredJob,
 } from "@/infrastructure/background/bullmq-clients.js";
-import { BullmqResearchQueue } from "@/infrastructure/background/bullmq-research-queue.js";
-import { LONG_JOB_OPTIONS } from "@/infrastructure/background/long-job-policy.js";
+import {
+	BullmqResearchQueue,
+	RESEARCH_JOB_ATTEMPTS,
+	RESEARCH_JOB_OPTIONS,
+} from "@/infrastructure/background/bullmq-research-queue.js";
 
 const request: ResearchGamesRequest = {
 	gameNames: ["Half-Life", "Portal 2"],
@@ -28,6 +31,7 @@ function setup(
 	runner = {
 		run: vi.fn().mockResolvedValue(undefined),
 		reportFailure: vi.fn().mockResolvedValue(undefined),
+		canRetry: vi.fn(() => false),
 	},
 ) {
 	const calls: string[] = [];
@@ -64,6 +68,8 @@ function setup(
 	const job = (data: unknown = request): BullmqJob => ({
 		id: "42",
 		data,
+		discard: vi.fn(),
+		updateData: vi.fn(async () => {}),
 		moveToDelayed: vi.fn(async () => {
 			calls.push("job.moveToDelayed");
 		}),
@@ -156,7 +162,7 @@ describe("BullmqResearchQueue", () => {
 			expect(queue.add).toHaveBeenCalledWith(
 				"research",
 				request,
-				LONG_JOB_OPTIONS,
+				RESEARCH_JOB_OPTIONS,
 			);
 		});
 
@@ -170,20 +176,19 @@ describe("BullmqResearchQueue", () => {
 			await adapter.enqueue(withUuid);
 
 			expect(queue.add).toHaveBeenCalledWith("research", withUuid, {
-				...LONG_JOB_OPTIONS,
+				...RESEARCH_JOB_OPTIONS,
 				jobId: "8c1f0000-0000-4000-8000-000000000000",
 			});
 		});
 
-		it("keeps finished jobs by age, and never retries a research on its own", () => {
-			// Repetir uma pesquisa que já chamou o Estoque pode criar outra Trade:
-			// sem `attempts`, a BullMQ tenta uma vez só.
-			expect(LONG_JOB_OPTIONS.attempts).toBeUndefined();
-			expect(LONG_JOB_OPTIONS.removeOnComplete).toEqual({
-				age: 7 * 24 * 3600,
-			});
-			expect(LONG_JOB_OPTIONS.removeOnFail).toEqual({
-				age: 30 * 24 * 3600,
+		it("keeps finished jobs by age, and allows retries with a growing wait", () => {
+			// As tentativas existem para o pedido idempotente; os outros são
+			// descartados na primeira falha (`consuming`, abaixo).
+			expect(RESEARCH_JOB_OPTIONS).toMatchObject({
+				attempts: RESEARCH_JOB_ATTEMPTS,
+				backoff: { type: "exponential", delay: 30_000 },
+				removeOnComplete: { age: 7 * 24 * 3600 },
+				removeOnFail: { age: 30 * 24 * 3600 },
 			});
 		});
 
@@ -312,7 +317,11 @@ describe("BullmqResearchQueue", () => {
 
 			await process(job(), "token");
 
-			expect(runner.run).toHaveBeenCalledWith(request, expect.any(AbortSignal));
+			expect(runner.run).toHaveBeenCalledWith(
+				request,
+				expect.any(AbortSignal),
+				expect.objectContaining({ saveOutcome: expect.any(Function) }),
+			);
 			// Não abortado: rodando normalmente, uma falha é do pedido.
 			expect(runner.run.mock.calls[0][1].aborted).toBe(false);
 		});
@@ -326,13 +335,36 @@ describe("BullmqResearchQueue", () => {
 			);
 		});
 
-		it("fails a job whose payload does not match, without running anything", async () => {
+		it("fails a job whose payload does not match, without running anything or retrying", async () => {
 			const { process, job, runner } = setup();
+			const unreadable = job({ gameNames: [] });
 
-			await expect(process(job({ gameNames: [] }), "token")).rejects.toThrow(
+			await expect(process(unreadable, "token")).rejects.toThrow(
 				/Invalid research job payload/,
 			);
 			expect(runner.run).not.toHaveBeenCalled();
+			expect(unreadable.discard).toHaveBeenCalled();
+		});
+
+		it("discards a failure the runner says cannot be repeated, keeping its error", async () => {
+			const { process, job, runner } = setup();
+			const failure = new Error("Sistema Estoque answered 422");
+			runner.run.mockRejectedValue(failure);
+			const stored = job();
+
+			await expect(process(stored, "token")).rejects.toBe(failure);
+			expect(runner.canRetry).toHaveBeenCalledWith(request, failure);
+			expect(stored.discard).toHaveBeenCalled();
+		});
+
+		it("leaves a repeatable failure to BullMQ's next attempt", async () => {
+			const { process, job, runner } = setup();
+			runner.run.mockRejectedValue(new Error("Sistema Estoque answered 503"));
+			runner.canRetry.mockReturnValue(true);
+			const stored = job();
+
+			await expect(process(stored, "token")).rejects.toThrow("503");
+			expect(stored.discard).not.toHaveBeenCalled();
 		});
 	});
 
@@ -346,18 +378,29 @@ describe("BullmqResearchQueue", () => {
 			const { adapter, runner } = setup();
 			const error = new Error("Sistema Estoque answered 503");
 
-			await adapter.onJobFailed({ data: { ...request, ...target } }, error);
+			await adapter.onJobFailed(
+				{ finishedOn: 1, data: { ...request, ...target } },
+				error,
+			);
 
-			expect(runner.reportFailure).toHaveBeenCalledWith(target, error);
+			expect(runner.reportFailure).toHaveBeenCalledWith(
+				target,
+				error,
+				undefined,
+			);
 		});
 
 		it("reports it even when the payload cannot be read as a request", async () => {
 			const { adapter, runner } = setup();
 			const error = new Error("Invalid research job payload");
 
-			await adapter.onJobFailed({ data: target }, error);
+			await adapter.onJobFailed({ finishedOn: 1, data: target }, error);
 
-			expect(runner.reportFailure).toHaveBeenCalledWith(target, error);
+			expect(runner.reportFailure).toHaveBeenCalledWith(
+				target,
+				error,
+				undefined,
+			);
 		});
 
 		it("falls back to the job id when the stored request uuid cannot be read", async () => {
@@ -368,12 +411,50 @@ describe("BullmqResearchQueue", () => {
 			await adapter.onJobFailed(
 				{
 					id: target.requestUuid,
+					finishedOn: 1,
 					data: { webhookUrl: target.webhookUrl, requestUuid: 7 },
 				},
 				error,
 			);
 
-			expect(runner.reportFailure).toHaveBeenCalledWith(target, error);
+			expect(runner.reportFailure).toHaveBeenCalledWith(
+				target,
+				error,
+				undefined,
+			);
+		});
+
+		it("hands the saved outcome to the report, so an existing Trade is not reported as failed", async () => {
+			const { adapter, runner } = setup();
+			const error = new Error("The research result could not be stored");
+			const outcome = { status: "created", tradeUuid: "3a9e" };
+
+			await adapter.onJobFailed(
+				{
+					finishedOn: 1,
+					data: { ...request, ...target, checkpoint: { outcome } },
+				},
+				error,
+			);
+
+			expect(runner.reportFailure).toHaveBeenCalledWith(target, error, outcome);
+		});
+
+		it("does not report a failure that will be tried again", async () => {
+			// Avisar agora ocuparia o `jobId` da fila de webhooks com um `failed`, e o
+			// `trade_created` da tentativa que desse certo seria ignorado.
+			const { adapter, runner } = setup();
+			const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+			await adapter.onJobFailed(
+				{ id: "42", data: target },
+				new Error("Sistema Estoque answered 503"),
+			);
+
+			expect(runner.reportFailure).not.toHaveBeenCalled();
+			expect(warn).toHaveBeenCalledWith(
+				expect.stringContaining("it will be tried again"),
+			);
 		});
 
 		it("does nothing when the event comes without the job", async () => {
@@ -390,7 +471,7 @@ describe("BullmqResearchQueue", () => {
 			const logged = vi.spyOn(console, "error").mockImplementation(() => {});
 
 			await expect(
-				adapter.onJobFailed({ data: target }, new Error("boom")),
+				adapter.onJobFailed({ finishedOn: 1, data: target }, new Error("boom")),
 			).resolves.toBeUndefined();
 			expect(logged).toHaveBeenCalled();
 		});
@@ -411,7 +492,7 @@ describe("BullmqResearchQueue", () => {
 			const { adapter } = setup(runner);
 			let finished = false;
 
-			void adapter.onJobFailed({ data: {} }, new Error("boom"));
+			void adapter.onJobFailed({ finishedOn: 1, data: {} }, new Error("boom"));
 			const shutdown = adapter
 				.beforeApplicationShutdown()
 				.then(() => (finished = true));
@@ -432,7 +513,7 @@ describe("BullmqResearchQueue", () => {
 			const { adapter } = setup(runner);
 			const warned = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-			void adapter.onJobFailed({ data: {} }, new Error("boom"));
+			void adapter.onJobFailed({ finishedOn: 1, data: {} }, new Error("boom"));
 			const shutdown = adapter.beforeApplicationShutdown();
 			await vi.advanceTimersByTimeAsync(10_000);
 

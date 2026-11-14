@@ -13,11 +13,12 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * ser consultado. Por idade, não por contagem — "o que rodou na última semana"
  * é a pergunta, e uma rajada de pedidos não deve apagar o histórico.
  *
- * `attempts` fica no default (1) de propósito: repetir um job que falhou depois
- * de chamar o Estoque cria uma segunda Trade (pesquisa, Reabastecimento) ou
- * pergunta de novo se comenta (Descoberta), e o Estoque ainda não tem
- * idempotência. Interrupção por deploy **não** é tentativa — o job volta à fila
- * sem consumir nada (`ResumableBullmqWorker.stop`).
+ * `attempts` fica no default (1) de propósito: repetir um Reabastecimento que
+ * falhou depois de chamar o Estoque cria uma segunda Trade (o callback sem oferta
+ * não é idempotente), e repetir uma Descoberta pergunta de novo se comenta. A
+ * pesquisa sobrescreve isto com as suas tentativas (`RESEARCH_JOB_OPTIONS`), só
+ * para o pedido idempotente. Interrupção por deploy **não** é tentativa — o job
+ * volta à fila sem consumir nada (`ResumableBullmqWorker.stop`).
  */
 export const LONG_JOB_OPTIONS: JobsOptions = {
 	removeOnComplete: { age: (7 * DAY_MS) / 1000 },

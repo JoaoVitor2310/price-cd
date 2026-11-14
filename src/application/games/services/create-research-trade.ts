@@ -1,5 +1,12 @@
-import type { GameTradeImporter } from "@/application/games/ports/game-trade-importer.port.js";
-import type { ResearchGamesRequest } from "@/application/games/ports/research-games-runner.port.js";
+import type {
+	GameTradeImporter,
+	GameTradeInput,
+} from "@/application/games/ports/game-trade-importer.port.js";
+import type {
+	ResearchCheckpoint,
+	ResearchGamesRequest,
+	ResearchTradeOutcome,
+} from "@/application/games/ports/research-games-runner.port.js";
 import type { TradeWithOfferCreator } from "@/application/games/ports/trade-with-offer-creator.port.js";
 import type { PriceGames } from "@/application/games/services/price-games.js";
 import { priceResearchGames } from "@/application/games/services/price-research-games.js";
@@ -8,17 +15,8 @@ import {
 	JobCancelledError,
 } from "@/application/shared/cancellation.js";
 
-/**
- * Como terminou o pedido.
- *
- * - `created`: a Trade existe. `tradeUuid` só vem da Trade **com oferta** — a
- *   rota sem oferta do Estoque não devolve identificador.
- * - `not_created`: nenhum jogo passou nos filtros (o Estoque nem é chamado), ou
- *   o Estoque não viu nada a ofertar.
- */
-export type ResearchTradeOutcome =
-	| { status: "created"; tradeUuid?: string }
-	| { status: "not_created"; reason: "nothing_priced" | "nothing_to_offer" };
+/** Mora na porta do runner, que o guarda no checkpoint; reexportado aqui. */
+export type { ResearchTradeOutcome } from "@/application/games/ports/research-games-runner.port.js";
 
 /**
  * Nenhum jogo passou e o catálogo não respondeu por pelo menos um: não dá para
@@ -56,6 +54,9 @@ export class ResearchCancelledError extends JobCancelledError {
  * Falhas propagam: as da pesquisa como vieram, as do Estoque com oferta como
  * `StockUnavailableError` ou `TradeRejectedError` — é por esses tipos que quem
  * chama separa uma da outra.
+ *
+ * Com `checkpoint`, os jogos aprovados ficam guardados antes de chamar o Estoque,
+ * e uma tentativa seguinte os usa sem pesquisar de novo (`ResearchCheckpoint`).
  */
 export class CreateResearchTrade {
 	constructor(
@@ -67,19 +68,17 @@ export class CreateResearchTrade {
 	async run(
 		request: ResearchGamesRequest,
 		signal?: CancellationSignal,
+		checkpoint?: ResearchCheckpoint,
 	): Promise<ResearchTradeOutcome> {
-		const { games, lookupFailed } = await priceResearchGames(
-			this.priceGames,
-			request,
-		);
-		// Antes de olhar o resultado: pesquisa interrompida não diz nada.
+		const games =
+			checkpoint?.pricedGames ?? (await this.research(request, signal));
+		// Também com os jogos da tentativa anterior: desligando, não chama o Estoque.
 		if (signal?.aborted) throw new ResearchCancelledError();
-
 		if (games.length === 0) {
-			if (lookupFailed.length > 0) {
-				throw new PriceResearchIncompleteError(lookupFailed.length);
-			}
 			return { status: "not_created", reason: "nothing_priced" };
+		}
+		if (checkpoint?.pricedGames === undefined) {
+			await checkpoint?.savePricedGames(games);
 		}
 
 		const { supplierSteamId, listCode, title, currency } = request;
@@ -104,9 +103,28 @@ export class CreateResearchTrade {
 			currency,
 			listCode,
 			title,
+			requestUuid: request.requestUuid,
 		});
 		return outcome.status === "created"
 			? { status: "created", tradeUuid: outcome.tradeUuid }
 			: { status: "not_created", reason: "nothing_to_offer" };
+	}
+
+	/** A pesquisa em si; lança se nada passou e algum jogo não foi respondido. */
+	private async research(
+		request: ResearchGamesRequest,
+		signal?: CancellationSignal,
+	): Promise<GameTradeInput[]> {
+		const { games, lookupFailed } = await priceResearchGames(
+			this.priceGames,
+			request,
+		);
+		// Antes de olhar o resultado: pesquisa interrompida não diz nada.
+		if (signal?.aborted) throw new ResearchCancelledError();
+
+		if (games.length === 0 && lookupFailed.length > 0) {
+			throw new PriceResearchIncompleteError(lookupFailed.length);
+		}
+		return games;
 	}
 }

@@ -1,7 +1,9 @@
 import * as z from "zod";
+import type { GameTradeInput } from "@/application/games/ports/game-trade-importer.port.js";
 import type {
 	ResearchFailureTarget,
 	ResearchJobRequest,
+	ResearchTradeOutcome,
 } from "@/application/games/ports/research-games-runner.port.js";
 import { OFFER_CURRENCIES } from "@/domain/suppliers/offer.js";
 
@@ -52,7 +54,69 @@ export const parseResearchJobPayload = (data: unknown): ResearchJobRequest => {
 	if (!parsed.success) {
 		throw new Error(`Invalid research job payload: ${parsed.error.message}`);
 	}
-	return parsed.data;
+	// O progresso das tentativas mora no mesmo dado do job, mas não é o pedido.
+	const { [CHECKPOINT_KEY]: _checkpoint, ...request } = parsed.data;
+	return request as ResearchJobRequest;
+};
+
+/**
+ * Onde o progresso das tentativas mora no dado do job (`ResearchCheckpoint`):
+ * ao lado do pedido, para sobreviver ao desligamento junto com ele.
+ */
+export const CHECKPOINT_KEY = "checkpoint";
+
+export type StoredResearchCheckpoint = {
+	pricedGames?: GameTradeInput[];
+	outcome?: ResearchTradeOutcome;
+};
+
+const pricedGameSchema = z.looseObject({
+	name: z.string().min(1),
+	market_price_euro: z.number(),
+	popularity: z.number(),
+	region: z.string().nullable(),
+	id_steam: z.string().nullable(),
+	gamivo_id: z.string().nullable(),
+});
+
+const outcomeSchema = z.union([
+	z.looseObject({
+		status: z.literal("created"),
+		tradeUuid: z.string().min(1).optional(),
+	}),
+	z.looseObject({
+		status: z.literal("not_created"),
+		reason: z.enum(["nothing_priced", "nothing_to_offer"]),
+	}),
+]);
+
+/**
+ * O progresso guardado, campo a campo. Ilegível — gravado por outra versão do
+ * código, ou corrompido — vale como ausente: a tentativa só pesquisa de novo, o
+ * comportamento de antes do checkpoint.
+ */
+export const readResearchCheckpoint = (
+	data: unknown,
+): StoredResearchCheckpoint => {
+	const record =
+		typeof data === "object" && data !== null
+			? (data as Record<string, unknown>)
+			: {};
+	const stored = record[CHECKPOINT_KEY];
+	const fields =
+		typeof stored === "object" && stored !== null
+			? (stored as Record<string, unknown>)
+			: {};
+	const pricedGames = z.array(pricedGameSchema).safeParse(fields.pricedGames);
+	const outcome = outcomeSchema.safeParse(fields.outcome);
+	return {
+		pricedGames: pricedGames.success
+			? (pricedGames.data as GameTradeInput[])
+			: undefined,
+		outcome: outcome.success
+			? (outcome.data as ResearchTradeOutcome)
+			: undefined,
+	};
 };
 
 /**

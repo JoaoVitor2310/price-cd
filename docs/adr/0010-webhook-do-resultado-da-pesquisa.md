@@ -78,14 +78,24 @@ Fechar o browser **não** derruba a pesquisa: o `gotoWithRetry` engole o erro e 
 
 A fila `webhooks` fica no mesmo Redis da pesquisa (banco 1). Separada porque o ritmo é outro: sem navegador, concorrência 5, e um aviso esperando o chatbot voltar não segura a próxima pesquisa. 31 tentativas, 30s dobrando até 1h (`backoffStrategy` do Worker — a BullMQ passa `attemptsMade + 1`, conferido no código dela e num teste contra Redis real): a última sai ~24h depois da primeira, o prazo pedido pelo chatbot. Só `2xx` é entregue. O destino que deixou de ser permitido, ou um payload ilegível, desiste na hora (`UnrecoverableError`). Sem `QUEUE_REDIS_URL` (só fora de produção), uma tentativa em memória.
 
-## Janelas conhecidas, todas fechadas pela idempotência do Estoque
+## Idempotência no Estoque
 
-- O Estoque cria a Trade e a resposta não chega (timeout): `stock_unavailable`; reenviado, o pedido roda de novo e pode criar outra.
-- A Trade é criada e o resultado não pode ser guardado (Redis fora por mais que as tentativas do `notify`): se o Redis voltar a tempo de o job ser marcado falho, quem pediu recebe `pricing_failed` com a Trade já existindo; reenviado, roda de novo. Se ficar fora por mais que o lock do job (30s), a BullMQ nem consegue marcá-lo falho: o lock expira, o job volta como travado e roda de novo **sozinho**, sem reenvio, criando outra Trade.
-- O sinal de desligamento chega com o Estoque já sendo chamado: a Trade nasce e o job roda de novo; o segundo aviso é ignorado pelo `jobId`, e o chatbot fica com a primeira Trade.
-- O Estoque responde `201` sem `uuid` legível: `pricing_failed`, para não convidar à repetição; reenviado mesmo assim, roda de novo e pode criar outra.
+O price-cd manda o `request_uuid` no `POST /api/trades`, e o Estoque o guarda com índice único (PR 128 do Sistema Estoque): **a repetição do mesmo pedido devolve a Trade que ele já criou, enquanto ela existir** — o mesmo `201`, o mesmo uuid. É o que torna seguro rodar o pedido de novo, e o job da pesquisa ganhou novas tentativas por isso (ADR 0009, "Nova tentativa só para o pedido idempotente").
 
-O Estoque receber `request_uuid` como `pricing_request_id` (item 2 do backlog dele) fecha as quatro. Até lá o price-cd não manda o campo, e o critério de aceite do chatbot, um resultado lógico por `request_uuid`, não está garantido nessas janelas. É o item 21 do `docs/IMPROVEMENTS.md`. Paliativo descartado: gravar o `tradeUuid` no job antes de guardar o aviso encurta a janela, mas não fecha.
+**Cada tentativa continua de onde a anterior parou** (`ResearchCheckpoint`, no dado do próprio job: `job.updateData`). Repetir a pesquisa inteira não serve: com o SteamCharts falhando por lote, a segunda pesquisa pode não aprovar nenhum jogo, o Estoque nem seria chamado, e o chatbot receberia `no_trade` com a Trade existindo. Por isso a tentativa guarda dois marcos: os **jogos aprovados**, antes de chamar o Estoque (a próxima chama com os mesmos e recebe a mesma Trade), e o **desfecho** do Estoque (a próxima só refaz o aviso). Na falha definitiva com o desfecho guardado, o aviso é o desfecho (`trade_created`), não `failed`. Guardar nunca derruba o job: falhando, a próxima tentativa só pesquisa de novo. Só a falha de **guardar o aviso** conta como passageira no `notify` (`ResultStoreUnavailableError`, lançado pelo adapter quando o Redis não responde); um aviso que não se consegue montar falharia igual e não é repetido.
+
+As janelas de Trade duplicada deste ADR fecham para o pedido com `request_uuid`:
+
+- O Estoque cria a Trade e a resposta não chega (timeout): `stock_unavailable`, passageira, e a nova tentativa recebe a mesma Trade.
+- A Trade é criada e o resultado não pode ser guardado: `ResultStoreUnavailableError`, passageira; a nova tentativa acha o desfecho no checkpoint e só tenta o aviso de novo. Com o Redis fora por mais que o lock (30s), o job volta como travado e roda de novo sozinho — agora com a mesma Trade.
+- O sinal de desligamento chega com o Estoque já sendo chamado: o job roda de novo no boot e recebe a mesma Trade.
+- O Estoque responde `201` sem `uuid` legível: passageira com `request_uuid`, porque a repetição devolve a mesma Trade e é o jeito de saber qual é.
+
+O que continua aberto:
+
+- **A Trade apagada no Estoque libera o `request_uuid`:** uma nova tentativa depois disso cria outra Trade. É escolha do Estoque (índice parcial, `WHERE deleted_at IS NULL`), e a janela é a das tentativas, alguns minutos.
+- **Fornecedor apagado no Estoque:** a repetição legítima é recusada com `422` ("o pedido já criou a Trade de outro Fornecedor"), porque o Estoque compara pelo Fornecedor carregado e o apagado vem vazio. O price-cd a trata como `TradeRejectedError`, não repete, e avisa `failed` com a Trade existindo. A correção é do lado do Estoque.
+- **Sem `request_uuid`** (a interface web, a sync de bundle) e no Reabastecimento, a Trade sai pelo callback sem oferta, que não é idempotente: uma tentativa só, e as janelas de antes continuam valendo ali (item 12 do `docs/IMPROVEMENTS.md`).
 
 ## Consequences
 

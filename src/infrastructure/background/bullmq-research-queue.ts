@@ -21,6 +21,7 @@ import {
 	closeQueueAndConnections,
 	createBullmqConnections,
 } from "@/infrastructure/background/bullmq-connections.js";
+import { bullmqResearchCheckpoint } from "@/infrastructure/background/bullmq-research-checkpoint.js";
 import {
 	LONG_JOB_COMMAND_TIMEOUT_MS,
 	LONG_JOB_MAX_STALLED_COUNT,
@@ -29,9 +30,11 @@ import {
 import { RESEARCH_QUEUE_NAME } from "@/infrastructure/background/queue-names.js";
 import {
 	parseResearchJobPayload,
+	readResearchCheckpoint,
 	readResearchFailureTarget,
 } from "@/infrastructure/background/research-job-payload.js";
 import { ResumableBullmqWorker } from "@/infrastructure/background/resumable-bullmq-worker.js";
+import { errorMessage } from "@/lib/error-message.js";
 import { withTimeout } from "@/lib/with-timeout.js";
 
 /**
@@ -52,6 +55,25 @@ import { withTimeout } from "@/lib/with-timeout.js";
 export { RESEARCH_QUEUE_NAME } from "@/infrastructure/background/queue-names.js";
 
 const RESEARCH_JOB_NAME = "research";
+
+/**
+ * As tentativas da pesquisa: a primeira e mais três, esperando 30s, 1min e 2min.
+ * Só o pedido que o runner diz que pode repetir (`canRetry`: idempotente no
+ * Estoque e falha passageira) usa as outras — os demais são descartados na
+ * primeira falha (`job.discard()`), porque repeti-los criaria outra Trade.
+ * Cobre o Estoque fora por alguns minutos, a janela mais comum.
+ */
+export const RESEARCH_JOB_ATTEMPTS = 4;
+export const RESEARCH_RETRY_BACKOFF = {
+	type: "exponential",
+	delay: 30_000,
+} as const;
+
+export const RESEARCH_JOB_OPTIONS: JobsOptions = {
+	...LONG_JOB_OPTIONS,
+	attempts: RESEARCH_JOB_ATTEMPTS,
+	backoff: RESEARCH_RETRY_BACKOFF,
+};
 
 /** Ping do health: Redis lento conta como fora. */
 const STATUS_TIMEOUT_MS = 1000;
@@ -90,8 +112,7 @@ export class BullmqResearchQueue implements ResearchQueue {
 			tag: "[QUEUE]",
 			icon: "📥",
 			createWorker: deps.createWorker,
-			handle: (job, signal) =>
-				this.runner.run(parseResearchJobPayload(job.data), signal),
+			handle: (job, signal) => this.handle(job, signal),
 		});
 	}
 
@@ -108,8 +129,8 @@ export class BullmqResearchQueue implements ResearchQueue {
 	async enqueue(request: ResearchJobRequest): Promise<void> {
 		this.assertConnected();
 		const options: JobsOptions = request.requestUuid
-			? { ...LONG_JOB_OPTIONS, jobId: request.requestUuid }
-			: LONG_JOB_OPTIONS;
+			? { ...RESEARCH_JOB_OPTIONS, jobId: request.requestUuid }
+			: RESEARCH_JOB_OPTIONS;
 		await withTimeout(
 			this.deps.queue.add(RESEARCH_JOB_NAME, request, options),
 			LONG_JOB_COMMAND_TIMEOUT_MS,
@@ -187,13 +208,44 @@ export class BullmqResearchQueue implements ResearchQueue {
 	}
 
 	/**
+	 * Roda o pedido e, se falhar, decide se a BullMQ pode tentar de novo: só se o
+	 * runner disser que repetir é seguro (`canRetry`). Senão o job é descartado,
+	 * e a falha é definitiva já na primeira vez.
+	 *
+	 * Falha com o sinal abortado é do desligamento: o `ResumableBullmqWorker` a
+	 * traduz em `DelayedError`, que não é tentativa — não há o que decidir aqui.
+	 */
+	private async handle(job: BullmqJob, signal: AbortSignal): Promise<void> {
+		let request: ResearchJobRequest;
+		try {
+			request = parseResearchJobPayload(job.data);
+		} catch (error) {
+			// Ilegível hoje, ilegível na próxima tentativa.
+			job.discard();
+			throw error;
+		}
+
+		try {
+			await this.runner.run(request, signal, bullmqResearchCheckpoint(job));
+		} catch (error) {
+			if (!signal.aborted && !this.runner.canRetry(request, error)) {
+				job.discard();
+			}
+			throw error;
+		}
+	}
+
+	/**
 	 * Chamado pelo evento `failed` do worker, que a BullMQ emite **depois** de mover
 	 * o job para falho, em toda falha: erro do runner, payload ilegível, limite de
 	 * travamentos. É aqui, e não no runner, para cobrir as que não passam por ele e
 	 * para um reenvio motivado pelo aviso já ver o job como `failed`.
 	 *
-	 * `attempts` é 1, então todo `failed` é definitivo; `DelayedError` (o
-	 * desligamento) não emite o evento.
+	 * O evento também dispara numa tentativa que vai se repetir: só a falha
+	 * **definitiva** (`finishedOn` preenchido) é avisada. Avisar antes ocuparia o
+	 * `jobId` da fila de webhooks com um `failed`, e o `trade_created` da
+	 * tentativa que desse certo seria ignorado. `DelayedError` (o desligamento)
+	 * não emite o evento.
 	 *
 	 * Nunca lança: é ouvinte de evento. O notifier já tenta de novo por alguns
 	 * segundos; não conseguir mesmo assim fica no log, e quem pediu cai no alarme
@@ -201,10 +253,16 @@ export class BullmqResearchQueue implements ResearchQueue {
 	 * (`trackUntilShutdown`).
 	 */
 	onJobFailed(
-		job: Pick<BullmqJob, "data" | "id"> | undefined,
+		job: Pick<BullmqJob, "data" | "id" | "finishedOn"> | undefined,
 		error: unknown,
 	): Promise<void> {
 		if (!job) return Promise.resolve();
+		if (job.finishedOn === undefined) {
+			console.warn(
+				`🔁 [QUEUE] Research job ${job.id} failed (${errorMessage(error)}) — it will be tried again.`,
+			);
+			return Promise.resolve();
+		}
 		return this.jobs.trackUntilShutdown(this.reportFailure(job, error));
 	}
 
@@ -213,9 +271,12 @@ export class BullmqResearchQueue implements ResearchQueue {
 		error: unknown,
 	): Promise<void> {
 		try {
+			// O desfecho guardado pelo checkpoint: se o Estoque já respondeu, a
+			// falha foi só de avisar, e quem pediu recebe o desfecho.
 			await this.runner.reportFailure(
 				readResearchFailureTarget(job.data, job.id),
 				error,
+				readResearchCheckpoint(job.data).outcome,
 			);
 		} catch (reportError) {
 			console.error(
@@ -277,7 +338,10 @@ export const createBullmqResearchQueue = (
 					console.log(`✅ [QUEUE] Research job ${job.id} completed.`),
 				);
 				worker.on("failed", (job, error) => {
-					console.error(`❌ [QUEUE] Research job ${job?.id} failed:`, error);
+					// Só a definitiva é erro; a que vai se repetir é logada pelo `onJobFailed`.
+					if (job?.finishedOn !== undefined) {
+						console.error(`❌ [QUEUE] Research job ${job.id} failed:`, error);
+					}
 					void researchQueue.onJobFailed(job, error);
 				});
 				return worker;

@@ -1,18 +1,24 @@
 import type {
+	ResearchCheckpoint,
 	ResearchFailureTarget,
 	ResearchGamesRunner,
 	ResearchJobRequest,
+	ResearchTradeOutcome,
 } from "@/application/games/ports/research-games-runner.port.js";
-import type {
-	ResearchFailureKind,
-	ResearchResult,
-	ResearchResultNotifier,
+import {
+	type ResearchFailureKind,
+	type ResearchResult,
+	type ResearchResultNotifier,
+	ResultStoreUnavailableError,
 } from "@/application/games/ports/research-result-notifier.port.js";
-import { StockUnavailableError } from "@/application/games/ports/trade-with-offer-creator.port.js";
+import {
+	StockUnavailableError,
+	TradeOutcomeUnknownError,
+} from "@/application/games/ports/trade-with-offer-creator.port.js";
 import {
 	type CreateResearchTrade,
+	PriceResearchIncompleteError,
 	ResearchCancelledError,
-	type ResearchTradeOutcome,
 } from "@/application/games/services/create-research-trade.js";
 import {
 	type ReadTopicGames,
@@ -45,29 +51,80 @@ export class RunResearchJobUseCase implements ResearchGamesRunner {
 		private readonly readTopicGames: ReadTopicGames,
 	) {}
 
+	/**
+	 * Com `checkpoint`, continua de onde a tentativa anterior parou: com o desfecho
+	 * do Estoque guardado, só refaz o aviso; com os jogos aprovados, chama o Estoque
+	 * com eles sem pesquisar de novo (`ResearchCheckpoint`).
+	 */
 	async run(
 		request: ResearchJobRequest,
 		signal?: CancellationSignal,
+		checkpoint?: ResearchCheckpoint,
 	): Promise<void> {
-		const outcome = await this.research(request, signal);
+		let outcome = checkpoint?.outcome;
+		if (outcome === undefined) {
+			outcome = await this.research(request, signal, checkpoint);
+			await checkpoint?.saveOutcome(outcome);
+		}
 		if (request.webhookUrl === undefined) return;
+		// `ResultStoreUnavailableError` propaga: a Trade já existe, e a próxima
+		// tentativa, pelo checkpoint, só refaz o aviso.
 		await this.notify(request, toResult(outcome));
 	}
 
+	/**
+	 * Rodar de novo só quando **repetir não cria outra Trade** e a falha é
+	 * passageira.
+	 *
+	 * - **Idempotente** é o pedido com `requestUuid` e `currency`: a Trade com
+	 *   oferta, que o Estoque devolve igual na repetição do mesmo pedido. Sem um dos
+	 *   dois — a interface web, a sync de bundle —, a Trade sai pelo callback sem
+	 *   oferta, que cria outra a cada chamada.
+	 * - **Passageira** é a falha que pode não acontecer na próxima vez: o Estoque
+	 *   fora, o tópico que não abriu, o catálogo que não respondeu, o `201` sem uuid
+	 *   legível, o aviso que não foi guardado. O `422` do Estoque (`TradeRejectedError`)
+	 *   e o pedido montado errado dariam o mesmo resultado.
+	 */
+	canRetry(request: ResearchJobRequest, error: unknown): boolean {
+		const idempotent =
+			request.requestUuid !== undefined && request.currency !== undefined;
+		return idempotent && isTransientFailure(error);
+	}
+
+	/**
+	 * Com o desfecho do Estoque já guardado, a falha foi só de avisar: quem pediu
+	 * recebe esse desfecho (`trade_created`, `no_trade`), não um `failed` que
+	 * diria "não deu" com a Trade existindo.
+	 */
 	async reportFailure(
 		target: ResearchFailureTarget,
 		error: unknown,
+		outcome?: ResearchTradeOutcome,
 	): Promise<void> {
-		await this.notify(target, failedResult(error));
+		await this.notify(
+			target,
+			outcome === undefined ? failedResult(error) : toResult(outcome),
+		);
 	}
 
 	private async research(
 		request: ResearchJobRequest,
 		signal?: CancellationSignal,
+		checkpoint?: ResearchCheckpoint,
 	): Promise<ResearchTradeOutcome> {
-		if (!("topicUrl" in request)) return this.createTrade.run(request, signal);
+		if (!("topicUrl" in request)) {
+			return this.createTrade.run(request, signal, checkpoint);
+		}
 
 		const { topicUrl, ...rest } = request;
+		// Os jogos da tentativa anterior já vieram do tópico: não abre de novo.
+		if (checkpoint?.pricedGames !== undefined) {
+			return this.createTrade.run(
+				{ ...rest, gameNames: [] },
+				signal,
+				checkpoint,
+			);
+		}
 		const gameNames = await this.readTopicGames.run(topicUrl);
 		// Antes de pesquisar: com o serviço desligando, abrir a sessão do AllKeyShop
 		// agora subiria um Chromium depois do cleanup.
@@ -76,7 +133,7 @@ export class RunResearchJobUseCase implements ResearchGamesRunner {
 		if (gameNames.length === 0) {
 			return { status: "not_created", reason: "nothing_priced" };
 		}
-		return this.createTrade.run({ ...rest, gameNames }, signal);
+		return this.createTrade.run({ ...rest, gameNames }, signal, checkpoint);
 	}
 
 	private async notify(
@@ -109,6 +166,13 @@ const toResult = (outcome: ResearchTradeOutcome): ResearchResult => {
 	}
 	return { result: "trade_created", tradeUuid: outcome.tradeUuid };
 };
+
+const isTransientFailure = (error: unknown): boolean =>
+	error instanceof StockUnavailableError ||
+	error instanceof TopicScrapeFailedError ||
+	error instanceof PriceResearchIncompleteError ||
+	error instanceof TradeOutcomeUnknownError ||
+	error instanceof ResultStoreUnavailableError;
 
 /** O que quem pediu lê, por tipo — nunca o texto do erro interno. */
 export const FAILURE_MESSAGES: Record<ResearchFailureKind, string> = {

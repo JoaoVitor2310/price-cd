@@ -1,3 +1,4 @@
+import type { GameTradeInput } from "@/application/games/ports/game-trade-importer.port.js";
 import type { CancellationSignal } from "@/application/shared/cancellation.js";
 import type { SearchCriteria } from "@/domain/games/search-criteria.js";
 import type { OfferCurrency } from "@/domain/suppliers/offer.js";
@@ -43,6 +44,39 @@ export type TopicResearchRequest = Omit<ResearchGamesRequest, "gameNames"> & {
  */
 export type ResearchJobRequest = ResearchGamesRequest | TopicResearchRequest;
 
+/**
+ * Como terminou o pedido.
+ *
+ * - `created`: a Trade existe. `tradeUuid` só vem da Trade **com oferta** — a
+ *   rota sem oferta do Estoque não devolve identificador.
+ * - `not_created`: nenhum jogo passou nos filtros (o Estoque nem é chamado), ou
+ *   o Estoque não viu nada a ofertar.
+ */
+export type ResearchTradeOutcome =
+	| { status: "created"; tradeUuid?: string }
+	| { status: "not_created"; reason: "nothing_priced" | "nothing_to_offer" };
+
+/**
+ * O progresso de uma tentativa, para a próxima continuar dali em vez de refazer
+ * a pesquisa. Dois marcos:
+ *
+ * - `pricedGames`: o que a pesquisa aprovou, guardado **antes** de chamar o
+ *   Estoque. A próxima tentativa chama o Estoque com os mesmos jogos — e, com o
+ *   `requestUuid`, recebe a mesma Trade. Pesquisar de novo podia não aprovar
+ *   nenhum (o SteamCharts falha por lote) e responder `no_trade` com a Trade
+ *   existindo.
+ * - `outcome`: o que o Estoque respondeu. A próxima tentativa só refaz o aviso.
+ *
+ * Guardar **nunca lança**: sem o marco, a próxima tentativa só perde o atalho e
+ * pesquisa de novo — o comportamento de antes, não um erro.
+ */
+export type ResearchCheckpoint = {
+	readonly pricedGames?: GameTradeInput[];
+	readonly outcome?: ResearchTradeOutcome;
+	savePricedGames(games: GameTradeInput[]): Promise<void>;
+	saveOutcome(outcome: ResearchTradeOutcome): Promise<void>;
+};
+
 /** A quem avisar uma falha. Pode vir vazio: nem todo pedido quer aviso. */
 export type ResearchFailureTarget = Pick<
 	ResearchGamesRequest,
@@ -61,11 +95,25 @@ export type ResearchFailureTarget = Pick<
  * falhou de vez. Ela o chama depois de registrar a falha, inclusive nas que nunca
  * passam por `run`: processo morto repetidas vezes, payload ilegível. Falha do
  * desligamento não chega aqui: o pedido volta para a fila, não falha.
+ *
+ * `canRetry` é a regra de quando é seguro rodar o pedido de novo depois de uma
+ * falha: a fila tenta outra vez só quando ele diz que sim. Fica aqui, e não na
+ * fila, porque "repetir não cria outra Trade" é regra de negócio.
+ *
+ * `checkpoint` é onde a fila guarda o progresso de cada tentativa. Na falha
+ * definitiva, ela passa a `reportFailure` o desfecho guardado: se o Estoque já
+ * respondeu, quem pediu recebe esse desfecho, não `failed`.
  */
 export interface ResearchGamesRunner {
 	run(
 		request: ResearchJobRequest,
 		signal?: CancellationSignal,
+		checkpoint?: ResearchCheckpoint,
 	): Promise<void>;
-	reportFailure(target: ResearchFailureTarget, error: unknown): Promise<void>;
+	reportFailure(
+		target: ResearchFailureTarget,
+		error: unknown,
+		outcome?: ResearchTradeOutcome,
+	): Promise<void>;
+	canRetry(request: ResearchJobRequest, error: unknown): boolean;
 }

@@ -4,7 +4,10 @@ import type {
 	PopularityFetcher,
 	PriceFetcher,
 } from "@/application/games/ports/game-search.ports.js";
-import type { GameTradeImporter } from "@/application/games/ports/game-trade-importer.port.js";
+import type {
+	GameTradeImporter,
+	GameTradeInput,
+} from "@/application/games/ports/game-trade-importer.port.js";
 import {
 	StockUnavailableError,
 	type TradeWithOfferCreator,
@@ -247,6 +250,20 @@ describe("CreateResearchTrade", () => {
 			});
 		});
 
+		it("hands the request uuid to the Sistema Estoque, its idempotency key", async () => {
+			const creator = makeCreator();
+
+			await makeUseCase(found, priced, { import: vi.fn() }, creator).run({
+				...request,
+				currency: "eur",
+				requestUuid: "8c1f0000-0000-4000-8000-000000000000",
+			});
+
+			expect(creator.create.mock.calls[0][1]).toMatchObject({
+				requestUuid: "8c1f0000-0000-4000-8000-000000000000",
+			});
+		});
+
 		it("keeps the Trade without an offer when there is no currency", async () => {
 			const tradeImporter = makeImporter();
 			const creator = makeCreator();
@@ -325,6 +342,92 @@ describe("CreateResearchTrade", () => {
 					currency: "eur",
 				}),
 			).rejects.toThrow("requires the supplier Steam ID");
+			expect(creator.create).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("progress kept between attempts", () => {
+		const progress = (pricedGames?: GameTradeInput[]) => ({
+			pricedGames,
+			savePricedGames: vi.fn(async () => {}),
+			saveOutcome: vi.fn(async () => {}),
+		});
+		const request = {
+			...makeRequest([game("Worthy")]),
+			supplierSteamId: "76561198012345678",
+			currency: "eur" as const,
+			requestUuid: "8c1f0000-0000-4000-8000-000000000000",
+		};
+
+		it("saves the priced games before calling the Sistema Estoque", async () => {
+			const creator = makeCreator();
+			const saved = progress();
+
+			await makeUseCase([game("Worthy")], [game("Worthy", 2)], makeImporter(), creator).run(
+				request,
+				undefined,
+				saved,
+			);
+
+			expect(saved.savePricedGames).toHaveBeenCalledWith([
+				expect.objectContaining({ name: "Worthy", market_price_euro: 2 }),
+			]);
+			expect(saved.savePricedGames.mock.invocationCallOrder[0]).toBeLessThan(
+				creator.create.mock.invocationCallOrder[0],
+			);
+		});
+
+		it("calls the Sistema Estoque with the saved games, without researching again", async () => {
+			// Pesquisar de novo podia não aprovar nenhum jogo (o SteamCharts falha por
+			// lote) e o Estoque nem seria chamado, com a Trade da tentativa anterior
+			// existindo. Com os mesmos jogos e o `requestUuid`, ele devolve a mesma.
+			const popularity = { fetch: vi.fn() } as unknown as PopularityFetcher;
+			const creator = makeCreator();
+			const useCase = new CreateResearchTrade(
+				new PriceGames(popularity, { fetch: vi.fn() } as unknown as PriceFetcher),
+				makeImporter(),
+				creator,
+			);
+			const saved: GameTradeInput[] = [
+				{
+					name: "Worthy",
+					market_price_euro: 2,
+					popularity: 500,
+					region: "global",
+					id_steam: null,
+					gamivo_id: null,
+				},
+			];
+
+			const outcome = await useCase.run(request, undefined, progress(saved));
+
+			expect(popularity.fetch).not.toHaveBeenCalled();
+			expect(creator.create).toHaveBeenCalledWith(saved, expect.anything());
+			expect(outcome).toEqual({
+				status: "created",
+				tradeUuid: "3a9e0000-0000-4000-8000-000000000000",
+			});
+		});
+
+		it("does not call the Sistema Estoque with the saved games once the shutdown began", async () => {
+			const creator = makeCreator();
+
+			await expect(
+				makeUseCase([], [], makeImporter(), creator).run(
+					request,
+					{ aborted: true },
+					progress([
+						{
+							name: "Worthy",
+							market_price_euro: 2,
+							popularity: 500,
+							region: null,
+							id_steam: null,
+							gamivo_id: null,
+						},
+					]),
+				),
+			).rejects.toBeInstanceOf(ResearchCancelledError);
 			expect(creator.create).not.toHaveBeenCalled();
 		});
 	});
