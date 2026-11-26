@@ -29,9 +29,15 @@ Atue sempre como arquiteto de software sênior com conhecimento profundo de Node
 
 Única exceção: string que reproduz literalmente uma saída de produção (ex.: a mensagem `"Erro no corpo da requisição: ..."` que `lists-legacy-error.filter.ts` devolve hoje). Nesse caso o português é o contrato, não escolha — e merece comentário dizendo isso.
 
-### Commits
+### Git
 
-`git commit` é feito única e exclusivamente pelo usuário — Claude nunca deve rodar `git commit` (nem `git push`) neste repositório, sob nenhuma circunstância, mesmo que peçam explicitamente para "commitar" no meio de uma tarefa. O trabalho do Claude termina em deixar o working tree pronto: código, testes passando, documentação viva atualizada. Se achar que a mudança está pronta pra virar commit, diga isso e pare — quem decide a mensagem e o momento do commit é o usuário.
+**Nunca rode `git commit`** (nem `--amend`, nem `git commit-tree`), mesmo que peçam para "commitar" no meio de uma tarefa. O dono do projeto faz todos os commits e decide como dividi-los. O trabalho do Claude termina com o working tree pronto: código, testes passando, documentação viva atualizada. Quando ajudar, sugira como separar os commits (mensagens e arquivos).
+
+O resto do git o Claude pode fazer: branch, stage, push e PR pelo `gh`, com três cuidados:
+
+- **Todo merge na `main` vai para produção** (`deploy.yml` roda em cada push na `main`). O ruleset "Pass Tests" bloqueia o push direto na `main` e exige o check "Run tests" e merge por squash. Mesmo assim, o branch de trabalho nunca rastreia `origin/main`: crie com `git switch -c <branch>` a partir do `HEAD`, ou com `--no-track` quando partir de `origin/main`. O push é sempre `git push -u origin <branch>`, nunca um `git push` sem destino, e nunca `--force`.
+- **Para abrir um PR, use a skill `/pr-open`.** Ela só faz o push e abre o PR depois de o dono confirmar o título e a descrição.
+- **A revisão que vale para abrir o PR é a `/pr-review`**, que confere a mudança contra as regras escritas deste repositório. A skill `code-review` de `.agents/skills/` é outra coisa: a revisão em dois eixos (padrões e spec) que o `/implement` roda no fim, contra a issue. Ela não substitui a `/pr-review`.
 
 ### Documentação viva
 
@@ -190,6 +196,10 @@ Dívida técnica e melhorias rastreadas em `docs/IMPROVEMENTS.md`.
 ---
 
 ## Agent skills
+
+### Revisão e PR
+
+`.claude/skills/pr-review/` revisa a mudança contra as regras escritas daqui (só lê). `.claude/skills/pr-open/` roda as verificações do CI no Docker, chama a `pr-review`, escreve a descrição em `.pr/` (apagada depois que o PR abre), abre o PR e ativa o auto-merge só quando o ruleset que exige o CI na `main` está ativo, e nunca em PR do Dependabot. Nenhuma das duas faz commit.
 
 ### Issue tracker
 

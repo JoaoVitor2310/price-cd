@@ -5,5 +5,10 @@ node_modules
 *.xlsx
 /dist
 /uploads
-.claude
+# Claude Code: a configuração local fica fora; as skills do projeto (/pr-review, /pr-open) são versionadas.
+/.claude/*
+!/.claude/skills/
 .vscode
+
+# Descrições de PR que a skill pr-open grava (o corpo do PR que ela abre).
+/.pr/
